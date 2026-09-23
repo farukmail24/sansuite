@@ -2102,7 +2102,7 @@ export async function generateAuthenticCompaniesHouseIxbrl(
       min-height: 1123px;
       background: #ffffff;
       box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(0, 0, 0, 0.05);
-      border-radius: 6px;
+      border-radius: 0px;
       border: 1px solid #e2e8f0;
       padding: 72px 64px 64px 64px;
       margin: 0 auto;
@@ -2127,7 +2127,7 @@ export async function generateAuthenticCompaniesHouseIxbrl(
       margin: 40px auto 0 auto;
       padding: 44px 36px;
       border: 2px solid #e2e8f0;
-      border-radius: 8px;
+      border-radius: 0px;
       background: #fcfcfd;
       box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
       display: flex;

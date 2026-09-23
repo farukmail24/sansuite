@@ -67,7 +67,7 @@ function formatIxbrlForPreview(rawXml: string | null): string {
       min-height: 1123px;
       background: #ffffff;
       box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(0, 0, 0, 0.05);
-      border-radius: 6px;
+      border-radius: 0px;
       border: 1px solid #e2e8f0;
       padding: 72px 64px 64px 64px;
       margin: 0 auto;
@@ -90,7 +90,7 @@ function formatIxbrlForPreview(rawXml: string | null): string {
       margin: 40px auto 0 auto;
       padding: 44px 36px;
       border: 2px solid #e2e8f0;
-      border-radius: 8px;
+      border-radius: 0px;
       background: #fcfcfd;
       box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
       display: flex;
@@ -1804,13 +1804,13 @@ function AccountsSubmissionWizard({ clientId }: { clientId: string }) {
                     </button>
                   </div>
 
-                  {/* Frame Container */}
-                  <div className="flex-1 w-full overflow-hidden bg-slate-200/70 dark:bg-slate-950 p-3 sm:p-4 flex items-center justify-center">
+                  {/* Frame Container - Edge-to-edge, flush, no padding or rounded corners */}
+                  <div className="flex-1 w-full overflow-hidden bg-[#f1f5f9] dark:bg-slate-950">
                     <iframe
                       ref={previewIframeRef}
                       srcDoc={formatIxbrlForPreview(selectedXml)}
                       title="Companies House iXBRL Preview"
-                      className="w-full h-full rounded-xl border border-slate-300 dark:border-slate-800 bg-[#f1f5f9] dark:bg-slate-900 shadow-xs"
+                      className="w-full h-full border-0 rounded-none bg-[#f1f5f9] dark:bg-slate-900"
                     />
                   </div>
                 </div>
