@@ -26,6 +26,148 @@ export default function AccountsSubmissionPage() {
   );
 }
 
+function formatIxbrlForPreview(rawXml: string | null): string {
+  if (!rawXml) return "";
+  let doc = rawXml;
+
+  const standardA4Css = `
+    * { box-sizing: border-box; }
+    html {
+      background-color: #525659;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: "Times New Roman", Times, Georgia, serif;
+      line-height: 1.45;
+      color: #000000;
+      background-color: #525659;
+      margin: 0;
+      padding: 24px 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+    }
+    tr, td, th, tbody { padding: 0px; margin: 0px; }
+    .hidden { display: none; }
+    div.pagebreak { page-break-after: always; }
+    div.accountspage {
+      width: 794px;
+      min-height: 1123px;
+      background: #ffffff;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28), 0 1px 3px rgba(0, 0, 0, 0.15);
+      border: 1px solid #334155;
+      padding: 72px 64px 64px 64px;
+      margin: 0 auto;
+      position: relative;
+    }
+    div.titlepage {
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      padding-top: 180px;
+      text-align: center;
+      font-weight: bold;
+    }
+    div.DCAtitleHeading p {
+      margin: 12px 0;
+      font-size: 16px;
+      color: #000000;
+    }
+    div.accountsheader {
+      font-weight: bold;
+      width: 100%;
+      display: block;
+      border-bottom: 2px solid #000000;
+      padding-bottom: 8px;
+      margin-bottom: 28px;
+    }
+    span.left { float: left; width: 68%; font-size: 15px; font-weight: bold; }
+    span.right { float: right; width: 32%; text-align: right; font-size: 13px; font-weight: bold; }
+    #balancesheet { width: 100%; display: block; clear: both; }
+    #balancesheet table { width: 100%; border-collapse: collapse; margin-top: 14px; margin-bottom: 24px; font-size: 14px; }
+    #balancesheet th { text-align: left; padding: 6px 8px; font-weight: bold; }
+    tr.indent > *:first-child { padding-left: 28px; }
+    #balancesheet .figure { text-align: right; font-family: "Courier New", Courier, monospace; font-size: 14px; }
+    td.number { text-align: right; font-family: "Courier New", Courier, monospace; }
+    #balancesheet td.total, tr.total td.figure, tr.total td.row-label {
+      font-weight: bold;
+      border-color: #000000;
+      border-top-width: 1px;
+      border-bottom-width: 2px;
+      border-style: solid none solid none;
+      padding-top: 5px;
+      padding-bottom: 5px;
+    }
+    h1 { font-size: 20px; font-weight: bold; color: #000000; margin: 0 0 12px 0; text-align: center; }
+    h2 { font-size: 16px; font-weight: bold; margin: 16px 0; }
+    h2.middle { text-align: center; }
+    h3 { font-size: 13px; font-weight: bold; margin: 24px 0 8px 0; letter-spacing: 0.5px; }
+    span.officername { font-weight: bold; }
+    #balancesheet tr.heading td { padding-top: 16px; font-weight: bold; }
+    #statements { margin-top: 28px; }
+    #statements ol { list-style-type: lower-alpha; padding-left: 24px; margin: 0; }
+    #statements li { margin-bottom: 10px; font-size: 12px; text-align: justify; line-height: 1.5; color: #000000; }
+    #approval { margin-top: 24px; font-size: 13px; line-height: 1.6; border-top: 1px solid #000000; padding-top: 12px; }
+    th.normal { font-weight: normal; }
+    .clearfix::after { content: ""; clear: both; display: table; }
+    .page-footer-marker {
+      position: absolute;
+      bottom: 24px;
+      right: 32px;
+      font-size: 11px;
+      color: #64748b;
+      font-family: sans-serif;
+    }
+    @media print {
+      @page {
+        size: A4 portrait;
+        margin: 18mm 20mm;
+      }
+      html, body {
+        background: #ffffff !important;
+        background-color: #ffffff !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        display: block !important;
+      }
+      div.accountspage {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-height: auto !important;
+        box-shadow: none !important;
+        border: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        page-break-after: always !important;
+        break-after: page !important;
+      }
+      div.titlepage {
+        page-break-after: always !important;
+        break-after: page !important;
+        padding-top: 60mm !important;
+        min-height: 250mm !important;
+      }
+      .page-footer-marker {
+        display: none !important;
+      }
+    }
+  `;
+
+  if (doc.includes("<style")) {
+    doc = doc.replace(/<style[^>]*>[\s\S]*?<\/style>/i, `<style type="text/css">${standardA4Css}</style>`);
+  }
+
+  // Inject page footer markers if missing
+  if (!doc.includes("page-footer-marker")) {
+    doc = doc.replace(/(<div class="[^"]*titlepage[^"]*"[^>]*>[\s\S]*?)(<\/div>)/i, `$1<div class="page-footer-marker">Page 1 of 2</div>$2`);
+    doc = doc.replace(/(<\/div>\s*<\/body>)/i, `<div class="page-footer-marker">Page 2 of 2</div>$1`);
+  }
+
+  return doc;
+}
+
 function AccountsSubmissionWizard({ clientId }: { clientId: string }) {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -1510,11 +1652,20 @@ function AccountsSubmissionWizard({ clientId }: { clientId: string }) {
             {/* Modal Body: Rendered Preview vs Monospace Source */}
             <div className="flex-1 overflow-hidden bg-slate-100 dark:bg-slate-950 flex flex-col">
               {xmlModalTab === "preview" ? (
-                <div className="w-full h-full p-4 overflow-y-auto flex items-center justify-center">
+                <div className="w-full h-full p-2 bg-[#525659] flex flex-col items-center">
+                  <div className="w-full py-1.5 px-4 bg-slate-800 text-slate-300 text-[11px] font-sans flex items-center justify-between border-b border-slate-700 rounded-t-lg">
+                    <span className="flex items-center gap-1.5 font-medium">
+                      <FileText size={12} className="text-purple-400" />
+                      Companies House Statutory Format &bull; 2 Pages (A4 Standard)
+                    </span>
+                    <span className="bg-slate-700 px-2 py-0.5 rounded text-[10px] text-slate-300 font-mono">
+                      Page 1: Title &bull; Page 2: Balance Sheet
+                    </span>
+                  </div>
                   <iframe
-                    srcDoc={selectedXml}
+                    srcDoc={formatIxbrlForPreview(selectedXml)}
                     title="Companies House iXBRL Preview"
-                    className="w-full h-full min-h-[620px] bg-white rounded-xl shadow-md border border-slate-200 dark:border-slate-800"
+                    className="w-full flex-1 min-h-[580px] bg-[#525659] rounded-b-lg border border-slate-700"
                   />
                 </div>
               ) : (
