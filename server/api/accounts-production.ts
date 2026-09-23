@@ -2074,21 +2074,22 @@ export async function generateAuthenticCompaniesHouseIxbrl(
   <style type="text/css">
     * { box-sizing: border-box; }
     html {
-      background-color: #525659;
+      background-color: #f1f5f9;
       margin: 0;
       padding: 0;
+      scroll-behavior: smooth;
     }
     body {
       font-family: "Times New Roman", Times, Georgia, serif;
       line-height: 1.45;
-      color: #000000;
-      background-color: #525659;
+      color: #0f172a;
+      background-color: #f1f5f9;
       margin: 0;
-      padding: 24px 0;
+      padding: 32px 0 48px 0;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 24px;
+      gap: 32px;
     }
     tr, td, th, tbody { padding: 0px; margin: 0px; }
     .hidden { display: none; }
@@ -2097,10 +2098,12 @@ export async function generateAuthenticCompaniesHouseIxbrl(
     /* Authentic A4 Page Container (Screen / Preview Mode) */
     div.accountspage {
       width: 794px;
+      max-width: 95%;
       min-height: 1123px;
       background: #ffffff;
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28), 0 1px 3px rgba(0, 0, 0, 0.15);
-      border: 1px solid #334155;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(0, 0, 0, 0.05);
+      border-radius: 6px;
+      border: 1px solid #e2e8f0;
       padding: 72px 64px 64px 64px;
       margin: 0 auto;
       position: relative;
@@ -2111,53 +2114,109 @@ export async function generateAuthenticCompaniesHouseIxbrl(
       display: flex;
       flex-direction: column;
       justify-content: flex-start;
-      padding-top: 180px;
+      align-items: center;
+      min-height: 1123px;
       text-align: center;
-      font-weight: bold;
+      padding: 60px 48px;
+      position: relative;
+      box-sizing: border-box;
+    }
+    div.DCAtitleHeading {
+      width: 100%;
+      max-width: 580px;
+      margin: 40px auto 0 auto;
+      padding: 44px 36px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      background: #fcfcfd;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
     }
     div.DCAtitleHeading p {
-      margin: 12px 0;
+      margin: 0;
+      padding: 0;
+    }
+    div.DCAtitleHeading p:first-child {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      color: #64748b;
+      text-transform: uppercase;
+      margin-bottom: 24px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    div.DCAtitleHeading p:nth-child(2) {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      color: #0f172a;
+      text-transform: uppercase;
+      line-height: 1.3;
+      margin-bottom: 14px;
+      padding-bottom: 16px;
+      border-bottom: 2px solid #6366f1;
+      width: 100%;
+    }
+    div.DCAtitleHeading p:nth-child(3) {
       font-size: 16px;
-      color: #000000;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      color: #334155;
+      text-transform: uppercase;
+      margin-top: 8px;
+      margin-bottom: 8px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    div.DCAtitleHeading p:nth-child(4) {
+      font-size: 14px;
+      font-weight: 600;
+      color: #64748b;
+      margin-top: 4px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
 
     /* Page 2: Running Header */
     div.accountsheader {
       font-weight: bold;
       width: 100%;
-      display: block;
-      border-bottom: 2px solid #000000;
-      padding-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #0f172a;
+      padding-bottom: 10px;
       margin-bottom: 28px;
     }
-    span.left { float: left; width: 68%; font-size: 15px; font-weight: bold; }
-    span.right { float: right; width: 32%; text-align: right; font-size: 13px; font-weight: bold; }
+    span.left { font-size: 15px; font-weight: 700; color: #0f172a; }
+    span.right { font-size: 13px; font-weight: 600; color: #475569; }
 
     #balancesheet { width: 100%; display: block; clear: both; }
     #balancesheet table { width: 100%; border-collapse: collapse; margin-top: 14px; margin-bottom: 24px; font-size: 14px; }
-    #balancesheet th { text-align: left; padding: 6px 8px; font-weight: bold; }
+    #balancesheet th { text-align: left; padding: 6px 8px; font-weight: bold; color: #0f172a; }
     tr.indent > *:first-child { padding-left: 28px; }
-    #balancesheet .figure { text-align: right; font-family: "Courier New", Courier, monospace; font-size: 14px; }
+    #balancesheet .figure { text-align: right; font-family: "Courier New", Courier, monospace; font-size: 14px; font-weight: 600; }
     td.number { text-align: right; font-family: "Courier New", Courier, monospace; }
     #balancesheet td.total, tr.total td.figure, tr.total td.row-label {
       font-weight: bold;
-      border-color: #000000;
+      border-color: #0f172a;
       border-top-width: 1px;
       border-bottom-width: 2px;
       border-style: solid none solid none;
-      padding-top: 5px;
-      padding-bottom: 5px;
+      padding-top: 6px;
+      padding-bottom: 6px;
     }
-    h1 { font-size: 20px; font-weight: bold; color: #000000; margin: 0 0 12px 0; text-align: center; }
-    h2 { font-size: 16px; font-weight: bold; margin: 16px 0; }
+    h1 { font-size: 20px; font-weight: bold; color: #0f172a; margin: 0 0 12px 0; text-align: center; }
+    h2 { font-size: 16px; font-weight: bold; margin: 16px 0; color: #0f172a; }
     h2.middle { text-align: center; }
-    h3 { font-size: 13px; font-weight: bold; margin: 24px 0 8px 0; letter-spacing: 0.5px; }
+    h3 { font-size: 13px; font-weight: bold; margin: 24px 0 8px 0; letter-spacing: 0.5px; color: #0f172a; }
     span.officername { font-weight: bold; }
     #balancesheet tr.heading td { padding-top: 16px; font-weight: bold; }
     #statements { margin-top: 28px; }
     #statements ol { list-style-type: lower-alpha; padding-left: 24px; margin: 0; }
-    #statements li { margin-bottom: 10px; font-size: 12px; text-align: justify; line-height: 1.5; color: #000000; }
-    #approval { margin-top: 24px; font-size: 13px; line-height: 1.6; border-top: 1px solid #000000; padding-top: 12px; }
+    #statements li { margin-bottom: 10px; font-size: 12px; text-align: justify; line-height: 1.5; color: #1e293b; }
+    #approval { margin-top: 24px; font-size: 13px; line-height: 1.6; border-top: 1px solid #cbd5e1; padding-top: 12px; }
     th.normal { font-weight: normal; }
     .clearfix::after { content: ""; clear: both; display: table; }
 
@@ -2167,8 +2226,8 @@ export async function generateAuthenticCompaniesHouseIxbrl(
       bottom: 24px;
       right: 32px;
       font-size: 11px;
-      color: #64748b;
-      font-family: sans-serif;
+      color: #94a3b8;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
 
     /* Print / PDF Export Rules */
@@ -2190,6 +2249,7 @@ export async function generateAuthenticCompaniesHouseIxbrl(
         min-height: auto !important;
         box-shadow: none !important;
         border: none !important;
+        border-radius: 0 !important;
         padding: 0 !important;
         margin: 0 !important;
         page-break-after: always !important;
@@ -2198,8 +2258,13 @@ export async function generateAuthenticCompaniesHouseIxbrl(
       div.titlepage {
         page-break-after: always !important;
         break-after: page !important;
-        padding-top: 60mm !important;
         min-height: 250mm !important;
+      }
+      div.DCAtitleHeading {
+        border: none !important;
+        box-shadow: none !important;
+        background: transparent !important;
+        padding: 0 !important;
       }
       .page-footer-marker {
         display: none !important;
@@ -2345,7 +2410,7 @@ export async function generateAuthenticCompaniesHouseIxbrl(
   </div>
 
   <!-- TITLE COVER PAGE (PAGE 1) -->
-  <div class="titlepage accountspage pagebreak title">
+  <div id="page-1" class="titlepage accountspage pagebreak title">
     <div class="DCAtitleHeading">
       <p>Registered Number
         <ix:nonNumeric contextRef="dcur3" name="uk-bus:UKCompaniesHouseRegisteredNumber">${companyNumber}</ix:nonNumeric>
@@ -2360,7 +2425,7 @@ export async function generateAuthenticCompaniesHouseIxbrl(
   </div>
 
   <!-- BALANCE SHEET PAGE -->
-  <div class="accountspage">
+  <div id="page-2" class="accountspage">
     <div class="accountsheader clearfix">
       <span class="left">${companyName}</span>
       <span class="right">Registered Number ${companyNumber}</span>

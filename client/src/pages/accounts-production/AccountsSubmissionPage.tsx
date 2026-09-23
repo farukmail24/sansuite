@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRoute, Link, Redirect } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ClientWorkspaceLayout, { useClientWorkspace } from "./workspace/ClientWorkspaceLayout";
@@ -30,34 +30,45 @@ function formatIxbrlForPreview(rawXml: string | null): string {
   if (!rawXml) return "";
   let doc = rawXml;
 
+  // Add IDs if missing for smooth page navigation
+  if (!doc.includes('id="page-1"')) {
+    doc = doc.replace(/class="([^"]*titlepage[^"]*)"/i, 'id="page-1" class="$1"');
+  }
+  if (!doc.includes('id="page-2"')) {
+    doc = doc.replace(/(<div\s+class="accountspage(?![^>]*id="page-1"))/i, '<div id="page-2" class="accountspage"');
+  }
+
   const standardA4Css = `
     * { box-sizing: border-box; }
     html {
-      background-color: #525659;
+      background-color: #f1f5f9;
       margin: 0;
       padding: 0;
+      scroll-behavior: smooth;
     }
     body {
       font-family: "Times New Roman", Times, Georgia, serif;
       line-height: 1.45;
-      color: #000000;
-      background-color: #525659;
+      color: #0f172a;
+      background-color: #f1f5f9;
       margin: 0;
-      padding: 24px 0;
+      padding: 32px 0 48px 0;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 24px;
+      gap: 32px;
     }
     tr, td, th, tbody { padding: 0px; margin: 0px; }
     .hidden { display: none; }
     div.pagebreak { page-break-after: always; }
     div.accountspage {
       width: 794px;
+      max-width: 95%;
       min-height: 1123px;
       background: #ffffff;
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28), 0 1px 3px rgba(0, 0, 0, 0.15);
-      border: 1px solid #334155;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(0, 0, 0, 0.05);
+      border-radius: 6px;
+      border: 1px solid #e2e8f0;
       padding: 72px 64px 64px 64px;
       margin: 0 auto;
       position: relative;
@@ -66,50 +77,106 @@ function formatIxbrlForPreview(rawXml: string | null): string {
       display: flex;
       flex-direction: column;
       justify-content: flex-start;
-      padding-top: 180px;
+      align-items: center;
+      min-height: 1123px;
       text-align: center;
-      font-weight: bold;
+      padding: 60px 48px;
+      position: relative;
+      box-sizing: border-box;
+    }
+    div.DCAtitleHeading {
+      width: 100%;
+      max-width: 580px;
+      margin: 40px auto 0 auto;
+      padding: 44px 36px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      background: #fcfcfd;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
     }
     div.DCAtitleHeading p {
-      margin: 12px 0;
+      margin: 0;
+      padding: 0;
+    }
+    div.DCAtitleHeading p:first-child {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      color: #64748b;
+      text-transform: uppercase;
+      margin-bottom: 24px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    div.DCAtitleHeading p:nth-child(2) {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      color: #0f172a;
+      text-transform: uppercase;
+      line-height: 1.3;
+      margin-bottom: 14px;
+      padding-bottom: 16px;
+      border-bottom: 2px solid #6366f1;
+      width: 100%;
+    }
+    div.DCAtitleHeading p:nth-child(3) {
       font-size: 16px;
-      color: #000000;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      color: #334155;
+      text-transform: uppercase;
+      margin-top: 8px;
+      margin-bottom: 8px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    div.DCAtitleHeading p:nth-child(4) {
+      font-size: 14px;
+      font-weight: 600;
+      color: #64748b;
+      margin-top: 4px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
     div.accountsheader {
       font-weight: bold;
       width: 100%;
-      display: block;
-      border-bottom: 2px solid #000000;
-      padding-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #0f172a;
+      padding-bottom: 10px;
       margin-bottom: 28px;
     }
-    span.left { float: left; width: 68%; font-size: 15px; font-weight: bold; }
-    span.right { float: right; width: 32%; text-align: right; font-size: 13px; font-weight: bold; }
+    span.left { font-size: 15px; font-weight: 700; color: #0f172a; }
+    span.right { font-size: 13px; font-weight: 600; color: #475569; }
     #balancesheet { width: 100%; display: block; clear: both; }
     #balancesheet table { width: 100%; border-collapse: collapse; margin-top: 14px; margin-bottom: 24px; font-size: 14px; }
-    #balancesheet th { text-align: left; padding: 6px 8px; font-weight: bold; }
+    #balancesheet th { text-align: left; padding: 6px 8px; font-weight: bold; color: #0f172a; }
     tr.indent > *:first-child { padding-left: 28px; }
-    #balancesheet .figure { text-align: right; font-family: "Courier New", Courier, monospace; font-size: 14px; }
+    #balancesheet .figure { text-align: right; font-family: "Courier New", Courier, monospace; font-size: 14px; font-weight: 600; }
     td.number { text-align: right; font-family: "Courier New", Courier, monospace; }
     #balancesheet td.total, tr.total td.figure, tr.total td.row-label {
       font-weight: bold;
-      border-color: #000000;
+      border-color: #0f172a;
       border-top-width: 1px;
       border-bottom-width: 2px;
       border-style: solid none solid none;
-      padding-top: 5px;
-      padding-bottom: 5px;
+      padding-top: 6px;
+      padding-bottom: 6px;
     }
-    h1 { font-size: 20px; font-weight: bold; color: #000000; margin: 0 0 12px 0; text-align: center; }
-    h2 { font-size: 16px; font-weight: bold; margin: 16px 0; }
+    h1 { font-size: 20px; font-weight: bold; color: #0f172a; margin: 0 0 12px 0; text-align: center; }
+    h2 { font-size: 16px; font-weight: bold; margin: 16px 0; color: #0f172a; }
     h2.middle { text-align: center; }
-    h3 { font-size: 13px; font-weight: bold; margin: 24px 0 8px 0; letter-spacing: 0.5px; }
+    h3 { font-size: 13px; font-weight: bold; margin: 24px 0 8px 0; letter-spacing: 0.5px; color: #0f172a; }
     span.officername { font-weight: bold; }
     #balancesheet tr.heading td { padding-top: 16px; font-weight: bold; }
     #statements { margin-top: 28px; }
     #statements ol { list-style-type: lower-alpha; padding-left: 24px; margin: 0; }
-    #statements li { margin-bottom: 10px; font-size: 12px; text-align: justify; line-height: 1.5; color: #000000; }
-    #approval { margin-top: 24px; font-size: 13px; line-height: 1.6; border-top: 1px solid #000000; padding-top: 12px; }
+    #statements li { margin-bottom: 10px; font-size: 12px; text-align: justify; line-height: 1.5; color: #1e293b; }
+    #approval { margin-top: 24px; font-size: 13px; line-height: 1.6; border-top: 1px solid #cbd5e1; padding-top: 12px; }
     th.normal { font-weight: normal; }
     .clearfix::after { content: ""; clear: both; display: table; }
     .page-footer-marker {
@@ -117,8 +184,8 @@ function formatIxbrlForPreview(rawXml: string | null): string {
       bottom: 24px;
       right: 32px;
       font-size: 11px;
-      color: #64748b;
-      font-family: sans-serif;
+      color: #94a3b8;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
     @media print {
       @page {
@@ -138,6 +205,7 @@ function formatIxbrlForPreview(rawXml: string | null): string {
         min-height: auto !important;
         box-shadow: none !important;
         border: none !important;
+        border-radius: 0 !important;
         padding: 0 !important;
         margin: 0 !important;
         page-break-after: always !important;
@@ -146,8 +214,13 @@ function formatIxbrlForPreview(rawXml: string | null): string {
       div.titlepage {
         page-break-after: always !important;
         break-after: page !important;
-        padding-top: 60mm !important;
         min-height: 250mm !important;
+      }
+      div.DCAtitleHeading {
+        border: none !important;
+        box-shadow: none !important;
+        background: transparent !important;
+        padding: 0 !important;
       }
       .page-footer-marker {
         display: none !important;
@@ -157,6 +230,8 @@ function formatIxbrlForPreview(rawXml: string | null): string {
 
   if (doc.includes("<style")) {
     doc = doc.replace(/<style[^>]*>[\s\S]*?<\/style>/i, `<style type="text/css">${standardA4Css}</style>`);
+  } else if (doc.includes("</head>")) {
+    doc = doc.replace("</head>", `<style type="text/css">${standardA4Css}</style></head>`);
   }
 
   // Inject page footer markers if missing
@@ -179,6 +254,33 @@ function AccountsSubmissionWizard({ clientId }: { clientId: string }) {
   // XML Inspection Modal
   const [selectedXml, setSelectedXml] = useState<string | null>(null);
   const [xmlModalTab, setXmlModalTab] = useState<"preview" | "source">("preview");
+  const previewIframeRef = useRef<HTMLIFrameElement>(null);
+  const [activePreviewPage, setActivePreviewPage] = useState<1 | 2>(1);
+
+  const scrollToPage = (pageNum: 1 | 2) => {
+    setActivePreviewPage(pageNum);
+    try {
+      const iframe = previewIframeRef.current;
+      if (!iframe || !iframe.contentWindow || !iframe.contentDocument) return;
+      const target = iframe.contentDocument.getElementById(`page-${pageNum}`);
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    } catch (e) {
+      console.error("Scroll to page error", e);
+    }
+  };
+
+  const handlePrintIframe = () => {
+    try {
+      const iframe = previewIframeRef.current;
+      if (!iframe || !iframe.contentWindow) return;
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    } catch (e) {
+      console.error("Print preview error", e);
+    }
+  };
 
   // Helper to trigger instant download of authentic Companies House .xhtml file
   const handleDownloadIxbrl = (xmlContent: string, customName?: string) => {
@@ -1652,21 +1754,65 @@ function AccountsSubmissionWizard({ clientId }: { clientId: string }) {
             {/* Modal Body: Rendered Preview vs Monospace Source */}
             <div className="flex-1 overflow-hidden bg-slate-100 dark:bg-slate-950 flex flex-col">
               {xmlModalTab === "preview" ? (
-                <div className="w-full h-full p-2 bg-[#525659] flex flex-col items-center">
-                  <div className="w-full py-1.5 px-4 bg-slate-800 text-slate-300 text-[11px] font-sans flex items-center justify-between border-b border-slate-700 rounded-t-lg">
-                    <span className="flex items-center gap-1.5 font-medium">
-                      <FileText size={12} className="text-purple-400" />
-                      Companies House Statutory Format &bull; 2 Pages (A4 Standard)
-                    </span>
-                    <span className="bg-slate-700 px-2 py-0.5 rounded text-[10px] text-slate-300 font-mono">
-                      Page 1: Title &bull; Page 2: Balance Sheet
-                    </span>
+                <div className="w-full h-full flex flex-col bg-slate-100 dark:bg-slate-950 overflow-hidden">
+                  {/* Sleek SanSuite Document Toolbar */}
+                  <div className="w-full py-2 px-6 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0 shadow-xs">
+                    <div className="flex items-center gap-2.5">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/80 font-medium text-[11px]">
+                        <FileText size={12} />
+                        Companies House Statutory Format
+                      </span>
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/80 font-medium text-[11px]">
+                        <CheckCircle2 size={11} /> 2 Pages (A4 Standard)
+                      </span>
+                    </div>
+
+                    {/* Quick Page Jump Pills */}
+                    <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-lg border border-slate-200 dark:border-slate-700">
+                      <span className="text-[11px] text-slate-400 font-medium px-1.5">Jump to:</span>
+                      <button
+                        type="button"
+                        onClick={() => scrollToPage(1)}
+                        className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all cursor-pointer flex items-center gap-1 ${
+                          activePreviewPage === 1
+                            ? "bg-white dark:bg-slate-900 shadow-2xs text-purple-700 dark:text-purple-300 font-semibold"
+                            : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+                        }`}
+                      >
+                        <FileText size={11} /> Page 1: Title Cover
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => scrollToPage(2)}
+                        className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all cursor-pointer flex items-center gap-1 ${
+                          activePreviewPage === 2
+                            ? "bg-white dark:bg-slate-900 shadow-2xs text-purple-700 dark:text-purple-300 font-semibold"
+                            : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+                        }`}
+                      >
+                        <FileSpreadsheet size={11} /> Page 2: Balance Sheet
+                      </button>
+                    </div>
+
+                    {/* Print action directly from toolbar */}
+                    <button
+                      type="button"
+                      onClick={handlePrintIframe}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg font-medium text-[11px] transition-colors cursor-pointer border border-slate-200 dark:border-slate-700"
+                    >
+                      <Printer size={13} /> Print Document
+                    </button>
                   </div>
-                  <iframe
-                    srcDoc={formatIxbrlForPreview(selectedXml)}
-                    title="Companies House iXBRL Preview"
-                    className="w-full flex-1 min-h-[580px] bg-[#525659] rounded-b-lg border border-slate-700"
-                  />
+
+                  {/* Frame Container */}
+                  <div className="flex-1 w-full overflow-hidden bg-slate-200/70 dark:bg-slate-950 p-3 sm:p-4 flex items-center justify-center">
+                    <iframe
+                      ref={previewIframeRef}
+                      srcDoc={formatIxbrlForPreview(selectedXml)}
+                      title="Companies House iXBRL Preview"
+                      className="w-full h-full rounded-xl border border-slate-300 dark:border-slate-800 bg-[#f1f5f9] dark:bg-slate-900 shadow-xs"
+                    />
+                  </div>
                 </div>
               ) : (
                 <div className="p-4 overflow-y-auto flex-1 font-mono text-[11px] bg-slate-950 text-slate-200 whitespace-pre-wrap leading-relaxed select-all">
