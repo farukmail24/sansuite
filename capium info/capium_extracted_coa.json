@@ -1,0 +1,4335 @@
+[
+  {
+    "code": "1000",
+    "name": "Sales",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "1010",
+    "name": "Fee Income",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "1020",
+    "name": "Domestic Sales",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "1030",
+    "name": "Export Sales",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "1050",
+    "name": "Bank Interest",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "1122",
+    "name": "Opening Stock",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1200",
+    "name": "Opening Stock - Raw Materials",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1201",
+    "name": "Opening WIP",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1202",
+    "name": "Opening Stock - Finished Goods",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1203",
+    "name": "Opening Stock - Other Resale",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1210",
+    "name": "Purchases",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "12130",
+    "name": "Domestic Purchase",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "12140",
+    "name": "Import Purchase",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1220",
+    "name": "Closing Stock - Raw Materials",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "1221",
+    "name": "Closing WIP",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "1222",
+    "name": "Closing Stock - Finished Goods",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "1223",
+    "name": "Closing Stock - Other Resale",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "6667",
+    "name": "Closing Stock",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "1230",
+    "name": "Direct Wages &amp; Salaries",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1231",
+    "name": "Employer's PAYE &amp; NI Contributions",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1232",
+    "name": "Pension Contributions",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1233",
+    "name": "Commissions Payable",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "12330",
+    "name": "Staff Costs (Disallowable)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1240",
+    "name": "Depreciation Charge: Freehold Properties",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1241",
+    "name": "Depreciation Charge: Leasehold Properties",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1242",
+    "name": "Depreciation Charge: Plant &amp; Machinery",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1243",
+    "name": "Depreciation Charge: Motor Vehicles",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1244",
+    "name": "Depreciation Charge: Fixtures &amp; Fittings",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1245",
+    "name": "Depreciation Charge: Computer Equipment",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1246",
+    "name": "Depreciation Charge: Land &amp; Buildings",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "8508",
+    "name": "Depreciation Charge: Improvements to property",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1250",
+    "name": "Profit/Loss on Sale (Tangible Fixed Assets)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1260",
+    "name": "Impairment Losses (Tangible Fixed Assets)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1270",
+    "name": "Sub-Contract Cost",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1271",
+    "name": "Motor Vehicles Hire",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1272",
+    "name": "Plant Hire",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1273",
+    "name": "Rent",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1274",
+    "name": "Other Direct Costs",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "12790",
+    "name": "Customs Duty",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "12930",
+    "name": "CIS Payment to Sub-contractors (Disallowable)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1275",
+    "name": "Operating Lease Charges - Plant &amp; Equipment",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1276",
+    "name": "Operating Lease Charges - Others",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1277",
+    "name": "Operating Lease - Land &amp; Buildings",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1280",
+    "name": "Research and Development Costs",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1290",
+    "name": "Exceptional Items",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1291",
+    "name": "Reorganisation and Restructuring Costs",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1292",
+    "name": "Profit/Loss on Sale or Termination of an Operation",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "14200",
+    "name": "Directors Salaries",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "14210",
+    "name": "Directors Fees",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "14220",
+    "name": "Directors Employers PAYE &amp; NI Contributions",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "14230",
+    "name": "Directors Pension Contributions",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "14240",
+    "name": "Directors Pension Current Service Costs",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "14250",
+    "name": "Directors Pension Past Service Costs",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "14260",
+    "name": "Directors Benefits in Kind",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "14270",
+    "name": "Directors Compensation for Loss of Office",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1300",
+    "name": "Wages &amp; Salaries",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1301",
+    "name": "Employer's PAYE &amp; NI Contributions",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1302",
+    "name": "Pension Contributions",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1340",
+    "name": "Depreciation Charge: Freehold Properties",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1341",
+    "name": "Depreciation Charge: Leasehold Properties",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1342",
+    "name": "Depreciation Charge: Plant &amp; Machinery",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1343",
+    "name": "Depreciation Charge: Motor Vehicles",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1344",
+    "name": "Depreciation Charge: Fixtures &amp; Fittings",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1345",
+    "name": "Depreciation Charge: Computer Equipment",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1346",
+    "name": "Depreciation Charge: Land &amp; Buildings",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "8509",
+    "name": "Depreciation Charge: Improvements to property",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1350",
+    "name": "Profit/Loss on Sale (Tangible Fixed Assets)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1360",
+    "name": "Impairment Losses (Tangible Fixed Assets)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1370",
+    "name": "Packaging Materials",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1371",
+    "name": "Transport, Freight &amp; Carriage",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1372",
+    "name": "Courier Service",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1373",
+    "name": "Vehicle Hire",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1374",
+    "name": "Vehicle Leasing Charges",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1375",
+    "name": "Vehicle Maintenance",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1376",
+    "name": "Vehicle Insurance",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1377",
+    "name": "Diesel and Petrol",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1378",
+    "name": "Commissions Payable",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1379",
+    "name": "Advertising",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1380",
+    "name": "Exhibitions",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1381",
+    "name": "Website Costs",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1382",
+    "name": "Entertainment",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1383",
+    "name": "Storage",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1384",
+    "name": "Cash Discount",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "13846",
+    "name": "Advertising Costs (Disallowable)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "13847",
+    "name": "Other Expenses (Disallowable)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1388",
+    "name": "Entertainment (Disallowable)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1385",
+    "name": "Operating Lease Charges - Plant &amp; Equipment",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1386",
+    "name": "Operating Lease Charges - Others",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1387",
+    "name": "Operating Lease - Land &amp; Buildings",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1390",
+    "name": "Exceptional Items",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1391",
+    "name": "Reorganisation and Restructuring Costs",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1392",
+    "name": "Profit/Loss on Sale or Termination of an Operation",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "14201",
+    "name": "Directors Salaries",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "14211",
+    "name": "Directors Fees",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "14222",
+    "name": "Directors Employers PAYE &amp; NI Contributions",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "14233",
+    "name": "Directors Pension Contributions",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "14244",
+    "name": "Directors Pension Current Service Costs",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "14255",
+    "name": "Directors Pension Past Service Costs",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "14266",
+    "name": "Directors Benefits in Kind",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "14277",
+    "name": "Directors Compensation for Loss of Office",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1400",
+    "name": "Wages &amp; Salaries",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1401",
+    "name": "Employer's PAYE &amp; NI Contributions",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1402",
+    "name": "Pension Contributions",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1403",
+    "name": "Pension Current Service Cost",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1404",
+    "name": "Pension Past Service Cost",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1405",
+    "name": "Equity-Settled Share-Based Payments",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "14080",
+    "name": "Bonus",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "14094",
+    "name": "Staff Costs (Disallowable)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1410",
+    "name": "Staff Training",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1411",
+    "name": "Staff Welfare",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1412",
+    "name": "Temporary Staff &amp; Recruitment",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1413",
+    "name": "Other Staff-Related Expenses",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1420",
+    "name": "Directors Salaries",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1421",
+    "name": "Directors Fees",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1422",
+    "name": "Directors Employer's PAYE &amp; NI Contributions",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1423",
+    "name": "Directors Pension Contributions",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1424",
+    "name": "Directors Pension Current Service Costs",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1425",
+    "name": "Directors Pension Past Service Costs",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1426",
+    "name": "Directors Benefits in Kind",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1427",
+    "name": "Directors Compensation for Loss of Office",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1428",
+    "name": "Directors Payments to Third Parties",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1430",
+    "name": "Auditors Remuneration",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1431",
+    "name": "Accountancy Fees",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1432",
+    "name": "Legal and Professional Fees (Allowable)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1433",
+    "name": "Legal and Professional Fees (Disallowable)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "14333",
+    "name": "Professional Fees (Disallowable)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "14340",
+    "name": "Management &amp; Consultancy fees",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1440",
+    "name": "Rates &amp; Water",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1441",
+    "name": "Rent",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1442",
+    "name": "Light, Heat &amp; Power",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1443",
+    "name": "Property Insurance",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1444",
+    "name": "Property Maintenance (Allowable)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1445",
+    "name": "Property Maintenance (Disallowable)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1446",
+    "name": "Cleaning of Premises",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1447",
+    "name": "Other Premises Costs",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1457",
+    "name": "Use of Home as Office",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "14571",
+    "name": "Premises Running Cost (Disallowable)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1460",
+    "name": "Petrol and Oil",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1461",
+    "name": "Motor Licenses and Insurances",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1462",
+    "name": "Motor Repairs and Servicing",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1463",
+    "name": "General Travel Expenses",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1464",
+    "name": "Overseas Travel",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "14642",
+    "name": "Travelling Costs (Disallowable)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1510",
+    "name": "Discount Allowed",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1511",
+    "name": "Bad Debts Written Off (Specific)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1512",
+    "name": "Provision for Doubtful Debts",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1517",
+    "name": "Bank Charges",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "15170",
+    "name": "Payment Gateway Charges",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "15190",
+    "name": "Financial Costs (Disallowable)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "15191",
+    "name": "Bad Debts (Disallowable)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1520",
+    "name": "Exchange Rate Losses/Gains",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1540",
+    "name": "Depreciation Charge: Freehold Properties",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1541",
+    "name": "Depreciation Charge: Leasehold Properties",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1542",
+    "name": "Depreciation Charge: Plant &amp; Machinery",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1543",
+    "name": "Depreciation Charge: Motor Vehicles",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1544",
+    "name": "Depreciation Charge: Fixtures &amp; Fittings",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1545",
+    "name": "Depreciation Charge: Computer Equipment",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1546",
+    "name": "Amortisation (Intangible Fixed Assets) - Goodwill",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1547",
+    "name": "Amortisation (Intangible Fixed Assets) - R&amp;D",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1548",
+    "name": "Amortisation (Intangible Fixed Assets) - Other",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1549",
+    "name": "Depreciation Charge: Land &amp; Buildings",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "8300",
+    "name": "Amortisation (Intangible Fixed Assets) - Patents",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "8301",
+    "name": "Amortisation (Intangible Fixed Assets) - Trade Mark",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "8302",
+    "name": "Amortisation (Intangible Fixed Assets) - Franchise Fees",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "8303",
+    "name": "Amortisation (Intangible Fixed Assets) - Copy Rights",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "8304",
+    "name": "Amortisation (Intangible Fixed Assets) - Software License",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "8510",
+    "name": "Depreciation Charge: Improvements to property",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "8511",
+    "name": "Depreciation Charge - Investment in Properties",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1550",
+    "name": "Profit/Loss on Sale (Tangible Fixed Assets)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1551",
+    "name": "Profit/Loss on Sale (Intangible Fixed Assets)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1552",
+    "name": "Profit/Loss on Sale (Fixed Assets Investment)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1560",
+    "name": "Impairment Losses (Tangible FA)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1561",
+    "name": "Impairment Losses (Intangible FA)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1571",
+    "name": "Advertising",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1572",
+    "name": "Entertainment",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1573",
+    "name": "General Insurance",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1574",
+    "name": "Computer Expenses",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1575",
+    "name": "Repairs &amp; Renewals",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1576",
+    "name": "Stationery &amp; Postage",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1577",
+    "name": "Telephone, Fax &amp; Internet",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1578",
+    "name": "Canteen",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1579",
+    "name": "Sundry Expenses",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1580",
+    "name": "Donations",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1581",
+    "name": "Donations (Disallowable)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1582",
+    "name": "Entertainment (Disallowable)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "15824",
+    "name": "Admin Cost (Disallowable)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "15825",
+    "name": "Other Expenses (Disallowable)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1585",
+    "name": "Operating Lease Charges - Plant &amp; Equipment",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1586",
+    "name": "Operating Lease Charges - Others",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1587",
+    "name": "Operating Lease - Land &amp; Buildings",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1590",
+    "name": "Exceptional Item",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1591",
+    "name": "Reorganisation and Restructuring Costs",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1592",
+    "name": "Profit/Loss on Sale or Termination of an Operation",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1600",
+    "name": "Exceptional Items",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1601",
+    "name": "Profit/Loss on Sale or Termination of an Operation",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "1602",
+    "name": "Reorganisation and Restructuring Costs",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "2000",
+    "name": "Government Grants",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "2060",
+    "name": "SEISS Grant",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "2010",
+    "name": "Exchange Rate Gains",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "2020",
+    "name": "Exceptional item",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "2030",
+    "name": "Rents Received",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "2031",
+    "name": "Discount Received",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "2032",
+    "name": "Commissions Received",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "2033",
+    "name": "Other Operating Income (Taxable)",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "2034",
+    "name": "Other Operating Income (Not-Taxable)",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "2035",
+    "name": "Management Charges Receivable",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "2036",
+    "name": "VAT Flat Rate Adjustment",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "2134",
+    "name": "Revaluation of Investment Properties(Non-taxable)",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "2220",
+    "name": "Profit on Sale (Tangible Fixed Assets)",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "2221",
+    "name": "Profit on Sale (Intangible Fixed Assets)",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "2300",
+    "name": "Shares in Group Undertakings",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "2310",
+    "name": "Participating Interests",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "2320",
+    "name": "Other Fixed Asset Investments (FII)",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "2330",
+    "name": "Other Fixed Asset Investments (UnFII)",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "2340",
+    "name": "Deposit Account Interest",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "2341",
+    "name": "Loan Interest",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "2342",
+    "name": "Net Finance Income - Defined Benefit Pension Scheme",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "2600",
+    "name": "Interest Receivable and Other Income",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "2350",
+    "name": "Current Asset Investment Income",
+    "category": "Income",
+    "group": "Income",
+    "nature": "Income"
+  },
+  {
+    "code": "2500",
+    "name": "Bank &amp; Other Loan Interest",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "2501",
+    "name": "Interest Payable to Group Undertakings",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "2502",
+    "name": "Mortgage Interest",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "2503",
+    "name": "Operating Lease: Rent of Buildings",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "2504",
+    "name": "Operating Lease: Equipment",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "2505",
+    "name": "Other Operating Leases",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "2506",
+    "name": "Factoring Charges",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "2507",
+    "name": "Hire Purchase",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "2508",
+    "name": "Dividends on Non-Equity Preference Shares",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "2509",
+    "name": "Other Interest Payable",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "2510",
+    "name": "Other Finance Costs",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "2527",
+    "name": "Interest Payable &amp; Similar Charges (Disallowable)",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "2800",
+    "name": "Interest Payable",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "3000",
+    "name": "UK Corporation Tax",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "3010",
+    "name": "Current Year Deferred Tax",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "17000",
+    "name": "Property Taxes",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "17010",
+    "name": "Property Expenses",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "17020",
+    "name": "Repairs &amp; Maintenance",
+    "category": "Expenses",
+    "group": "Expenses",
+    "nature": "Expenses"
+  },
+  {
+    "code": "4020",
+    "name": "Goodwill - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4021",
+    "name": "Goodwill - Additions Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4022",
+    "name": "Goodwill - Disposals Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4023",
+    "name": "Goodwill - Revaluation",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4024",
+    "name": "Goodwill - Transfer",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4025",
+    "name": "Goodwill - Accumulated Amortisation b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4026",
+    "name": "Goodwill - Amortisation Charge for the Year",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4027",
+    "name": "Goodwill - Amortisation on Disposals",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4030",
+    "name": "Other Intangible - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4031",
+    "name": "Other Intangible - Additions Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4032",
+    "name": "Other Intangible - Disposals Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4033",
+    "name": "Other Intangible - Revaluation",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4034",
+    "name": "Other Intangible - Transfer",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4035",
+    "name": "Other Intangible - Accumulated Amortisation b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4036",
+    "name": "Other Intangible - Amortisation Charge for Year",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4037",
+    "name": "Other Intangible - Amortisation on Disposals",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4040",
+    "name": "Freehold Property - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4041",
+    "name": "Freehold Property - Additions - Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4042",
+    "name": "Freehold Property - Disposals - Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4043",
+    "name": "Freehold Property - Revaluations",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4044",
+    "name": "Freehold Property - Transfers",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4045",
+    "name": "Freehold Property - Accumulated Depreciation b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4046",
+    "name": "Freehold Property - Depreciation Charge for the Year",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4047",
+    "name": "Freehold Property - Depreciation on Disposals",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4050",
+    "name": "Leasehold Property - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4051",
+    "name": "Leasehold Property - Additions - Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4052",
+    "name": "Leasehold Property - Disposals - Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4053",
+    "name": "Leasehold Property - Revaluations",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4054",
+    "name": "Leasehold Property - Transfers",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4055",
+    "name": "Leasehold Property - Accumulated Depreciation b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4056",
+    "name": "Leasehold Property - Depreciation Charge for Year",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4057",
+    "name": "Leasehold Property - Depreciation on Disposals",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4060",
+    "name": "Plant &amp; Machinery - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4061",
+    "name": "Plant &amp; Machinery - Additions - Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4062",
+    "name": "Plant &amp; Machinery - Disposals - Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4063",
+    "name": "Plant &amp; Machinery - Revaluations",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4064",
+    "name": "Plant &amp; Machinery - Transfer",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4065",
+    "name": "Plant &amp; Machinery - Accumulated Depreciation b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4066",
+    "name": "Plant &amp; Machinery - Depreciation Charge for the Year",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4067",
+    "name": "Plant &amp; Machinery - Depreciation on Disposals",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4080",
+    "name": "Motor Vehicles - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4081",
+    "name": "Motor Vehicles - Additions - Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4082",
+    "name": "Motor Vehicles - Disposals - Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4083",
+    "name": "Motor Vehicles - Revaluations",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4084",
+    "name": "Motor Vehicles - Transfers",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4085",
+    "name": "Motor Vehicles - Accumulated Depreciation b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4086",
+    "name": "Motor Vehicles - Depreciation Charge for the Year",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4087",
+    "name": "Motor Vehicles - Depreciation on Disposals",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4100",
+    "name": "Fixtures &amp; Fittings - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4101",
+    "name": "Fixtures &amp; Fittings - Additions - Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4102",
+    "name": "Fixtures &amp; Fittings - Disposals - Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4103",
+    "name": "Fixtures &amp; Fittings - Revaluations",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4104",
+    "name": "Fixtures &amp; Fittings - Transfers",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4105",
+    "name": "Fixtures &amp; Fittings - Accumulated Depreciation b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4106",
+    "name": "Fixtures &amp; Fittings - Depreciation Charge for Year",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4107",
+    "name": "Fixtures &amp; Fittings - Depreciation on Disposals",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4120",
+    "name": "Computer Equipment - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4121",
+    "name": "Computer Equipment - Additions - Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4122",
+    "name": "Computer Equipment - Disposals - Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4123",
+    "name": "Computer Equipment - Revaluations",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4124",
+    "name": "Computer Equipment - Transfers",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4125",
+    "name": "Computer Equipment - Accumulated Depreciation b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4126",
+    "name": "Computer Equipment - Depreciation Charge for the Year",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4127",
+    "name": "Computer Equipment - Depreciation on Disposals",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4010",
+    "name": "R&amp;D - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4011",
+    "name": "R&amp;D - Additions Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4012",
+    "name": "R&amp;D - Disposals Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4013",
+    "name": "R&amp;D - Revaluation",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4014",
+    "name": "R&amp;D - Transfer",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4015",
+    "name": "R&amp;D - Accumulated Amortisation b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4016",
+    "name": "R&amp;D - Amortisation Charge for the Year",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4017",
+    "name": "R&amp;D - Amortisation on Disposals",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4072",
+    "name": "Investment Properties - Disposals - Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4073",
+    "name": "Investment Properties - Revaluations",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4074",
+    "name": "Investment Properties - Transfer",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4090",
+    "name": "Investment Properties - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4091",
+    "name": "Investment Properties - Additions - Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4095",
+    "name": "Investment Properties - Accumulated Depreciation b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4097",
+    "name": "Investment Properties - Depreciation on Disposals",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4506",
+    "name": "Investment Properties - Depreciation Charge for the Year",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4800",
+    "name": "Patents - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4801",
+    "name": "Patents - Additions Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4802",
+    "name": "Patents - Disposals Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4803",
+    "name": "Patents - Revaluation",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4804",
+    "name": "Patents - Transfer",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4805",
+    "name": "Patents - Accumulated Amortisation b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4806",
+    "name": "Patents - Amortisation Charge for the Year",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4807",
+    "name": "Patents - Amortisation on Disposals",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4810",
+    "name": "Trade Mark - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4811",
+    "name": "Trade Mark - Additions Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4812",
+    "name": "Trade Mark - Disposals Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4813",
+    "name": "Trade Mark - Revaluation",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4814",
+    "name": "Trade Mark - Transfer",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4815",
+    "name": "Trade Mark - Accumulated Amortisation b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4816",
+    "name": "Trade Mark - Amortisation Charge for the Year",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4817",
+    "name": "Trade Mark - Amortisation on Disposals",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4820",
+    "name": "Franchise Fees - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4821",
+    "name": "Franchise Fees - Additions Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4822",
+    "name": "Franchise Fees - Disposals Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4823",
+    "name": "Franchise Fees - Revaluation",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4824",
+    "name": "Franchise Fees - Transfer",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4825",
+    "name": "Franchise Fees - Accumulated Amortisation b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4826",
+    "name": "Franchise Fees - Amortisation Charge for the Year",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4827",
+    "name": "Franchise Fees - Amortisation on Disposals",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4830",
+    "name": "Copy Rights - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4831",
+    "name": "Copy Rights - Additions Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4832",
+    "name": "Copy Rights - Disposals Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4833",
+    "name": "Copy Rights - Revaluation",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4834",
+    "name": "Copy Rights - Transfer",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4835",
+    "name": "Copy Rights - Accumulated Amortisation b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4836",
+    "name": "Copy Rights - Amortisation Charge for the Year",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4837",
+    "name": "Copy Rights - Amortisation on Disposals",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4840",
+    "name": "Software License - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4841",
+    "name": "Software License - Additions Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4842",
+    "name": "Software License - Disposals Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4843",
+    "name": "Software License - Revaluation",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4844",
+    "name": "Software License - Transfer",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4845",
+    "name": "Software License - Accumulated Amortisation b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4846",
+    "name": "Software License - Amortisation Charge for the Year",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4847",
+    "name": "Software License - Amortisation on Disposals",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "8500",
+    "name": "Improvements to property - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "8501",
+    "name": "Improvements to property - Additions Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "8502",
+    "name": "Improvements to property - Disposals Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "8503",
+    "name": "Improvements to property - Revaluations",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "8504",
+    "name": "Improvements to property - Transfers",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "8505",
+    "name": "Improvements to property - Accumulated Depreciation b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "8506",
+    "name": "Improvements to property - Depreciation Charge for the Year",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4130",
+    "name": "Land &amp; Buildings Leased - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4131",
+    "name": "Land &amp; Buildings Leased - Additions - Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4132",
+    "name": "Land &amp; Buildings Leased - Disposals - Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4133",
+    "name": "Land &amp; Buildings Leased - Revaluations",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4134",
+    "name": "Land &amp; Buildings Leased - Transfers",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4135",
+    "name": "Land &amp; Buildings Leased - Accumulated Depreciation b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4136",
+    "name": "Land &amp; Buildings Leased - Depreciation Charge for the Year",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4137",
+    "name": "Land &amp; Buildings Leased - Depreciation on Disposal",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4140",
+    "name": "Plant &amp; Machinery  Leased - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4141",
+    "name": "Plant &amp; Machinery  Leased - Additions - Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4142",
+    "name": "Plant &amp; Machinery - Disposals - Cost  Leased",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4143",
+    "name": "Plant &amp; Machinery  Leased - Revaluations",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4144",
+    "name": "Plant &amp; Machinery  Leased - Transfers",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4145",
+    "name": "Plant &amp; Machinery Leased - Accumulated Depreciation b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4146",
+    "name": "Plant &amp; Machinery Leased - Depreciation Charge for the Year",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4147",
+    "name": "Plant &amp; Machinery Leased - Depreciation on Disposal",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4150",
+    "name": "Motor Vehicles  Leased - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4151",
+    "name": "Motor Vehicles  Leased - Additions - Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4152",
+    "name": "Motor Vehicles Leased - Disposals - Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4153",
+    "name": "Motor Vehicles  Leased - Revaluations",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4154",
+    "name": "Motor Vehicles  Leased - Transfers",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4155",
+    "name": "Motor Vehicles Leased - Accumulated Depreciation b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4156",
+    "name": "Motor Vehicles Leased - Depreciation Charge for the Year",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4157",
+    "name": "Motor Vehicles Leased - Depreciation on Disposal",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4160",
+    "name": "Fixtures &amp; Fittings Leased - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4161",
+    "name": "Fixtures &amp; Fittings Leased - Additions - Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4162",
+    "name": "Fixtures &amp; Fittings Leased - Disposals - Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4163",
+    "name": "Fixtures &amp; Fittings Leased - Revaluations",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4164",
+    "name": "Fixtures &amp; Fittings Leased - Transfers",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4165",
+    "name": "Fixtures &amp; Fittings Leased - Accumulated Depreciation b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4166",
+    "name": "Fixtures &amp; Fittings Leased - Depreciation Charge for the Year",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4167",
+    "name": "Fixtures &amp; Fittings Leased - Depreciation on Disposal",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4170",
+    "name": "Computer Equipment  Leased - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4171",
+    "name": "Computer Equipment  Leased - Additions - Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4172",
+    "name": "Computer Equipment Leased - Disposals - Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4173",
+    "name": "Computer Equipment  Leased - Revaluations",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4174",
+    "name": "Computer Equipment  Leased - Transfers",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4175",
+    "name": "Computer Equipment Leased - Accumulated Depreciation b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4176",
+    "name": "Computer Equipment Leased - Depreciation Charge for the Year",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4177",
+    "name": "Computer Equipment Leased - Depreciation on Disposal",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4190",
+    "name": "Investment Properties Leased - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4191",
+    "name": "Investment Properties Leased - Additions - Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4192",
+    "name": "Investment Properties - Disposals - Cost Leased",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4193",
+    "name": "Investment Properties - Leased - Revaluations",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4194",
+    "name": "Investment Properties - Leased - Transfers",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4310",
+    "name": "Improvements to property leased- Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4311",
+    "name": "Improvements to property leased- Additions Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4312",
+    "name": "Improvements to property leased- Disposals Cost",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4313",
+    "name": "Improvements to property leased- Revaluations",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4314",
+    "name": "Improvements to property leased- Transfers",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4315",
+    "name": "Improvements to property leased- Accumulated Depreciation b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4316",
+    "name": "Improvements to property leased- Depreciation Charge for the Year",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4200",
+    "name": "Shares in Group - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4201",
+    "name": "Shares in Group - Additions",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4202",
+    "name": "Shares in Group - Cost of Disposals",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4203",
+    "name": "Shares in Group - Revaluations",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4204",
+    "name": "Shares in Group - Aggregate Amount W/Off",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4210",
+    "name": "Loans to Group - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4211",
+    "name": "Loans to Group - Additions",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4212",
+    "name": "Loans to Group - Cost of Disposals",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4213",
+    "name": "Loans to Group - Revaluations",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4214",
+    "name": "Loans to Group - Aggregate Amount W/Off",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4220",
+    "name": "Participating Ints - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4221",
+    "name": "Participating Ints - Additions",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4222",
+    "name": "Participating Ints - Cost of Disposals",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4223",
+    "name": "Participating Ints - Revaluations",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4224",
+    "name": "Participating Ints - Aggregate Amount W/Off",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4230",
+    "name": "Loans to Participating Ints - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4231",
+    "name": "Loans to Participating Ints - Additions",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4232",
+    "name": "Loans to Participating Ints - Cost of Disposals",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4233",
+    "name": "Loans to Participating Ints - Revaluations",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4234",
+    "name": "Loans to Participating Ints - Aggregate Amount W/Off",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4240",
+    "name": "Investment in Own Shares - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4241",
+    "name": "Investment in Own Shares - Additions",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4242",
+    "name": "Investment in Own Shares - Cost of Disposals",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4243",
+    "name": "Investment in Own Shares - Revaluations",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4244",
+    "name": "Investment in Own Shares - Aggregate Amount W/Off",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4250",
+    "name": "Other Investments - Listed - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4251",
+    "name": "Other Investments - Listed - Additions",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4252",
+    "name": "Other Investments - Listed - Cost of Disposals",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4253",
+    "name": "Other Investments - Listed - Revaluations",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4254",
+    "name": "Other Investments - Listed - Aggregate Amount W/Off",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4260",
+    "name": "Other Investments - Unlisted - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4261",
+    "name": "Other Investments - Unlisted - Additions",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4262",
+    "name": "Other Investments - Unlisted - Cost of Disposals",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4263",
+    "name": "Other Investments - Unlisted - Revaluations",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4264",
+    "name": "Other Investments - Unlisted - Aggregate Amount W/Off",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4270",
+    "name": "Investment in Assets - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4271",
+    "name": "Investment in Assets - Additions",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4272",
+    "name": "Investment in Assets - Cost of Disposals",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4273",
+    "name": "Investment in Assets - Revaluations",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4274",
+    "name": "Investment in Assets - Aggregate Amount W/Off",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4420",
+    "name": "Finished Goods",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4421",
+    "name": "Work in Progress",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4422",
+    "name": "Raw Materials",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4423",
+    "name": "Stocks",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4440",
+    "name": "Payments on Account",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4600",
+    "name": "Trade Debtors",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4601",
+    "name": "Provision for Doubtful Debts",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4610",
+    "name": "Amount Owed by Group Undertakings",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4611",
+    "name": "Amount Owed by Participating Interests",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4620",
+    "name": "Called up Share Capital Not Paid",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4621",
+    "name": "Premium on Called up Share Capital Not Paid",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4630",
+    "name": "Prepayments &amp; Accrued Income",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4631",
+    "name": "Accrued Income",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4632",
+    "name": "Accrued Interest Receivable",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4633",
+    "name": "Advance Received",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4634",
+    "name": "Deposits paid",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4640",
+    "name": "Amounts Recoverable on Contracts",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4641",
+    "name": "Debts Factored without Recourse",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4642",
+    "name": "Other Debtors",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4643",
+    "name": "Interest Receivable and Other Income",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4644",
+    "name": "Lottery control account",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4700",
+    "name": "Trade Debtors",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4701",
+    "name": "Provision for Doubtful Debts",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4710",
+    "name": "Amount Owed by Group Undertakings",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4711",
+    "name": "Amount Owed by Participating Interests",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4720",
+    "name": "Called Up Share Capital Not Paid",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4721",
+    "name": "Premium on Called up Share Capital Not Paid",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4730",
+    "name": "Prepayments",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4731",
+    "name": "Accrued Income",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4732",
+    "name": "Accrued Interest Receivable",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4733",
+    "name": "Deposits paid",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4740",
+    "name": "Amounts Recoverable on Contracts",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4741",
+    "name": "Debts Factored Without Recourse",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "4742",
+    "name": "Other Debtors",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "5000",
+    "name": "Shares in Group - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "5040",
+    "name": "Investment in Own Shares - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "5050",
+    "name": "Other Investments - Listed - Cost b/fwd",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "5220",
+    "name": "Cash in Hand",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "5236",
+    "name": "CapiumPay Control Account",
+    "category": "Assets",
+    "group": "Assets",
+    "nature": "Assets"
+  },
+  {
+    "code": "5400",
+    "name": "Trade Creditors",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5410",
+    "name": "Bank Loans &amp; Overdrafts (Secured)",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5411",
+    "name": "Bank Loans &amp; Overdrafts",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5420",
+    "name": "Amounts Owed to Group Undertakings",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5421",
+    "name": "Amounts Owed to Participating Interests",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5430",
+    "name": "Corporation Tax",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5431",
+    "name": "PAYE &amp; Social Security",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5435",
+    "name": "CIS Control Account",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5440",
+    "name": "Accrued Expenses",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5441",
+    "name": "Deferred Grants",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5442",
+    "name": "Advance Paid",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5450",
+    "name": "Other Creditors",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5451",
+    "name": "Bills of Exchange Payable",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5452",
+    "name": "Dividends Payable - Equity",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5453",
+    "name": "Dividends Payable - Non-Equity",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5454",
+    "name": "Obligations under HP/Financial Leases",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5455",
+    "name": "Payments Received on Account",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5456",
+    "name": "Wages &amp; Salaries Control Account",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5457",
+    "name": "Interest Payable",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5458",
+    "name": "Intra-Group Interest Payable",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5459",
+    "name": "Attachment of Earnings",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5476",
+    "name": "Proposed Dividend",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5460",
+    "name": "Debenture Loans",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5461",
+    "name": "Debenture Loans - Convertible",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5470",
+    "name": "Preference Shares b/fwd",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5471",
+    "name": "Issue of New Preference Share Capital at Par",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5472",
+    "name": "Other Issues",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5473",
+    "name": "Purchase of Own Shares",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5474",
+    "name": "Prior Year Adjustment",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5475",
+    "name": "Transfers from NEPS Less than 1 Year",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5480",
+    "name": "Directors' Current Accounts",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5500",
+    "name": "Trade Creditors",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5510",
+    "name": "Bank Loans &amp; Overdrafts (secured)",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5511",
+    "name": "Bank Loans &amp; Overdrafts",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5520",
+    "name": "Amounts Owed to Group Undertakings",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5521",
+    "name": "Amounts Owed to Participating Interests",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5540",
+    "name": "Accrued Expenses",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5541",
+    "name": "Deferred Grants",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5550",
+    "name": "Other Creditors",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5551",
+    "name": "Bills of Exchange Payable",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5552",
+    "name": "Dividends Payable - Equity",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5553",
+    "name": "Dividends Payable - Non-Equity",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5554",
+    "name": "Obligations Under HP/Financial Leases",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5555",
+    "name": "Payments Received on Account",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5560",
+    "name": "Debenture Loans",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5561",
+    "name": "Debenture Loans - Convertible",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5570",
+    "name": "Preference Shares b/fwd",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5571",
+    "name": "Issue of New Preference Share Capital at Par",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5572",
+    "name": "Other Issues",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5573",
+    "name": "Purchase of Own Shares",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5574",
+    "name": "Prior Year Adjustment",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5575",
+    "name": "Transfers from NEPS greater than 1 Year",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5820",
+    "name": "Deferred Tax",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5821",
+    "name": "Charged to Profit &amp; Loss",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "6030",
+    "name": "Defined Benefit Pension Scheme Asset/Liability b/fwd",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "7010",
+    "name": "Equity Share Capital b/fwd",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "7011",
+    "name": "Issue of New Equity Share Capital at Par",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "7012",
+    "name": "Scrip/Rights Issues",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "7013",
+    "name": "Purchase of Own Shares",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "7014",
+    "name": "Other Equity Share capital",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "7015",
+    "name": "Prior period adjustment",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "1868582",
+    "name": "Reduction of share capital",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "7020",
+    "name": "Preference Share Capital b/fwd",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "7021",
+    "name": "Issue of New Preference Share Capital at Par",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "7022",
+    "name": "Other Issues",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "7023",
+    "name": "Purchase of Own Shares",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "7024",
+    "name": "Prior Year Adjustment",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "1871870",
+    "name": "Reduction of share capital",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8000",
+    "name": "Profit &amp; Loss Account b/fwd",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8002",
+    "name": "Equity Dividends Proposed",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8003",
+    "name": "Equity Dividends Paid",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8005",
+    "name": "Transfer from Reserves",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8006",
+    "name": "Purchase of Own Shares",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8007",
+    "name": "Prior Year Adjustment",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8008",
+    "name": "Transfer To Reserves",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8099",
+    "name": "Donation to parent company",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8152",
+    "name": "Transfer to Profit and Loss Account",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "2283864",
+    "name": "Reduction of share capital",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8010",
+    "name": "Equity Share Premium b/fwd",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8011",
+    "name": "Equity Share Premium - New Issue",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8012",
+    "name": "Qualifying Equity Share Issue Expenses",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8013",
+    "name": "Prior Year Adjustment",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "2233095",
+    "name": "Reduction of share capital",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8020",
+    "name": "Preference Share Premium b/fwd",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8021",
+    "name": "Preference Share Premium - New Issue",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8022",
+    "name": "Qualifying Preference Share Issue Expenses",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8023",
+    "name": "Prior Year Adjustment",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "2236747",
+    "name": "Reduction of share capital",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8030",
+    "name": "Revaluation Reserve b/fwd",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8031",
+    "name": "Revaluation of Fixed Assets",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8032",
+    "name": "Transfer to Profit and Loss Account",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8033",
+    "name": "Investments w/off Revalued",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8034",
+    "name": "Transfers to/from Other Reserves",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8035",
+    "name": "Deferred Tax Provided on Revaluation",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8036",
+    "name": "Prior Year Adjustment",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8037",
+    "name": "Deferred Tax Provided on Revaluation of Trade Investments",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8040",
+    "name": "Capital Redemption Reserve b/fwd",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8041",
+    "name": "Purchase of Own Shares (Nominal Value)",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8042",
+    "name": "Transfer to Profit and Loss account",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8044",
+    "name": "Transfers to/from Other Reserves",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8046",
+    "name": "Prior Year Adjustment",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "2245148",
+    "name": "Reduction of share capital",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8050",
+    "name": "Share Options Reserve b/fwd",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8051",
+    "name": "Equity-Settled Share-Based Payments in Year",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8052",
+    "name": "Exercise of Options during the Year",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8053",
+    "name": "Transfer to Profit and Loss Account",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8054",
+    "name": "Expiry of Share Options in the Year",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8055",
+    "name": "Forfeiture of Share Options in the Year",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8056",
+    "name": "Prior Year Adjustment",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8070",
+    "name": "Special reserves b/fwd",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8071",
+    "name": "Created during the year",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8072",
+    "name": "Transfer",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8080",
+    "name": "Other Comprehensive Income b/fwd",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8081",
+    "name": "Actuarial Gain",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8091",
+    "name": "Unrealized Gains or losses",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8111",
+    "name": "Foreign currency adjustments",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8121",
+    "name": "Gains on cash flow hedges",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8150",
+    "name": "Fair Value Reserve b/fwd",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8151",
+    "name": "Fair Value Reserve",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "2283133",
+    "name": "Transfer to Profit and Loss Account",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "8160",
+    "name": "General Reserve",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5660",
+    "name": "Accrued expenses",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5661",
+    "name": "Deferred Grants",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  },
+  {
+    "code": "5662",
+    "name": "Accrued&amp; Deferred income",
+    "category": "Liability",
+    "group": "Liability",
+    "nature": "Liability"
+  }
+]

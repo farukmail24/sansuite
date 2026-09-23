@@ -1,0 +1,642 @@
+<?xml version='1.0' encoding='utf-8' ?>
+<html xmlns='http://www.w3.org/1999/xhtml' xmlns:nonnum='http://www.xbrl.org/dtr/type/non-numeric' xmlns:num='http://www.xbrl.org/dtr/type/numeric' 
+                xmlns:aurep='http://xbrl.frc.org.uk/reports/2025-01-01/aurep' xmlns:xlink='http://www.w3.org/1999/xlink' xmlns:direp='http://xbrl.frc.org.uk/reports/2025-01-01/direp' 
+                xmlns:accrep='http://xbrl.frc.org.uk/reports/2025-01-01/accrep' xmlns:xbrldt='http://xbrl.org/2005/xbrldt' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance' 
+                xmlns:common='http://xbrl.frc.org.uk/general/2025-01-01/common' xmlns:core='http://xbrl.frc.org.uk/fr/2025-01-01/core' xmlns:xbrli='http://www.xbrl.org/2003/instance' 
+                xmlns:curr='http://xbrl.frc.org.uk/cd/2025-01-01/currencies' xmlns:link='http://www.xbrl.org/2003/linkbase' xmlns:lang='http://xbrl.frc.org.uk/cd/2025-01-01/languages' 
+                xmlns:bus='http://xbrl.frc.org.uk/cd/2025-01-01/business' xmlns:types='http://xbrl.frc.org.uk/general/2025-01-01/types' xmlns:countries='http://xbrl.frc.org.uk/cd/2025-01-01/countries' 
+                xmlns:ref='http://www.xbrl.org/2006/ref' xmlns:uk-ref='http://xbrl.frc.org.uk/general/2025-01-01/ref' xmlns:xl='http://www.xbrl.org/2003/XLink' xmlns:fn='http://www.w3.org/2005/xpath-functions' 
+                xmlns:iso4217='http://www.xbrl.org/2003/iso4217' xmlns:ix='http://www.xbrl.org/2008/inlineXBRL' xmlns:xbrldi='http://xbrl.org/2006/xbrldi' xmlns:xbrldte='http://xbrl.org/2005/xbrldt/errors' 
+                xmlns:xbrldie='http://xbrl.org/2006/xbrldi/errors' xmlns:ixt='http://www.xbrl.org/inlineXBRL/transformation/2011-07-31' xmlns:frs-102='http://xbrl.frc.org.uk/FRS-102/2025-01-01' 
+                xmlns:dpl='http://xbrl.frc.org.uk/dpl/2025-01-01' xmlns:dpl-frc='http://xbrl.frc.org.uk/dpl/2025-01-01' xmlns:uk-countries='http://xbrl.frc.org.uk/cd/2025-01-01/countries'>
+<head>
+	<title>ACRE &#038; TWEED GROUP LIMITED - Accounts</title>
+	<meta content='application/xhtml+xml; charset=UTF-8' http-equiv='Content-Type' />
+	<style type='text/css'>
+		body.report-body { margin: 0 8px; }
+		.page700 { min-height: 750px; background-color:transparent; }
+		.pagebreak { page-break-before:always }
+		.pageno { display: none!important }
+		.page-body { padding: 0; vertical-align: top }
+
+		.page700 a { color:#000000; text-decoration:none; font-size: 16px; }
+		.page700 a img { border-style: none; border-width: 0 }
+		.page700 hr { margin: 0; border: none; border-bottom:1px solid #202020 }
+		.page700 p { text-align:justify; margin-top:15px; margin-bottom:15px }
+		.page700 p strong { text-align:left }
+		.page700 p.subhead { font-weight:bold; margin-top:5px; margin-bottom:5px; text-align:left }
+		.page700 table.page { width: 100%; border-spacing: 0; font-family:Arial !important; font-size:16px }
+		.page700 table.tfont { font-size:16px }
+		.page700 table.page thead { display: table-header-group }
+		.page700 table tbody { vertical-align: top }
+		.page700 table.page700 thead th { height: 90px }
+		.page700 thead th { font-weight:normal; font-size:20px }
+		.page700 table.w100p, .page700 table.w550px { font-size:16px;margin-bottom:10px;  }
+		.page700 tr.spacer { height:10px }
+
+		.page700 .w95px { width: 85px; vertical-align:middle }        
+		.page700 .w25px { width: 10px }
+		.page700 .w10px { width: 5px }
+		.page700 .w100p { width: 100% }
+		.page700 .w550px { width: 550px; }
+		.page700 .w200px { width: 200px }
+		.page700 .w98p{ width: 94%; }
+
+		.page700 .cover-company { text-align: center; font-size:20px; text-transform:uppercase;  }
+		.page700 .center { margin: auto }
+		.page700 .tcenter { text-align:center }
+		.page700 .left, .cmp-val { text-align: left }
+		.page700 .page-body .right { text-align: right; vertical-align:middle; float:none;}
+		.page700 .report .right{ float:none; }
+		.page700 .report .left{ float:none; }
+		.page700 .bold { font-weight: bold }
+		.page700 .mb0 { margin-bottom:0 }
+		.page700 .mt0 { margin-top:0 }
+		.page700 .bbottom { border-bottom:1px solid #202020 }
+        .borderbottom { border-bottom:1px solid #202020 }
+		.page700 .pageheader { font-size:19px; text-align:center; margin-top:5px; margin-bottom:20px }
+		.page700 .pageheader a { font-size:19px; }
+		.page700 .avoid_pagebreak { page-break-inside : avoid }
+		.page700 .cmp-val{ padding-bottom: 20px }
+		.page700 .leftHead { width: 230px; display: inline-block; font-weight:bold; vertical-align:top }
+		.page700 .contentHead { width: 270px; display: inline-block; vertical-align:top }
+		.page700 .page-number { width: 100px; display: inline-block; vertical-align:top; text-align:center;font-family:Arial !important }
+		.page700 .totalRow td { border-top:1px solid #202020; font-weight:bold; padding-top:3px; padding-bottom:3px; text-align:right; vertical-align:middle }
+		.page700 .totalCol { border-top:1px solid #202020; font-weight:bold; padding-bottom:5px; text-align:right; vertical-align:middle }
+		.page700 .gTotalCol { border-top:1px solid #202020; border-bottom:1px solid #202020; font-weight:bold; padding-bottom:1px; padding-top: 2px; text-align:right; vertical-align:middle }
+        .page700 .gdoubleTotalCol { border-top:1px solid #202020; border-bottom: 3px double #202020; font-weight:bold; padding-bottom:1px; padding-top: 2px; text-align:right; vertical-align:middle }
+		.page700 .note-no { padding-top:16px; width: 20px; font-weight:bold; vertical-align:top }
+		.page700 .note-body { padding-top: 10px; }
+		.page700 .note-body-bottom { padding-bottom: 10px; }
+         .page700 .note-body .tag { padding-top: 10px;}
+        .page700 .note-body .tagged { margin-top: 10px !important;display:inline-block;}
+        .page700 .note-body .tag .tagged { margin-top:0px !important;display:inline-block;}
+         #note-Goodwill strong { margin-bottom: 10px !important;display:inline-block;position:relative;}
+         #note-LicencesAndPatents strong { margin-bottom: 10px !important;display:inline-block;position:relative;}
+         #note-DevelopmentExpenditures strong { margin-bottom: 10px !important;display:inline-block;position:relative;}
+         #note-ComputerSoftwareDevelopmentCosts strong { margin-bottom: 10px !important;display:inline-block;position:relative;}
+	</style>
+	<style media='print' type='text/css'>
+		.page700 table.page, .page700 table.w100p, .page700 table.tfont, .page700 table.w550px { font-size:18px; }
+		.page700 a { font-size:18px; }
+		.page700 .cover-company { font-size: 24px; }
+		.page700 table th.w95px { font-size:20px; }
+		.page700 thead th { font-weight:normal; font-size: 20px; }
+		.page700 .pageheader { font-size:23px; text-align:center; margin-top:5px; margin-bottom:25px; }
+		.page700 .pageheader a { font-size:23px; }
+	</style>
+</head>
+
+<body class='report-body'>
+	<div style='display:none'>
+<ix:header>
+	<ix:hidden>
+		<ix:nonNumeric name='bus:StartDateForPeriodCoveredByReport' contextRef='companyA'>2019-07-31</ix:nonNumeric>
+		<ix:nonNumeric name='bus:EndDateForPeriodCoveredByReport' contextRef='companyA'>2020-07-30</ix:nonNumeric>
+		<ix:nonNumeric name='bus:EntityTradingStatus' contextRef='company' />
+		<ix:nonNumeric name='bus:EntityDormantTruefalse' contextRef='company'>false</ix:nonNumeric>
+        <ix:nonNumeric name='bus:LegalFormEntity' contextRef='business_type'/>
+		<ix:nonNumeric name='bus:ApplicableLegislation' contextRef='acc_legislation'/>
+		<ix:nonNumeric name='bus:AccountsType' contextRef='acc_type'/>
+		<ix:nonNumeric name='bus:AccountsStatusAuditedOrUnaudited' contextRef='acc_audit_status'/>
+		<ix:nonNumeric name='bus:AccountingStandardsApplied' contextRef='acc_standard'/>
+		<ix:nonNumeric contextRef='director1' name='core:DirectorSigningFinancialStatements'></ix:nonNumeric><ix:nonNumeric contextRef='director1' name='direp:DirectorSigningDirectorsReport'></ix:nonNumeric>
+		
+        
+        
+		<ix:nonNumeric name='bus:NameProductionSoftware' contextRef='company'>Capium Accounts Production</ix:nonNumeric>
+		<ix:nonNumeric name='bus:VersionProductionSoftware' contextRef='company'>1.1</ix:nonNumeric>
+	</ix:hidden>
+	<ix:references>
+		<link:schemaRef xlink:href='https://xbrl.frc.org.uk/FRS-102/2025-01-01/FRS-102-2025-01-01.xsd' xlink:type='simple' />
+	</ix:references>
+	<ix:resources>
+        <xbrli:context id='current_Period'>
+            <xbrli:entity>
+                <xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+            </xbrli:entity>
+            <xbrli:period>
+				<xbrli:startDate>2019-07-31</xbrli:startDate>
+				<xbrli:endDate>2020-07-30</xbrli:endDate>
+			</xbrli:period>
+        </xbrli:context>
+		<xbrli:context id='acc_type'>
+			<xbrli:entity>
+				<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+				<xbrli:segment>
+					<xbrldi:explicitMember dimension='bus:AccountsTypeDimension'>bus:FullAccounts</xbrldi:explicitMember>
+				</xbrli:segment>
+			</xbrli:entity>
+			<xbrli:period>
+				<xbrli:startDate>2019-07-31</xbrli:startDate>
+				<xbrli:endDate>2020-07-30</xbrli:endDate>
+			</xbrli:period>
+		</xbrli:context>
+		<xbrli:context id='acc_standard'>
+			<xbrli:entity>
+				<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+				<xbrli:segment>
+					<xbrldi:explicitMember dimension='bus:AccountingStandardsDimension'>bus:FRS102</xbrldi:explicitMember>
+				</xbrli:segment>
+			</xbrli:entity>
+			<xbrli:period>
+				<xbrli:startDate>2019-07-31</xbrli:startDate>
+				<xbrli:endDate>2020-07-30</xbrli:endDate>
+			</xbrli:period>
+		</xbrli:context>
+		<xbrli:context id='acc_audit_status'>
+			<xbrli:entity>
+				<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+				<xbrli:segment>
+					<xbrldi:explicitMember dimension='bus:AccountsStatusDimension'>bus:AuditExemptWithAccountantsReport</xbrldi:explicitMember>
+				</xbrli:segment>
+			</xbrli:entity>
+			<xbrli:period>
+				<xbrli:startDate>2019-07-31</xbrli:startDate>
+				<xbrli:endDate>2020-07-30</xbrli:endDate>
+			</xbrli:period>
+		</xbrli:context>
+		<xbrli:context id='acc_legislation'>
+			<xbrli:entity>
+				<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+				<xbrli:segment>
+					<xbrldi:explicitMember dimension='bus:ApplicableLegislationDimension'>bus:SmallCompaniesRegimeForAccounts</xbrldi:explicitMember>
+				</xbrli:segment>
+			</xbrli:entity>
+			<xbrli:period>
+				<xbrli:startDate>2019-07-31</xbrli:startDate>
+				<xbrli:endDate>2020-07-30</xbrli:endDate>
+			</xbrli:period>
+		</xbrli:context>
+		<xbrli:context id='business_type'>
+			<xbrli:entity>
+				<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+				<xbrli:segment>
+					<xbrldi:explicitMember dimension='bus:LegalFormEntityDimension'>bus:PrivateLimitedCompanyLtd</xbrldi:explicitMember>
+				</xbrli:segment>
+			</xbrli:entity>
+			<xbrli:period>
+				<xbrli:startDate>2019-07-31</xbrli:startDate>
+				<xbrli:endDate>2020-07-30</xbrli:endDate>
+			</xbrli:period>
+		</xbrli:context>
+
+		<xbrli:context id='company'>
+			<xbrli:entity>
+				<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+			</xbrli:entity>
+			<xbrli:period>
+				<xbrli:startDate>2019-07-31</xbrli:startDate>
+				<xbrli:endDate>2020-07-30</xbrli:endDate>
+			</xbrli:period>
+		</xbrli:context>
+		<xbrli:context id='companyA'>
+			<xbrli:entity>
+				<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+			</xbrli:entity>
+			<xbrli:period>
+				<xbrli:instant>2020-07-30</xbrli:instant>
+			</xbrli:period>
+		</xbrli:context>
+		
+		<xbrli:context id='office'>
+			<xbrli:entity>
+				<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+				<xbrli:segment>
+					<xbrldi:explicitMember dimension='bus:EntityContactTypeDimension'>bus:RegisteredOffice</xbrldi:explicitMember>
+				</xbrli:segment>
+			</xbrli:entity>
+			<xbrli:period>
+				<xbrli:startDate>2019-07-31</xbrli:startDate>
+				<xbrli:endDate>2020-07-30</xbrli:endDate>
+			</xbrli:period>
+		</xbrli:context>
+		
+		<xbrli:context id='withinoneyear'>
+			<xbrli:entity>
+				<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+				<xbrli:segment>
+					<xbrldi:explicitMember dimension='core:MaturitiesOrExpirationPeriodsDimension'>core:WithinOneYear</xbrldi:explicitMember>
+				</xbrli:segment>
+			</xbrli:entity>
+			<xbrli:period>
+				<xbrli:instant>2020-07-30</xbrli:instant>
+			</xbrli:period>
+		</xbrli:context>
+		<xbrli:context id='afteroneyear'>
+			<xbrli:entity>
+				<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+				<xbrli:segment>
+					<xbrldi:explicitMember dimension='core:MaturitiesOrExpirationPeriodsDimension'>core:AfterOneYear</xbrldi:explicitMember>
+				</xbrli:segment>
+			</xbrli:entity>
+			<xbrli:period>
+				<xbrli:instant>2020-07-30</xbrli:instant>
+			</xbrli:period>
+		</xbrli:context>
+        <xbrli:context id='company_ControllingPartyUltimateControllingPartyTruefalse'>
+			<xbrli:entity>
+				<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+                <xbrli:segment>
+					<xbrldi:typedMember dimension='core:X-ParentEntityOrControllingPartyUltimateControllingPartyGroupingDimension'>
+                        <core:ParentEntityOrControllingPartyAndUltimateControllingPartyGroupingDimension.domain>1</core:ParentEntityOrControllingPartyAndUltimateControllingPartyGroupingDimension.domain>
+                    </xbrldi:typedMember>
+				</xbrli:segment>
+			</xbrli:entity>
+			<xbrli:period>
+				<xbrli:startDate>2019-07-31</xbrli:startDate>
+				<xbrli:endDate>2020-07-30</xbrli:endDate>
+			</xbrli:period>
+		</xbrli:context>
+		
+		<xbrli:context id='director1'>
+			<xbrli:entity>
+				<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+				<xbrli:segment>
+					<xbrldi:explicitMember dimension='bus:EntityOfficersDimension'>bus:Director1</xbrldi:explicitMember>
+				</xbrli:segment>
+			</xbrli:entity>
+			<xbrli:period>
+				<xbrli:startDate>2019-07-31</xbrli:startDate>
+				<xbrli:endDate>2020-07-30</xbrli:endDate>
+			</xbrli:period>
+		</xbrli:context>
+		<xbrli:context id='director1B'>
+			<xbrli:entity>
+				<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+				<xbrli:segment>
+					<xbrldi:explicitMember dimension='bus:EntityOfficersDimension'>bus:Director1</xbrldi:explicitMember>
+				</xbrli:segment>
+			</xbrli:entity>
+			<xbrli:period>
+				<xbrli:instant>2020-07-30</xbrli:instant>
+			</xbrli:period>
+		</xbrli:context> 
+		<xbrli:context id='StartPrevious'>
+			<xbrli:entity>
+				<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+			</xbrli:entity>
+			<xbrli:period>
+				<xbrli:instant>2018-07-31</xbrli:instant>
+			</xbrli:period>
+		</xbrli:context>
+		<xbrli:context id='solicitor'>
+			<xbrli:entity>
+				<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+				<xbrli:segment>
+					<xbrldi:explicitMember dimension='bus:ThirdPartyAgentStatusDimension'>bus:LeadAgentIfApplicable</xbrldi:explicitMember>
+				</xbrli:segment>
+			</xbrli:entity>
+			<xbrli:period>
+				<xbrli:startDate>2019-07-31</xbrli:startDate>
+				<xbrli:endDate>2020-07-30</xbrli:endDate>
+			</xbrli:period>
+		</xbrli:context><xbrli:context id='companyA_prev'>
+			<xbrli:entity>
+				<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+			</xbrli:entity>
+			<xbrli:period>
+				<xbrli:instant>2019-07-30</xbrli:instant>
+			</xbrli:period>
+		</xbrli:context>
+	<xbrli:context id='cost_investmentA'>
+		<xbrli:entity>
+			<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+			<xbrli:segment>
+				<xbrldi:explicitMember dimension='core:InvestmentsMovementsDimension'>core:CostValuation</xbrldi:explicitMember>
+				<xbrldi:explicitMember dimension='core:FinancialInstrumentCurrentNon-currentDimension'>core:Non-currentFinancialInstruments</xbrldi:explicitMember>
+			</xbrli:segment>
+		</xbrli:entity>
+		<xbrli:period>
+			<xbrli:instant>2020-07-30</xbrli:instant>
+		</xbrli:period>
+	</xbrli:context>
+	<xbrli:context id='cost_investmentA_prev'>
+		<xbrli:entity>
+			<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+			<xbrli:segment>
+				<xbrldi:explicitMember dimension='core:InvestmentsMovementsDimension'>core:CostValuation</xbrldi:explicitMember>
+				<xbrldi:explicitMember dimension='core:FinancialInstrumentCurrentNon-currentDimension'>core:Non-currentFinancialInstruments</xbrldi:explicitMember>
+			</xbrli:segment>
+		</xbrli:entity>
+		<xbrli:period>
+			<xbrli:instant>2019-07-30</xbrli:instant>
+		</xbrli:period>
+	</xbrli:context>
+
+	<xbrli:context id='addition_investmentA'>
+		<xbrli:entity>
+			<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+			<xbrli:segment>
+				<xbrldi:explicitMember dimension='core:InvestmentsMovementsDimension'>core:AdditionsToInvestments</xbrldi:explicitMember>
+				<xbrldi:explicitMember dimension='core:FinancialInstrumentCurrentNon-currentDimension'>core:Non-currentFinancialInstruments</xbrldi:explicitMember>
+			</xbrli:segment>
+		</xbrli:entity>
+		<xbrli:period>
+			<xbrli:instant>2020-07-30</xbrli:instant>
+		</xbrli:period>
+	</xbrli:context>
+	<xbrli:context id='disposal_investmentA'>
+		<xbrli:entity>
+			<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+			<xbrli:segment>
+				<xbrldi:explicitMember dimension='core:InvestmentsMovementsDimension'>core:DisposalsDecreaseInInvestments</xbrldi:explicitMember>
+				<xbrldi:explicitMember dimension='core:FinancialInstrumentCurrentNon-currentDimension'>core:Non-currentFinancialInstruments</xbrldi:explicitMember>
+			</xbrli:segment>
+		</xbrli:entity>
+		<xbrli:period>
+			<xbrli:instant>2020-07-30</xbrli:instant>
+		</xbrli:period>
+	</xbrli:context>
+	<xbrli:context id='reval_investmentA'>
+		<xbrli:entity>
+			<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+			<xbrli:segment>
+				<xbrldi:explicitMember dimension='core:InvestmentsMovementsDimension'>core:RevaluationsIncreaseDecreaseInInvestments</xbrldi:explicitMember>
+				<xbrldi:explicitMember dimension='core:FinancialInstrumentCurrentNon-currentDimension'>core:Non-currentFinancialInstruments</xbrldi:explicitMember>
+			</xbrli:segment>
+		</xbrli:entity>
+		<xbrli:period>
+			<xbrli:instant>2020-07-30</xbrli:instant>
+		</xbrli:period>
+	</xbrli:context>
+
+	<xbrli:context id='investmentA'>
+		<xbrli:entity>
+			<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+			<xbrli:segment>
+				<xbrldi:explicitMember dimension='core:FinancialInstrumentCurrentNon-currentDimension'>core:Non-currentFinancialInstruments</xbrldi:explicitMember>
+			</xbrli:segment>
+		</xbrli:entity>
+		<xbrli:period>
+			<xbrli:instant>2020-07-30</xbrli:instant>
+		</xbrli:period>
+	</xbrli:context>
+	<xbrli:context id='investmentA_prev'>
+		<xbrli:entity>
+			<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+			<xbrli:segment>
+				<xbrldi:explicitMember dimension='core:FinancialInstrumentCurrentNon-currentDimension'>core:Non-currentFinancialInstruments</xbrldi:explicitMember>
+			</xbrli:segment>
+		</xbrli:entity>
+		<xbrli:period>
+			<xbrli:instant>2019-07-30</xbrli:instant>
+		</xbrli:period>
+	</xbrli:context>
+					<xbrli:context id='revaluation_reserve_start'>
+						<xbrli:entity>
+							<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+							<xbrli:segment>
+								<xbrldi:explicitMember dimension='core:EquityClassesDimension'>core:RevaluationReserve</xbrldi:explicitMember>
+							</xbrli:segment>
+						</xbrli:entity>
+						<xbrli:period>
+							<xbrli:instant>2019-07-31</xbrli:instant>
+						</xbrli:period>
+					</xbrli:context>
+					<xbrli:context id='revaluation_reserve'>
+						<xbrli:entity>
+							<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+							<xbrli:segment>
+								<xbrldi:explicitMember dimension='core:EquityClassesDimension'>core:RevaluationReserve</xbrldi:explicitMember>
+							</xbrli:segment>
+						</xbrli:entity>
+						<xbrli:period>
+							<xbrli:startDate>2019-07-31</xbrli:startDate>
+							<xbrli:endDate>2020-07-30</xbrli:endDate>
+						</xbrli:period>
+					</xbrli:context>
+					<xbrli:context id='revaluation_reserve_end'>
+						<xbrli:entity>
+							<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+							<xbrli:segment>
+								<xbrldi:explicitMember dimension='core:EquityClassesDimension'>core:RevaluationReserve</xbrldi:explicitMember>
+							</xbrli:segment>
+						</xbrli:entity>
+						<xbrli:period>
+							<xbrli:instant>2020-07-30</xbrli:instant>
+						</xbrli:period>
+					</xbrli:context>
+					<xbrli:context id='capital_reserve_start'>
+						<xbrli:entity>
+							<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+							<xbrli:segment>
+								<xbrldi:explicitMember dimension='core:EquityClassesDimension'>core:CapitalRedemptionReserve</xbrldi:explicitMember>
+							</xbrli:segment>
+						</xbrli:entity>
+						<xbrli:period>
+							<xbrli:instant>2019-07-31</xbrli:instant>
+						</xbrli:period>
+					</xbrli:context>
+					<xbrli:context id='capital_reserve'>
+						<xbrli:entity>
+							<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+							<xbrli:segment>
+								<xbrldi:explicitMember dimension='core:EquityClassesDimension'>core:CapitalRedemptionReserve</xbrldi:explicitMember>
+							</xbrli:segment>
+						</xbrli:entity>
+						<xbrli:period>
+							<xbrli:startDate>2019-07-31</xbrli:startDate>
+							<xbrli:endDate>2020-07-30</xbrli:endDate>
+						</xbrli:period>
+					</xbrli:context>
+					<xbrli:context id='capital_reserve_end'>
+						<xbrli:entity>
+							<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+							<xbrli:segment>
+								<xbrldi:explicitMember dimension='core:EquityClassesDimension'>core:CapitalRedemptionReserve</xbrldi:explicitMember>
+							</xbrli:segment>
+						</xbrli:entity>
+						<xbrli:period>
+							<xbrli:instant>2020-07-30</xbrli:instant>
+						</xbrli:period>
+					</xbrli:context>
+					<xbrli:context id='equity_profit_loss_start'>
+						<xbrli:entity>
+							<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+							<xbrli:segment>
+								<xbrldi:explicitMember dimension='core:EquityClassesDimension'>core:RetainedEarningsAccumulatedLosses</xbrldi:explicitMember>
+							</xbrli:segment>
+						</xbrli:entity>
+						<xbrli:period>
+							<xbrli:instant>2019-07-31</xbrli:instant>
+						</xbrli:period>
+					</xbrli:context>
+					<xbrli:context id='equity_profit_loss'>
+						<xbrli:entity>
+							<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+							<xbrli:segment>
+								<xbrldi:explicitMember dimension='core:EquityClassesDimension'>core:RetainedEarningsAccumulatedLosses</xbrldi:explicitMember>
+							</xbrli:segment>
+						</xbrli:entity>
+						<xbrli:period>
+							<xbrli:startDate>2019-07-31</xbrli:startDate>
+							<xbrli:endDate>2020-07-30</xbrli:endDate>
+						</xbrli:period>
+					</xbrli:context>
+					<xbrli:context id='equity_profit_loss_end'>
+						<xbrli:entity>
+							<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+							<xbrli:segment>
+								<xbrldi:explicitMember dimension='core:EquityClassesDimension'>core:RetainedEarningsAccumulatedLosses</xbrldi:explicitMember>
+							</xbrli:segment>
+						</xbrli:entity>
+						<xbrli:period>
+							<xbrli:instant>2020-07-30</xbrli:instant>
+						</xbrli:period>
+					</xbrli:context>
+					<xbrli:context id='dpl_item1_start'>
+						<xbrli:entity>
+							<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+							<xbrli:segment>
+								<xbrldi:explicitMember dimension='dpl:DetailedAnalysisDimension'>dpl:Item1</xbrldi:explicitMember>
+							</xbrli:segment>
+						</xbrli:entity>
+						<xbrli:period>
+							<xbrli:instant>2019-07-31</xbrli:instant>
+						</xbrli:period>
+					</xbrli:context>
+					<xbrli:context id='dpl_item1_end'>
+						<xbrli:entity>
+							<xbrli:identifier scheme='http://www.companieshouse.gov.uk/'>12131216</xbrli:identifier>
+							<xbrli:segment>
+								<xbrldi:explicitMember dimension='dpl:DetailedAnalysisDimension'>dpl:Item1</xbrldi:explicitMember>
+							</xbrli:segment>
+						</xbrli:entity>
+						<xbrli:period>
+							<xbrli:instant>2020-07-30</xbrli:instant>
+						</xbrli:period>
+					</xbrli:context>
+		<xbrli:unit id='GBP'>
+			<xbrli:measure>iso4217:GBP</xbrli:measure>
+		</xbrli:unit>
+		<xbrli:unit id='Shares'>
+			<xbrli:measure>xbrli:shares</xbrli:measure>
+		</xbrli:unit>
+		<xbrli:unit id='Pure'>
+			<xbrli:measure>xbrli:pure</xbrli:measure>
+		</xbrli:unit>
+	</ix:resources>
+</ix:header>
+</div>
+	<div class='page700'>
+<table class='page'>
+	<tbody>
+		
+        <tr><td style='text-align: right'>Registered Number: <ix:nonNumeric contextRef='company' name='bus:UKCompaniesHouseRegisteredNumber'>12131216</ix:nonNumeric></td></tr>
+		<tr><td style='text-align: right'><br/><br/></td></tr>
+		<tr><td><p>&#160;</p><p>&#160;</p><p>&#160;</p><p class='cover-company'><ix:nonNumeric contextRef='company' name='bus:EntityCurrentLegalOrRegisteredName'>ACRE &#038; TWEED GROUP LIMITED</ix:nonNumeric></p></td></tr>
+        
+		<tr><td style='text-align: center'><br /><ix:nonNumeric contextRef='company' name='bus:ReportTitle'>Unaudited Financial Statements</ix:nonNumeric></td></tr>
+		<tr><td>&#160;</td></tr><tr><td style='text-align: center'><br /><br /><strong>Period of accounts</strong><br /><br /><strong>Start date:</strong> <ix:nonNumeric contextRef='companyA' name='bus:StartDateForPeriodCoveredByReport' format='ixt:datedaymonthyearen'>31 July 2019</ix:nonNumeric><br /><br/><strong>End date:</strong> <ix:nonNumeric contextRef='companyA' name='bus:EndDateForPeriodCoveredByReport' format='ixt:datedaymonthyearen'>30 July 2020</ix:nonNumeric></td></tr>
+		
+	</tbody>
+</table></div>
+    
+	<div class='pagebreak page700'><table class='page'>
+                <thead><tr><th><p class='pageheader'>
+                    <strong style='text-transform:uppercase;font-weight:100'>ACRE &#038; TWEED GROUP LIMITED</strong><br />
+                    <a id='contents_page' class='bookmark'>Contents Page</a><br/>For the year ended 30 July 2020</p></th></tr></thead>
+                <tbody>
+                <tr>
+                <td class='page-body'>
+                <div><br /><br /><br /><br /><table class='center tfont' cellpadding='10' cellspacing='10'><tr><td class='contentHead'><a id='a_1' href='#business_information'>Company Information</a><br /><br /></td><td valign='top' class='page-number' style='display: none'>1</td></tr><tr><td class='contentHead'><a id='a_2' href='#directors_report'>Director's Report</a><br /><br /></td><td valign='top' class='page-number' style='display: none'>2</td></tr><tr><td class='contentHead'><a id='a_3' href='#accountants_report'>Accountants' Report</a><br /><br /></td><td valign='top' class='page-number' style='display: none'>3</td></tr><tr><td class='contentHead'><a id='a_4' href='#profit_and_loss'>Income Statement</a><br /><br /></td><td valign='top' class='page-number' style='display: none'>4</td></tr><tr><td class='contentHead'><a id='a_5' href='#balance_sheet'>Statement of Financial Position</a><br /><br /></td><td valign='top' class='page-number' style='display: none'>5</td></tr><tr><td class='contentHead'><a id='a_6' href='#notes_to_the_financial_statement'>Notes to the Financial Statements</a><br /><br /></td><td valign='top' class='page-number' style='display: none'>6</td></tr><tr><td class='contentHead'><a id='a_7' href='#statament_changes_equity'>Statement of Changes in Equity</a><br /><br /></td><td valign='top' class='page-number' style='display: none'>7</td></tr></table></div>
+                </td>
+                </tr>
+                </tbody>
+                </table></div>
+	<div class='pagebreak page700'><table class='page'>
+                <thead><tr><th><p class='pageheader' id='p_1'>
+                    <strong style='text-transform:uppercase;font-weight:100'>ACRE &#038; TWEED GROUP LIMITED</strong><br />
+                    <a id='business_information' class='bookmark'>Company Information</a><br/>For the year ended 30 July 2020</p></th></tr></thead>
+                <tbody>
+                <tr>
+                <td class='page-body'>
+                <div id='div_1'><table class='center tfont' border='0' cellpadding='5' cellspacing='0'><tr><td class='leftHead'>Director</td><td class='cmp-val'><ix:nonNumeric contextRef='director1' name='bus:NameEntityOfficer'>Ahsin AKHTAR</ix:nonNumeric><br /></td></tr><tr><td class='leftHead'>Registered Number</td><td class='cmp-val'><ix:nonNumeric contextRef='company' name='bus:UKCompaniesHouseRegisteredNumber'>12131216</ix:nonNumeric></td></tr><tr><td class='leftHead'>Registered Office</td><td class='cmp-val'><ix:nonNumeric contextRef='office' name='bus:AddressLine1'>30 UPHALL ROAD</ix:nonNumeric><br /><ix:nonNumeric contextRef='office' name='bus:AddressLine2'>ILFORD ENGLAND</ix:nonNumeric><br /><ix:nonNumeric contextRef='office' name='bus:CountyRegion'>Essex</ix:nonNumeric><br /><ix:nonNumeric contextRef='office' name='bus:PostalCodeZip'>IG1 2JF</ix:nonNumeric></td></tr><tr><td class='leftHead'>Accountants</td><td class='cmp-val'>Pegasus accountancy services ltd<br />Suit 207,<br />344-348 High Road,<br />Ilford<br />IG1 1QP</td></tr></table><div class='pageno'>1</div></div>
+                </td>
+                </tr>
+                </tbody>
+                </table></div>
+	<div class='pagebreak page700'><table class='page'>
+                <thead><tr><th><p class='pageheader' id='p_2'>
+                    <strong style='text-transform:uppercase;font-weight:100'>ACRE &#038; TWEED GROUP LIMITED</strong><br />
+                    <a id='directors_report' class='bookmark'>Director's Report</a><br/>For the year ended 30 July 2020</p></th></tr></thead>
+                <tbody>
+                <tr>
+                <td class='page-body'>
+                <div id='div_2'><div class='avoid_pagebreak note-body'><strong>Director's report and financial statements</strong></div><div style='margin-top:8px'>The director presents his/her/their annual report and the financial statements for the year ended 30 July 2020.</div><div class='note-body avoid_pagebreak' id='note-Dir_PrincipalActivities'><strong>Principal activities</strong><br /><div class='tag tag-61'><ix:nonNumeric contextRef='company' name='bus:DescriptionPrincipalActivities'>Principal activity of the company during the financial year was of ...</ix:nonNumeric></div></div><div class='avoid_pagebreak note-body'><strong>Director</strong></div><div style='margin-top:8px'>The director who served the company throughout the year was as follows:<br />    </div><div class='avoid_pagebreak note-body' id='note-Dir_DirectorsResponsibilities'><strong>Statement of director's responsibilities</strong><br /><div class='tag tag-67'>The director is responsible for preparing the directors' report  and the financial statements in accordance with applicable law and regulations and in accordance with United Kingdom Generally Accepted Accounting Practice.<br />Company law requires the director to prepare financial statements for each financial year. Under that law the director has elected to prepare the financial statements in accordance with United Kingdom Generally Accepted Accounting Practice (United Kingdom Accounting Standards and applicable law). Under company law the director must not approve the financial statements unless they are satisfied that they give a true and fair view of the state of affairs of the company and the profit or loss of the company for that period.<br/><br />In preparing these financial statements, the director is required to :<br/><ul><li>select suitable accounting policies and then apply them consistently</li><li>make judgements and accounting estimates that are reasonable and prudent</li><li>state whether applicable UK Accounting Standards have been followed, subject to any material departures disclosed and explained in the financial statements and</li><li>prepare the financial statements on the going concern basis unless it is inappropriate to presume that the company will continue in business.</li></ul>The director is responsible for keeping adequate accounting records that are sufficient to show and explain the company’s transactions and disclose with reasonable accuracy at any time the financial position of the company and enable them to ensure that the financial statements comply with the Companies Act 2006. The director is also responsible for safeguarding the assets of the company and hence for taking reasonable steps for the prevention and detection of fraud and other irregularities.<br/><br />The director is responsible for the maintenance and integrity of the corporate and financial information included on the company's website. Legislation in the United Kingdom, governing the preparation and dissemination of financial statements, may differ from legislation in other jurisdictions</div></div><div class='avoid_pagebreak' style='margin-bottom:0px;'><br />
+							 On behalf of the board.<br /><br /><br />
+                            <br />Date approved: <ix:nonNumeric contextRef='companyA' name='direp:DateSigningDirectorsReport' format='ixt:datedaymonthyearen'>23 September 2026</ix:nonNumeric>
+						 </div><div class='pageno'>2</div></div>
+                </td>
+                </tr>
+                </tbody>
+                </table></div>
+	
+	<div class='pagebreak page700'><table class='page'>
+                <thead><tr><th><p class='pageheader' id='p_3'>
+                    <strong style='text-transform:uppercase;font-weight:100'>ACRE &#038; TWEED GROUP LIMITED</strong><br />
+                    <a id='accountants_report' class='bookmark'>Accountants' Report</a><br/>For the year ended 30 July 2020</p></th></tr></thead>
+                <tbody>
+                <tr>
+                <td class='page-body'>
+                <div id='div_3'><div class='tag tag-100'>Accountant’s report<br />      You consider that the company is exempt from an audit for the year ended 30 July 2020 . You have acknowledged, on the balance sheet, your responsibilities for complying with the requirements of the Companies Act 2006 with respect to accounting records and the preparation of accounts. These responsibilities include preparing accounts that give a true and fair view of the state of affairs of the company at the end of the financial year and of its profit or loss for the financial year.<br />      In accordance with your instructions, we have prepared the accounts which comprise the Profit and Loss Account, the Statement of Comprehensive Income, the Balance Sheet, the Statement of Changes in Equity and the related notes from the accounting records of the company and on the basis of information and explanations you have given to us.<br />      We have not carried out an audit or any other review, and consequently we do not express any opinion on these accounts.<br />      Pegasus accountancy services ltd<br />      30 July 2020</div><div class='avoid_pagebreak' style='margin-bottom:0px;text-align:left'><br /><br /><br />....................................................<br /><span id='accountants_report-name'><br />Pegasus accountancy services ltd</span><br />Suit 207,<br />344-348 High Road,<br />Ilford<br />IG1 1QP<br /><ix:nonNumeric contextRef='companyA' name='accrep:DateAccountantsReport' format='ixt:datedaymonthyearen'>23 September 2026</ix:nonNumeric></div><div class='pageno'>3</div></div>
+                </td>
+                </tr>
+                </tbody>
+                </table></div>
+	<div class='pagebreak page700'><table class='page'>
+                <thead><tr><th><p class='pageheader' id='p_4'>
+                    <strong style='text-transform:uppercase;font-weight:100'>ACRE &#038; TWEED GROUP LIMITED</strong><br />
+                    <a id='profit_and_loss' class='bookmark'>Income Statement</a><br/>For the year ended 30 July 2020</p></th></tr></thead>
+                <tbody>
+                <tr>
+                <td class='page-body'>
+                <div id='div_4'><table class='w100p center' cellspacing='0' cellpadding='5'><tr><th>&#160;<br/>&#160;</th><th class='tcenter w95px'>Notes<br/>&#160;</th><th class='right w95px'>2020<br/>£</th></tr><tr><td><strong>Operating profit</strong></td><td class='tcenter'></td><td class='totalCol'>0&#160;</td></tr><tr><td><strong>Profit/(Loss) on ordinary activities before taxation</strong></td><td class='tcenter'></td><td class='totalCol'>0&#160;</td></tr><tr><td>Tax on profit on ordinary activities</td><td class='tcenter'></td><td class='right'>0&#160;</td></tr><tr><td><strong>Profit/(Loss) for the financial year</strong></td><td class='tcenter'></td><td class='gdoubleTotalCol'>0&#160;</td></tr><tr class='spacer'><td>&#160;</td></tr></table><div class='pageno'>4</div></div>
+                </td>
+                </tr>
+                </tbody>
+                </table></div>
+	
+	<div class='pagebreak page700'><table class='page'>
+                <thead><tr><th><p class='pageheader' id='p_5'>
+                    <strong style='text-transform:uppercase;font-weight:100'>ACRE &#038; TWEED GROUP LIMITED</strong><br />
+                    <a id='balance_sheet' class='bookmark'>Statement of Financial Position</a><br/>As at <ix:nonNumeric contextRef='companyA' name='bus:BalanceSheetDate' format='ixt:datedaymonthyearen'>30 July 2020</ix:nonNumeric></p></th></tr></thead>
+                <tbody>
+                <tr>
+                <td class='page-body'>
+                <div id='div_5'><table class='w100p center' cellspacing='0' cellpadding='5'><tr><th>&#160;<br/>&#160;</th><th class='tcenter w95px'>Notes<br/>&#160;</th><th class='right w95px'>2020<br/>£</th></tr><tr><td><strong>Current assets</strong></td><td>&#160;</td><td>&#160;</td></tr><tr><td>Debtors</td><td class='tcenter'>2</td><td class='right'><ix:nonFraction contextRef='companyA' decimals='0' scale='0' name='core:Debtors' unitRef='GBP' format='ixt:numdotdecimal'>100</ix:nonFraction>&#160;</td></tr><tr><td>Cash at bank and in hand</td><td class='tcenter'></td><td class='right'>(<ix:nonFraction contextRef='companyA' decimals='0' scale='0' name='core:CashBankOnHand' unitRef='GBP' format='ixt:numdotdecimal'>100</ix:nonFraction>)</td></tr><tr><td></td><td class='tcenter'></td><td class='totalCol'>0&#160;</td></tr><tr><td><strong>Net current assets</strong></td><td class='tcenter'></td><td class='gTotalCol'>0&#160;</td></tr><tr class='spacer'><td>&#160;</td></tr><tr><td><strong>Total assets less current liabilities</strong></td><td class='tcenter'></td><td class='right'>0&#160;</td></tr><tr><td><strong>Net assets</strong></td><td class='tcenter'></td><td class='gdoubleTotalCol'>0&#160;</td></tr><tr class='spacer'><td>&#160;</td></tr><tr><td><br /><strong>Capital and reserves</strong></td><td>&#160;</td><td>&#160;</td></tr><tr><td><strong>Shareholders' funds</strong></td><td class='tcenter'></td><td class='gTotalCol'>0&#160;</td></tr><tr class='spacer'><td>&#160;</td></tr></table><br /><br /><div class='avoid_pagebreak'><ix:nonNumeric contextRef='company' name='direp:StatementThatCompanyEntitledToExemptionFromAuditUnderSection477CompaniesAct2006RelatingToSmallCompanies'>For the year ended 30 July 2020 the company was entitled to exemption from audit under section 477 of the Companies Act 2006 relating to small companies.</ix:nonNumeric><br /><br /><b>Director's responsibilities:</b><br /><ol><li><ix:nonNumeric contextRef='company' name='direp:StatementThatMembersHaveNotRequiredCompanyToObtainAnAudit'>The members have not required the company to obtain an audit of its accounts for the year in question in accordance with section 476.</ix:nonNumeric></li><li><ix:nonNumeric contextRef='company' name='direp:StatementThatDirectorsAcknowledgeTheirResponsibilitiesUnderCompaniesAct'>The director acknowledges their responsibilities for complying with the requirements of the Companies Act 2006 with respect to accounting records and the preparation of accounts.</ix:nonNumeric></li></ol><ix:nonNumeric contextRef='company' name='direp:StatementThatAccountsHaveBeenPreparedInAccordanceWithProvisionsSmallCompaniesRegime'>These accounts have been prepared and delivered in accordance with the provisions applicable to companies subject to the small companies regime.</ix:nonNumeric></div><div class='avoid_pagebreak' style='margin-bottom:0px; margin-top:15px;text-align:left;'>The financial statements were approved by the director on <ix:nonNumeric contextRef='companyA' name='core:DateAuthorisationFinancialStatementsForIssue' format='ixt:datedaymonthyearen'>23 September 2026</ix:nonNumeric> and were signed by: <br /><br /><br />
+                </div><div class='pageno'>5</div></div>
+                </td>
+                </tr>
+                </tbody>
+                </table></div>
+	<div class='pagebreak page700'><table class='page'>
+                <thead><tr><th><p class='pageheader' id='p_6'>
+                    <strong style='text-transform:uppercase;font-weight:100'>ACRE &#038; TWEED GROUP LIMITED</strong><br />
+                    <a id='statament_changes_equity' class='bookmark'>Statement of Changes in Equity</a><br/>For the year ended 30 July 2020</p></th></tr></thead>
+                <tbody>
+                <tr>
+                <td class='page-body'>
+                <div id='div_6'><table class='w100p' cellpadding='3' cellspacing='0' border='0'><tr><td></td><td class='w10px'>&#160;</td><td class='right w95px' style='vertical-align:top'>Revaluation reserve</td><td class='w10px'>&#160;</td><td class='right w95px' style='vertical-align:top'>Capital redemption reserve</td><td class='w10px'>&#160;</td><td class='right w95px' style='vertical-align:top'>Retained Earnings</td><td class='w10px'>&#160;</td><td class='right w95px' style='vertical-align:top'>Total</td></tr><tr><td colspan='2'></td><td class='right'>£</td><td></td><td class='right'>£</td><td></td><td class='right'>£</td><td></td> <td class='right'>£</td><td></td> </tr><tr><td>At 31 July 2019</td><td></td><td class='right bold gTotalCol'></td><td></td><td class='right bold gTotalCol'></td><td></td><td class='right bold gTotalCol'></td><td></td><td class='right bold gTotalCol'>-&#160;</td></tr><tr><td>Total comprehensive income for the year</td><td></td><td class='right bold totalCol'>-&#160;</td><td></td><td class='right bold totalCol'>-&#160;</td><td></td><td class='right bold totalCol'>-&#160;</td><td></td><td class='right bold totalCol'>-&#160;</td></tr><tr><td>Total investments by and distributions to owners</td><td></td><td class='right bold totalCol'>-&#160;</td><td></td><td class='right bold totalCol'>-&#160;</td><td></td><td class='right bold totalCol'>-&#160;</td><td></td><td class='right bold totalCol'>-&#160;</td></tr><tr><td>At 30 July 2020</td><td></td><td class='right bold gTotalCol'></td><td></td><td class='right bold gTotalCol'></td><td></td><td class='right bold gTotalCol'></td><td></td><td class='right bold gTotalCol'>-&#160;</td></tr></table><div class='pageno'>6</div></div>
+                </td>
+                </tr>
+                </tbody>
+                </table></div>
+	
+	<div class='pagebreak page700'><table class='page'>
+                <thead><tr><th><p class='pageheader' id='p_7'>
+                    <strong style='text-transform:uppercase;font-weight:100'>ACRE &#038; TWEED GROUP LIMITED</strong><br />
+                    <a id='notes_to_the_financial_statement' class='bookmark'>Notes to the Financial Statements</a><br/>For the year ended 30 July 2020</p></th></tr></thead>
+                <tbody>
+                <tr>
+                <td class='page-body'>
+                <div id='div_7'><div class='note-body-bottom avoid_pagebreak' id='note-StatutoryInformation'><strong>General Information</strong><br /></div><div class='tag tag-152'>ACRE &#038; TWEED GROUP LIMITED is a private company, limited by shares, registered in , registration number 12131216, registration address 30 UPHALL ROAD, ILFORD ENGLAND, Essex, IG1 2JF. <br/><br/>The presentation currency is £ sterling.</div><table class='w100p'><tr><td class='note-no' style='padding-top:6px'>1.</td><td><p class='subhead'><strong>Accounting policies</strong></p><div class='note-body avoid_pagebreak' id='note-BasisOfAccounting'><strong>Significant accounting policies</strong><br /><div class='tag tag-1'><ix:nonNumeric contextRef='company' name='core:GeneralDescriptionBasisMeasurementUsedInPreparingFinancialStatements'><b>Statement of compliance</b><div class="tag">These financial statements have been prepared in compliance with FRS 102 – The Financial Reporting Standard applicable in the UK and Republic of Ireland and the Companies Act 2006.</div><div class="tag"><b>Basis of preparation</b></div><div class="tag">The financial statements have been prepared  under the historical cost convention as modified by the revaluation of land and buildings and certain financial instruments measured at fair value in accordance with the accounting policies.</div><div class="tag">The financial statements are prepared in sterling which is the functional currency of the company.</div></ix:nonNumeric></div></div></td></tr></table><div class='avoid_pagebreak'><table class='w100p'><tr><td class='note-no' style='padding-top:6px;'>2.</td><td><p class='subhead'>Debtors: amounts falling due after one year</p><table class='w100p' cellspacing='0' style='margin-top:0px;'><tr><th class='left' valign='top'></th><th class='right w95px'>2020<br />£</th></tr><tr><td>Called Up Share Capital Not Paid</td><td class='right w95px'>100&#160;</td></tr><tr><td></td><td class='right w95px gTotalCol'><ix:nonFraction contextRef='afteroneyear' decimals='0' scale='0' name='core:Debtors' unitRef='GBP' format='ixt:numdotdecimal'>100</ix:nonFraction>&#160;</td></tr></table></td></tr></table><br /></div><div class='pageno'>7</div></div>
+                </td>
+                </tr>
+                </tbody>
+                </table></div>
+	
+    
+</body>
+</html>

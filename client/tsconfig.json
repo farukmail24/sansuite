@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@shared/*": ["../shared/*"],
+      "wouter": ["../node_modules/wouter/types/index.d.ts"]
+    }
+  },
+  "include": ["src/**/*"]
+}
