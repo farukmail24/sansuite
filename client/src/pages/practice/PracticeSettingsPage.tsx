@@ -861,6 +861,7 @@ export default function PracticeSettingsPage() {
 
   const handleOpenCustomiseService = (svc: any) => {
     const defaultStaff = teamMembers[0]?.name || "";
+    const isValidStaff = svc.serviceManager && teamMembers.some((m: any) => m.name === svc.serviceManager);
     setServiceForm({
       id: svc.id,
       title: svc.title,
@@ -869,7 +870,7 @@ export default function PracticeSettingsPage() {
       billable: svc.billable !== false,
       fee: svc.fee || "35.00",
       estimatedHours: svc.estimatedHours || 4,
-      serviceManager: svc.serviceManager || defaultStaff,
+      serviceManager: isValidStaff ? svc.serviceManager : defaultStaff,
       serviceType: svc.serviceType || "Default",
       isActive: svc.isActive !== false,
       addToCalendar: svc.addToCalendar !== false,
@@ -1039,8 +1040,10 @@ export default function PracticeSettingsPage() {
                             <td className="py-2.5 px-4 text-slate-600">
                               {svc.estimatedHours}
                             </td>
-                            <td className="py-2.5 px-4 text-slate-700">
-                              {svc.serviceManager || teamMembers[0]?.name || "Practice Staff"}
+                            <td className="py-2.5 px-4 text-slate-700 font-medium">
+                              {(svc.serviceManager && teamMembers.some((m: any) => m.name === svc.serviceManager))
+                                ? svc.serviceManager
+                                : (teamMembers[0]?.name || svc.serviceManager || "Practice Staff")}
                             </td>
                             <td className="py-2.5 px-4">
                               <span

@@ -36,24 +36,24 @@ async function seed() {
   }
 
   // 2. Admin User
-  const existingUser = await db.select().from(schema.users).where(eq(schema.users.email, "admin@SanSuite.com")).limit(1);
+  const existingUser = await db.select().from(schema.users).where(eq(schema.users.email, "admin@sanaccounts.com")).limit(1);
   let adminUserId: number;
   if (existingUser.length > 0) {
     adminUserId = existingUser[0].id;
-    console.log(`[OK] Admin user exists (email: admin@SanSuite.com)`);
+    console.log(`[OK] Admin user exists (email: admin@sanaccounts.com)`);
   } else {
     const passwordHash = await bcrypt.hash("Admin@1234", 10);
     const [u] = await db.insert(schema.users).values({
       practiceId,
-      email: "admin@SanSuite.com",
+      email: "admin@sanaccounts.com",
       passwordHash,
-      firstName: "James",
-      lastName: "Sterling",
+      firstName: "Mr",
+      lastName: "Admin",
       role: "admin",
       isActive: true,
     });
     adminUserId = u.insertId;
-    console.log(`[OK] Admin user created (email: admin@SanSuite.com, password: Admin@1234)`);
+    console.log(`[OK] Admin user created (email: admin@sanaccounts.com, password: Admin@1234)`);
   }
 
   // 3. Firm Details
@@ -192,7 +192,7 @@ async function seed() {
   console.log("\nComplete SanSuite 19-module dataset seeded successfully!");
   console.log("==================================================");
   console.log("  URL:      http://localhost:5000");
-  console.log("  Email:    admin@SanSuite.com");
+  console.log("  Email:    admin@sanaccounts.com");
   console.log("  Password: Admin@1234");
   console.log("==================================================");
 

@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { db, pool } from "../db";
-import { pmDeadlines, pmClientPeriods, clients, pmServices, users, pmConversations, pmClientTimeline } from "@shared/schema";
+import { pmDeadlines, pmClientPeriods, clients, pmServices, users, pmConversations, pmClientTimeline, firmDetails } from "@shared/schema";
 import { eq, and, sql, desc, asc, lte, gte, inArray } from "drizzle-orm";
 import { authMiddleware } from "../lib/authUtils";
+import { emailService } from "../lib/emailService";
 
 const router = Router();
 router.use(authMiddleware);
@@ -404,9 +405,9 @@ router.post("/:id/send-reminder", async (req: any, res) => {
     const diffDays = Math.ceil((statDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
     const formattedDate = statDate.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
     const daysText = diffDays > 0 ? `${diffDays} Day(s)` : diffDays === 0 ? "Due Today" : "Overdue";
-    const firmName = req.user?.practiceName || "San Accounts Ltd";
-    const accountantName = req.user?.firstName ? `${req.user.firstName} ${req.user.lastName || ""}`.trim() : "Appointed Accountant";
-    const accountantEmail = req.user?.email || "compliance@sansuite.com";
+    const firmName = req.user?.practiceName || "";
+    const accountantName = req.user?.firstName ? `${req.user.firstName} ${req.user.lastName || ""}`.trim() : "";
+    const accountantEmail = req.user?.email || "";
 
     let subject = `Urgent Reminder: Statutory ${deadline.deadlineName} due on ${formattedDate}`;
     let bodyHtml = "";
@@ -497,11 +498,35 @@ router.post("/:id/send-reminder", async (req: any, res) => {
       `;
     }
 
+    // Resolve dynamic multi-tenant sender info
+    const [firm] = await db.select().from(firmDetails).where(eq(firmDetails.practiceId, practiceId)).limit(1);
+    const [currentUser] = await db.select().from(users).where(eq(users.id, req.user?.id)).limit(1);
+    const dynamicSenderEmail = currentUser?.email || req.user?.email || firm?.email || "";
+    const dynamicFirmName = firm?.firmName || firmName;
+
+    // Dispatch live email via SMTP
+    let emailResult: any = { success: false };
+    try {
+      emailResult = await emailService.sendMail(
+        recipientEmail,
+        subject,
+        bodyHtml,
+        {
+          text: bodyText,
+          fromName: dynamicFirmName,
+          replyTo: dynamicSenderEmail,
+          fromEmail: dynamicSenderEmail,
+        }
+      );
+    } catch (mailErr: any) {
+      console.error("[Deadlines] Error sending statutory reminder via live SMTP:", mailErr);
+    }
+
     // Log outbound email in conversations
     const [convRes] = await db.insert(pmConversations).values({
       practiceId,
       clientId: deadline.clientId,
-      senderEmail: req.user.email || "compliance@sansuite.com",
+      senderEmail: dynamicSenderEmail,
       recipientEmails: recipientEmail,
       subject,
       bodyHtml,
@@ -587,10 +612,33 @@ router.post("/reminders/dispatch-all", async (req: any, res) => {
           </div>
         `;
 
+        // Resolve dynamic multi-tenant sender info
+        const [firm] = await db.select().from(firmDetails).where(eq(firmDetails.practiceId, practiceId)).limit(1);
+        const [currentUser] = await db.select().from(users).where(eq(users.id, req.user?.id)).limit(1);
+        const dynamicSenderEmail = currentUser?.email || req.user?.email || firm?.email || "";
+        const dynamicFirmName = firm?.firmName || req.user?.practiceName || "";
+
+        // Dispatch live email via SMTP
+        try {
+          await emailService.sendMail(
+            recipientEmail,
+            subject,
+            bodyHtml,
+            {
+              text: subject,
+              fromName: dynamicFirmName,
+              replyTo: dynamicSenderEmail,
+              fromEmail: dynamicSenderEmail,
+            }
+          );
+        } catch (mailErr: any) {
+          console.error("[Deadlines] Error sending batch reminder via live SMTP:", mailErr);
+        }
+
         await db.insert(pmConversations).values({
           practiceId,
           clientId: d.clientId,
-          senderEmail: req.user?.email || "compliance@sansuite.com",
+          senderEmail: dynamicSenderEmail,
           recipientEmails: recipientEmail,
           subject,
           bodyHtml,

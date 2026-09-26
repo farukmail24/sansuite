@@ -9,13 +9,9 @@ export const bookkeepingSidebar = [
   { label: "Dashboard", icon: <LayoutDashboard size={15} />, route: "/bookkeeping" },
   {
     label: "Settings", icon: <Settings size={15} />, children: [
-      { label: "Company Info", route: "/bookkeeping/company-info" },
-      { label: "Accounting Periods", route: "/bookkeeping/accounting-periods" },
-      { label: "Chart of Accounts", route: "/bookkeeping/chart-of-accounts" },
-      { label: "Company Logo", route: "/bookkeeping/company-logo" },
+      { label: "Master Chart of Accounts", route: "/bookkeeping/chart-of-accounts" },
       { label: "Invoice Templates", route: "/bookkeeping/template-settings" },
-      { label: "Opening Balance", route: "/bookkeeping/opening-balance" },
-      { label: "Currency", route: "/bookkeeping/currency" },
+      { label: "Currency Settings", route: "/bookkeeping/currency" },
       { label: "Customise Sequence", route: "/bookkeeping/customise-sequence" },
     ]
   },

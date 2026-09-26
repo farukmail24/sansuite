@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import QuickAddModal from "../../components/practice/QuickAddModal";
+import PracticeWorkflowGuide from "../../components/practice/PracticeWorkflowGuide";
 import { apiRequest } from "../../lib/queryClient";
 
 export default function PracticeManagement() {
@@ -176,7 +177,7 @@ export default function PracticeManagement() {
               onClick={() => setIsQuickAddOpen(true)}
               className="px-4 py-2 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
             >
-              <Plus size={14} /> + Quick Add
+              <Plus size={14} /> Quick Add
             </button>
           </div>
         </div>
@@ -214,6 +215,17 @@ export default function PracticeManagement() {
         {/* ========================================================================= */}
         {activeTab === "overview" && (
           <div className="space-y-6">
+            
+            {/* Interactive Practice Operating Roadmap & Guided Workflow */}
+            <PracticeWorkflowGuide
+              clientsCount={clientsList.length}
+              deadlinesCount={deadlinesList.length}
+              tasksCount={tasksList.length}
+              proposalsCount={proposalsList.length}
+              onQuickAdd={() => setIsQuickAddOpen(true)}
+              onRefreshDeadlines={() => refreshDeadlinesMutation.mutate()}
+            />
+
             {/* 4 Top KPI Metric Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <Link href="/practice/clients">

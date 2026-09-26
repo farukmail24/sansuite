@@ -37,6 +37,7 @@ import CorporationTaxHome from "./pages/corporation-tax/CorporationTaxHome";
 import SelfAssessmentHome from "./pages/self-assessment/SelfAssessmentHome";
 import TasksPage from "./pages/practice/TasksPage";
 import CrmPage from "./pages/practice/CrmPage";
+import PracticeClientsPage from "./pages/practice/PracticeClientsPage";
 import CrmConnectionsPage from "./pages/practice/CrmConnectionsPage";
 import CrmCommunicationsPage from "./pages/practice/CrmCommunicationsPage";
 import DeadlinesPage from "./pages/practice/DeadlinesPage";
@@ -221,6 +222,7 @@ const R_EcosystemDashboard = makePrivate(EcosystemDashboard);
 const R_PracticeManagement = makePrivate(PracticeManagement);
 const R_TasksPage = makePrivate(TasksPage);
 const R_CrmPage = makePrivate(CrmPage);
+const R_PracticeClientsPage = makePrivate(PracticeClientsPage);
 const R_CrmConnectionsPage = makePrivate(CrmConnectionsPage);
 const R_CrmCommunicationsPage = makePrivate(CrmCommunicationsPage);
 const R_ClientDetailsPage = makePrivate(ClientDetailsPage);
@@ -479,7 +481,7 @@ function AppRoutes() {
       <Route path="/practice/crm/dashboard" component={R_CrmPage} />
       <Route path="/practice/crm/connections" component={R_CrmConnectionsPage} />
       <Route path="/practice/crm/communications" component={R_CrmCommunicationsPage} />
-      <Route path="/practice/clients" component={R_CrmConnectionsPage} />
+      <Route path="/practice/clients" component={R_PracticeClientsPage} />
       <Route path="/practice/clients/:id" component={R_ClientDetailsPage} />
       <Route path="/practice/services" component={R_ServicesPage} />
       <Route path="/practice/deadlines" component={R_DeadlinesPage} />

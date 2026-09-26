@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "../../lib/queryClient";
 import { useToast } from "../../hooks/useToast";
 import {
@@ -14,10 +14,23 @@ interface QuickAddModalProps {
   clientsList?: any[];
 }
 
-export default function QuickAddModal({ isOpen, onClose, clientsList = [] }: QuickAddModalProps) {
+export default function QuickAddModal({ isOpen, onClose, clientsList }: QuickAddModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"client" | "task" | "deadline" | "time" | "note">("client");
+
+  // Fetch clients internally if not passed by parent
+  const { data: internalClients = [] } = useQuery<any[]>({
+    queryKey: ["/api/pm/clients"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/pm/clients");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: isOpen && (!clientsList || clientsList.length === 0)
+  });
+
+  const effectiveClients = (clientsList && clientsList.length > 0) ? clientsList : internalClients;
 
   // Client Form State
   const [clientName, setClientName] = useState("");
@@ -274,7 +287,7 @@ export default function QuickAddModal({ isOpen, onClose, clientsList = [] }: Qui
                     className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     <option value="">-- Internal / No Client --</option>
-                    {clientsList.map((c) => (
+                    {effectiveClients.map((c) => (
                       <option key={c.id} value={c.id}>{c.clientName}</option>
                     ))}
                   </select>
@@ -325,7 +338,7 @@ export default function QuickAddModal({ isOpen, onClose, clientsList = [] }: Qui
                   className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="">-- Select Client --</option>
-                  {clientsList.map((c) => (
+                  {effectiveClients.map((c) => (
                     <option key={c.id} value={c.id}>{c.clientName}</option>
                   ))}
                 </select>
@@ -390,7 +403,7 @@ export default function QuickAddModal({ isOpen, onClose, clientsList = [] }: Qui
                   className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="">-- Select Client --</option>
-                  {clientsList.map((c) => (
+                  {effectiveClients.map((c) => (
                     <option key={c.id} value={c.id}>{c.clientName}</option>
                   ))}
                 </select>

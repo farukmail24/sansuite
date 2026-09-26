@@ -14,10 +14,11 @@
  */
 
 import { db } from "../db";
-import { pmDeadlines, pmConversations, pmClientTimeline, clients, users } from "@shared/schema";
+import { pmDeadlines, pmConversations, pmClientTimeline, clients, users, firmDetails } from "@shared/schema";
 import { eq, and, sql, lte } from "drizzle-orm";
 import { redis } from "./redis";
 import { randomBytes } from "crypto";
+import { emailService } from "./emailService";
 
 // Unique ID for this server instance (used for lock ownership)
 const SERVER_ID = randomBytes(8).toString("hex");
@@ -126,10 +127,38 @@ async function runDeadlineStatusCheck() {
             </div>
           `;
 
+          // Resolve dynamic multi-tenant practice sender info (fully from DB, no hardcoded fallbacks)
+          let firmName = "";
+          let senderEmail = "";
+          try {
+            const [firm] = await db.select().from(firmDetails).where(eq(firmDetails.practiceId, d.practiceId)).limit(1);
+            if (firm?.firmName) firmName = firm.firmName;
+            if (firm?.email) senderEmail = firm.email;
+          } catch (err) {
+            console.warn("[ComplianceScheduler] Error resolving firm details:", err);
+          }
+
+          // Dispatch live statutory reminder email via SMTP
+          try {
+            await emailService.sendMail(
+              recipientEmail,
+              subject,
+              bodyHtml,
+              {
+                text: subject,
+                fromName: firmName,
+                replyTo: senderEmail,
+                fromEmail: senderEmail,
+              }
+            );
+          } catch (mailErr) {
+            console.error("[ComplianceScheduler] Automated live reminder SMTP error:", mailErr);
+          }
+
           await db.insert(pmConversations).values({
             practiceId: d.practiceId,
             clientId: d.clientId,
-            senderEmail: "compliance@sansuite.com",
+            senderEmail,
             recipientEmails: recipientEmail,
             subject,
             bodyHtml,

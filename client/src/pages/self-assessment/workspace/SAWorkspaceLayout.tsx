@@ -6,7 +6,7 @@ import {
   LayoutDashboard, FileText, Calculator, Shield, FileSignature,
   FileSpreadsheet, HelpCircle, CheckCircle2, AlertCircle, RefreshCw,
   Plus, ChevronRight, UserCheck, CreditCard, Send, X, ExternalLink,
-  Layers, ArrowLeft
+  Layers, ArrowLeft, Copy
 } from "lucide-react";
 import { apiRequest } from "../../../lib/queryClient";
 import { useToast } from "../../../hooks/useToast";
@@ -23,6 +23,8 @@ export interface SAWorkspaceContextType {
   setOpenNewReturnModal: (open: boolean) => void;
   selectedTaxYear: string;
   setSelectedTaxYear: (year: string) => void;
+  handleDuplicateAmended: () => Promise<void>;
+  isDuplicatingAmended: boolean;
 }
 
 const SAWorkspaceContext = createContext<SAWorkspaceContextType | null>(null);
@@ -49,6 +51,7 @@ export default function SAWorkspaceLayout({ children, activeSection }: SAWorkspa
   const [selectedReturnId, setSelectedReturnId] = useState<number | null>(null);
   const [openNewReturnModal, setOpenNewReturnModal] = useState(false);
   const [selectedTaxYear, setSelectedTaxYear] = useState("2025/2026");
+  const [isDuplicatingAmended, setIsDuplicatingAmended] = useState(false);
 
   // New return form state
   const [newTaxYear, setNewTaxYear] = useState("2025/2026");
@@ -129,6 +132,35 @@ export default function SAWorkspaceLayout({ children, activeSection }: SAWorkspa
     });
   };
 
+  const handleDuplicateAmended = async () => {
+    if (!currentReturn || !clientId) return;
+    const ok = window.confirm(`Create an amended draft return for ${currentReturn.taxYear}? This will clone all schedule data into a new Draft marked as an amended return.`);
+    if (!ok) return;
+
+    try {
+      setIsDuplicatingAmended(true);
+      const res = await apiRequest("POST", `/api/self-assessment/${clientId}/returns/${currentReturn.id}/duplicate-amended`, {});
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed to duplicate return" }));
+        throw new Error(err.error || "Failed to duplicate return");
+      }
+      const data = await res.json();
+      toast({
+        title: "Amended Return Created",
+        description: data.message || "Draft amended return initialized. You can now modify and refile to HMRC.",
+        type: "success",
+      });
+      await refetchReturns();
+      if (data.id || data.returnId) {
+        setSelectedReturnId(data.id || data.returnId);
+      }
+    } catch (err: any) {
+      toast({ title: "Amended Return Error", description: err.message, type: "error" });
+    } finally {
+      setIsDuplicatingAmended(false);
+    }
+  };
+
   const navItems = [
     { label: "Dashboard", icon: <LayoutDashboard size={15} />, route: `/self-assessment/${clientId}/dashboard` },
     { label: "SA100 Core Income", icon: <FileText size={15} />, route: `/self-assessment/${clientId}/forms` },
@@ -165,6 +197,8 @@ export default function SAWorkspaceLayout({ children, activeSection }: SAWorkspa
         setOpenNewReturnModal,
         selectedTaxYear,
         setSelectedTaxYear,
+        handleDuplicateAmended,
+        isDuplicatingAmended,
       }}
     >
       <AppLayout sidebar={sidebar} module="Self Assessment">
@@ -246,6 +280,18 @@ export default function SAWorkspaceLayout({ children, activeSection }: SAWorkspa
                       ))}
                     </select>
                   </div>
+                )}
+
+                {(currentReturn?.status === "Submitted" || currentReturn?.status === "Accepted") && (
+                  <button
+                    type="button"
+                    onClick={handleDuplicateAmended}
+                    disabled={isDuplicatingAmended}
+                    className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <Copy size={13} className={isDuplicatingAmended ? "animate-spin" : ""} />
+                    <span>Duplicate as Amended</span>
+                  </button>
                 )}
 
                 <button

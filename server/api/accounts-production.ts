@@ -3015,12 +3015,23 @@ accountsProductionRouter.post("/:clientId/bridge-to-ct600", async (req: any, res
 
     const netTaxDue = taxPayable;
 
-    // Check if CT600 return exists for this client and period
-    const [existingReturn] = await db
+    // Check if CT600 return exists for this client by period ID or matching period dates
+    const allClientReturns = await db
       .select()
       .from(ct600Returns)
-      .where(and(eq(ct600Returns.clientId, clientId), eq(ct600Returns.periodId, periodId)))
-      .limit(1);
+      .where(eq(ct600Returns.clientId, clientId));
+
+    const existingReturn = allClientReturns.find((r) => {
+      if (r.periodId && r.periodId === periodId) return true;
+      if (r.accountingPeriodStart && r.accountingPeriodEnd) {
+        const rStart = new Date(r.accountingPeriodStart).toISOString().slice(0, 10);
+        const rEnd = new Date(r.accountingPeriodEnd).toISOString().slice(0, 10);
+        const curStart = startDate.toISOString().slice(0, 10);
+        const curEnd = endDate.toISOString().slice(0, 10);
+        return rStart === curStart && rEnd === curEnd;
+      }
+      return false;
+    });
 
     let returnId = existingReturn?.id;
 
@@ -3028,6 +3039,7 @@ accountsProductionRouter.post("/:clientId/bridge-to-ct600", async (req: any, res
       await db
         .update(ct600Returns)
         .set({
+          periodId, // Ensure periodId is linked
           utrNumber: client.utrNumber || existingReturn.utrNumber || "",
           accountingPeriodStart: startDate,
           accountingPeriodEnd: endDate,

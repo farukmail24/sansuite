@@ -97,9 +97,9 @@ export default function ServicesPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setIsQuickAddOpen(true)}
-              className="px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm"
+              className="px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm flex items-center gap-1.5 cursor-pointer"
             >
-              + Quick Add
+              <Plus size={14} /> Quick Add
             </button>
             <button
               onClick={() => setIsNewServiceModalOpen(true)}

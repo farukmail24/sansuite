@@ -4,7 +4,7 @@ import AppLayout from "../../components/layout/AppLayout";
 import {
   ChevronRight, FileOutput, Send, Plus, X, ShieldCheck,
   Calculator, CheckCircle2, AlertCircle, Printer, Download,
-  Layers, Users, Hammer, DollarSign, Calendar
+  Layers, Users, Hammer, DollarSign, Calendar, Mail
 } from "lucide-react";
 import { bookkeepingSidebar, getClientSidebar } from "./sidebar";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -31,6 +31,11 @@ export default function Cis300Page() {
   // Return lines drill-down modal state
   const [showLinesModal, setShowLinesModal] = useState(false);
   const [selectedReturn, setSelectedReturn] = useState<any>(null);
+
+  // Bulk Email state
+  const [showBulkEmailModal, setShowBulkEmailModal] = useState(false);
+  const [bulkEmailReturnId, setBulkEmailReturnId] = useState<number | null>(null);
+  const [bulkEmailSent, setBulkEmailSent] = useState(false);
 
   // Query existing returns
   const { data: returns = [], isLoading: loadingReturns } = useQuery<any[]>({
@@ -103,6 +108,31 @@ export default function Cis300Page() {
     }
   });
 
+  // Bulk Email mutation — sends deduction statements to all subcontractors in a return
+  const bulkEmailMutation = useMutation({
+    mutationFn: async (retId: number) => {
+      const res = await apiRequest("POST", `/api/cis/returns/${clientId}/${retId}/bulk-email`);
+      if (!res.ok) throw new Error("Failed to send bulk emails");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      setBulkEmailSent(true);
+      toast({
+        title: "Bulk Emails Sent",
+        description: `CIS deduction statements sent to ${data.count || "all"} subcontractors.`
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Email Failed", description: err.message, type: "error" });
+    }
+  });
+
+  const handleOpenBulkEmail = (retId: number) => {
+    setBulkEmailReturnId(retId);
+    setBulkEmailSent(false);
+    setShowBulkEmailModal(true);
+  };
+
   const handleOpenPds = async (returnId: number, subId: number) => {
     try {
       const res = await apiRequest("GET", `/api/cis/returns/${clientId}/${returnId}/statement/${subId}`);
@@ -137,15 +167,25 @@ export default function Cis300Page() {
             <ChevronRight size={14} />
             <span className="font-medium text-gray-800">CIS 300 Returns</span>
           </div>
-          <button
-            onClick={() => {
-              setShowPrepareModal(true);
-              refetchCalc();
-            }}
-            className="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-semibold flex items-center gap-1.5 shadow-sm transition-colors"
-          >
-            <FileOutput size={15} /> Prepare Monthly Return
-          </button>
+          <div className="flex items-center gap-2">
+            {returns.length > 0 && (
+              <button
+                onClick={() => handleOpenBulkEmail(returns[0].id)}
+                className="px-3 py-1.5 border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 rounded-lg text-sm font-semibold flex items-center gap-1.5 shadow-sm transition-colors"
+              >
+                <Mail size={15} /> Bulk Email Statements
+              </button>
+            )}
+            <button
+              onClick={() => {
+                setShowPrepareModal(true);
+                refetchCalc();
+              }}
+              className="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-semibold flex items-center gap-1.5 shadow-sm transition-colors"
+            >
+              <FileOutput size={15} /> Prepare Monthly Return
+            </button>
+          </div>
         </div>
 
         <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -591,6 +631,64 @@ export default function Cis300Page() {
                 >
                   Done
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bulk Email Modal */}
+        {showBulkEmailModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+              <div className="flex items-center justify-between p-5 border-b">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center">
+                    <Mail size={18} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-900 text-sm">Bulk Email — CIS Statements</h3>
+                    <p className="text-xs text-gray-500">Send deduction statements to all subcontractors</p>
+                  </div>
+                </div>
+                <button onClick={() => { setShowBulkEmailModal(false); setBulkEmailSent(false); }} className="p-1.5 hover:bg-gray-100 rounded-lg">
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-4">
+                {bulkEmailSent ? (
+                  <div className="flex flex-col items-center py-6 gap-3">
+                    <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center">
+                      <CheckCircle2 size={32} />
+                    </div>
+                    <h4 className="font-bold text-gray-800">Statements Sent Successfully</h4>
+                    <p className="text-sm text-gray-500 text-center">All subcontractor deduction statements have been emailed.</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
+                      <p className="font-semibold mb-1 flex items-center gap-2"><AlertCircle size={14} /> What this action does:</p>
+                      <ul className="text-xs text-blue-700 space-y-1 list-disc list-inside">
+                        <li>Generates a PDF deduction statement for each subcontractor</li>
+                        <li>Emails each statement to the subcontractor's registered email address</li>
+                        <li>Records the dispatch in the CIS audit log</li>
+                        <li>Marks statements as "Sent" in the CIS return</li>
+                      </ul>
+                    </div>
+                    <div className="flex justify-end gap-3 pt-2">
+                      <button onClick={() => { setShowBulkEmailModal(false); }} className="px-4 py-2 border border-gray-300 text-sm rounded-lg text-gray-700 hover:bg-gray-50">
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => bulkEmailReturnId && bulkEmailMutation.mutate(bulkEmailReturnId)}
+                        disabled={bulkEmailMutation.isPending}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg flex items-center gap-2 disabled:opacity-50"
+                      >
+                        <Send size={14} /> {bulkEmailMutation.isPending ? "Sending..." : "Send All Statements"}
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>

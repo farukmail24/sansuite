@@ -30,7 +30,7 @@ export async function stampSignatureOnPdf(params: StampSignatureParams): Promise
     signerName,
     signerEmail,
     documentTitle,
-    firmName = "San Accounts Ltd.",
+    firmName = "",
     ipAddress,
     signedAt,
     verificationToken,

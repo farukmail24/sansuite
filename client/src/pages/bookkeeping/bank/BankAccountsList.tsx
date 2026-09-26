@@ -4,7 +4,7 @@ import { useRoute, useLocation } from "wouter";
 import AppLayout from "../../../components/layout/AppLayout";
 import { apiRequest, queryClient } from "../../../lib/queryClient";
 import { useToast } from "../../../hooks/useToast";
-import { Wallet, ChevronRight, Plus, RefreshCcw, X, Building, DollarSign } from "lucide-react";
+import { Wallet, ChevronRight, Plus, RefreshCcw, X, Building, DollarSign, Search } from "lucide-react";
 import { getClientSidebar } from "../sidebar";
 
 export default function BankAccountsList() {
@@ -14,6 +14,7 @@ export default function BankAccountsList() {
   const { toast } = useToast();
 
   const [showModal, setShowModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [formData, setFormData] = useState({
     bankName: "Barclays Bank",
     accountType: "Current Account",
@@ -87,6 +88,18 @@ export default function BankAccountsList() {
     });
   };
 
+  const filteredAccounts = accounts.filter((acc: any) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      acc.bankName?.toLowerCase().includes(q) ||
+      acc.accountName?.toLowerCase().includes(q) ||
+      acc.sortCode?.toLowerCase().includes(q) ||
+      acc.accountNumber?.toLowerCase().includes(q) ||
+      acc.accountType?.toLowerCase().includes(q)
+    );
+  });
+
   return (
     <AppLayout sidebar={getClientSidebar(clientId || "")} module="Bookkeeping">
       <div className="bg-gray-50 min-h-screen pb-12">
@@ -107,6 +120,16 @@ export default function BankAccountsList() {
               <p className="text-gray-500 text-sm mt-1">Manage bank accounts, electronic feeds, and reconcile statement lines.</p>
             </div>
             <div className="flex items-center gap-3">
+              <div className="relative w-64">
+                <Search size={14} className="absolute left-3 top-2.5 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search accounts or sort code..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 outline-none bg-white"
+                />
+              </div>
               <button
                 onClick={() => navigate(`/bookkeeping/${clientId}/cash-coding`)}
                 className="px-3.5 py-2 border border-purple-300 text-purple-700 hover:bg-purple-50 rounded-lg text-sm font-medium transition-colors"
@@ -131,7 +154,7 @@ export default function BankAccountsList() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {isLoading ? (
               <div className="col-span-full text-center py-12 text-gray-500">Loading bank accounts...</div>
-            ) : accounts.length === 0 ? (
+            ) : filteredAccounts.length === 0 ? (
               <div className="col-span-full bg-white border border-gray-200 rounded-xl p-12 flex flex-col items-center justify-center shadow-sm">
                 <div className="w-16 h-16 bg-purple-50 rounded-full flex items-center justify-center text-purple-600 mb-4">
                   <Wallet size={28} />
@@ -148,7 +171,7 @@ export default function BankAccountsList() {
                 </button>
               </div>
             ) : (
-              accounts.map((acc: any) => (
+              filteredAccounts.map((acc: any) => (
                 <div key={acc.id} className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
                   <div className="p-5 border-b border-gray-100 flex-1">
                     <div className="flex justify-between items-start mb-4">

@@ -1,11 +1,36 @@
 import { Router } from "express";
 import { db } from "../db";
-import { pmConversations, pmEmailTemplates, pmClientTimeline, clients, users } from "@shared/schema";
+import { pmConversations, pmEmailTemplates, pmClientTimeline, clients, users, firmDetails } from "@shared/schema";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import { authMiddleware } from "../lib/authUtils";
+import { emailService } from "../lib/emailService";
 
 const router = Router();
 router.use(authMiddleware);
+
+// --- DYNAMIC MULTI-TENANT SENDER RESOLUTION ---
+async function getPracticeSenderInfo(practiceId: number, userId?: number, reqUser?: any) {
+  // No hardcoded fallbacks – fully resolved from DB or request context
+  let firmName = "";
+  let senderEmail = "";
+
+  try {
+    const [firm] = await db.select().from(firmDetails).where(eq(firmDetails.practiceId, practiceId)).limit(1);
+    if (firm?.firmName) firmName = firm.firmName;
+    if (firm?.email) senderEmail = firm.email;
+
+    if (userId) {
+      const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+      if (u?.email) senderEmail = u.email;
+    } else if (reqUser?.email) {
+      senderEmail = reqUser.email;
+    }
+  } catch (err) {
+    console.warn("[getPracticeSenderInfo] Error resolving practice sender info:", err);
+  }
+
+  return { firmName, senderEmail };
+}
 
 // --- SEED DEFAULT EMAIL TEMPLATES ---
 async function ensureDefaultTemplates(practiceId: number) {
@@ -115,10 +140,32 @@ router.post("/send", async (req: any, res) => {
 
     const recipients = Array.isArray(recipientEmails) ? recipientEmails.join(", ") : String(recipientEmails);
 
+    // Resolve dynamic sender info for practice multi-tenancy
+    const { firmName, senderEmail } = await getPracticeSenderInfo(practiceId, req.user?.id, req.user);
+
+    // 1. Dispatch live email via SMTP with dynamic practice sender display name and reply-to
+    let emailResult: any = { success: false };
+    try {
+      emailResult = await emailService.sendMail(
+        recipients,
+        subject,
+        bodyHtml || `<p>${bodyText || ""}</p>`,
+        {
+          text: bodyText,
+          fromName: firmName,
+          replyTo: senderEmail,
+          fromEmail: senderEmail,
+        }
+      );
+    } catch (mailErr: any) {
+      console.error("[Conversations] Live SMTP dispatch error:", mailErr);
+      emailResult = { success: false, error: mailErr.message };
+    }
+
     const [convRes] = await db.insert(pmConversations).values({
       practiceId,
       clientId: clientId ? parseInt(clientId) : null,
-      senderEmail: req.user.email || "noreply@sansuite.com",
+      senderEmail,
       recipientEmails: recipients,
       subject,
       bodyHtml,
@@ -136,11 +183,16 @@ router.post("/send", async (req: any, res) => {
         activityType: "Email",
         title: `Sent Email: ${subject}`,
         content: bodyText || subject,
-        metadataJson: JSON.stringify({ conversationId: convRes.insertId, recipients }),
+        metadataJson: JSON.stringify({ conversationId: convRes.insertId, recipients, messageId: emailResult?.messageId }),
       });
     }
 
-    res.json({ success: true, message: "Email dispatched successfully", id: convRes.insertId });
+    res.json({
+      success: true,
+      message: emailResult.success ? "Email dispatched successfully" : "Email recorded (SMTP notification attempted)",
+      id: convRes.insertId,
+      emailResult
+    });
   } catch (error: any) {
     console.error("Failed to send email:", error);
     res.status(500).json({ message: error.message || "Failed to send email" });
@@ -161,6 +213,9 @@ router.post("/bulk-email", async (req: any, res) => {
       targetClients = targetClients.filter(c => c.clientType?.toLowerCase() === (clientType as string).toLowerCase());
     }
 
+    // Resolve dynamic sender info for practice multi-tenancy
+    const { firmName, senderEmail } = await getPracticeSenderInfo(practiceId, req.user?.id, req.user);
+
     let dispatchedCount = 0;
     for (const cl of targetClients) {
       if (cl.email) {
@@ -173,16 +228,33 @@ router.post("/bulk-email", async (req: any, res) => {
             .replace(/\{\{company_?number\}\}/gi, cl.registrationNumber || "N/A")
             .replace(/\{\{utr\}\}/gi, cl.utrNumber || "N/A")
             .replace(/\{\{vat_?number\}\}/gi, cl.vatNumber || "N/A")
-            .replace(/\{\{(?:firm|practice)_?name\}\}/gi, req.user?.practiceName || "SanSuite Practice");
+            .replace(/\{\{(?:firm|practice)_?name\}\}/gi, firmName);
         };
 
         const resolvedSubject = resolveTags(subject);
         const resolvedBody = resolveTags(bodyHtml);
 
+        // Dispatch live email via SMTP with dynamic firm name and reply-to
+        try {
+          await emailService.sendMail(
+            cl.email,
+            resolvedSubject,
+            resolvedBody || `<p>${resolvedSubject}</p>`,
+            {
+              text: resolvedSubject,
+              fromName: firmName,
+              replyTo: senderEmail,
+              fromEmail: senderEmail,
+            }
+          );
+        } catch (mailErr: any) {
+          console.error(`[Conversations] Bulk email live SMTP error for ${cl.email}:`, mailErr);
+        }
+
         const [conv] = await db.insert(pmConversations).values({
           practiceId,
           clientId: cl.id,
-          senderEmail: req.user.email || "noreply@sansuite.com",
+          senderEmail,
           recipientEmails: cl.email,
           subject: resolvedSubject,
           bodyHtml: resolvedBody,
@@ -292,10 +364,12 @@ router.post("/schedule", async (req: any, res) => {
       status: "Active",
     };
 
+    const { firmName, senderEmail } = await getPracticeSenderInfo(practiceId, req.user?.id, req.user);
+
     const [conv] = await db.insert(pmConversations).values({
       practiceId,
       clientId: clientId ? parseInt(String(clientId)) : null,
-      senderEmail: req.user.email || "noreply@sansuite.com",
+      senderEmail,
       recipientEmails: String(recipientEmails || ""),
       subject: isSms ? `Scheduled SMS: ${subject || bodyText?.substring(0, 30)}` : subject,
       bodyHtml: bodyHtml || `<p>${bodyText || ""}</p>`,

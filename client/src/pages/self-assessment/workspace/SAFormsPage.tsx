@@ -36,6 +36,11 @@ function SAFormsContent() {
   const [isAbovePensionAge, setIsAbovePensionAge] = useState(false);
   const [isClass2Voluntary, setIsClass2Voluntary] = useState(false);
 
+  // SA101 Additional Reliefs (Capium Art 47: 9000271638)
+  const [seisReliefClaimed, setSeisReliefClaimed] = useState("0.00");
+  const [eisReliefClaimed, setEisReliefClaimed] = useState("0.00");
+  const [vctReliefClaimed, setVctReliefClaimed] = useState("0.00");
+
   // Sync with currentReturn
   useEffect(() => {
     if (currentReturn) {
@@ -46,6 +51,15 @@ function SAFormsContent() {
       setForeignIncome(currentReturn.foreignIncome || "0.00");
       setPensionContributions(currentReturn.pensionContributions || "0.00");
       setGiftAidDonations(currentReturn.giftAidDonations || "0.00");
+      let sched: any = {};
+      if (currentReturn.schedulesData) {
+        try {
+          sched = typeof currentReturn.schedulesData === "string" ? JSON.parse(currentReturn.schedulesData) : currentReturn.schedulesData;
+        } catch {}
+      }
+      if (sched.seisReliefClaimed !== undefined) setSeisReliefClaimed(sched.seisReliefClaimed);
+      if (sched.eisReliefClaimed !== undefined) setEisReliefClaimed(sched.eisReliefClaimed);
+      if (sched.vctReliefClaimed !== undefined) setVctReliefClaimed(sched.vctReliefClaimed);
     }
   }, [currentReturn]);
 
@@ -75,6 +89,10 @@ function SAFormsContent() {
         studentLoanPlan,
         isAbovePensionAge,
         isClass2Voluntary,
+        // SA101 Additional Reliefs
+        seisReliefClaimed,
+        eisReliefClaimed,
+        vctReliefClaimed,
       };
 
       const res = await apiRequest("POST", `/api/self-assessment/${clientId}/returns`, payload);
@@ -322,6 +340,101 @@ function SAFormsContent() {
                   />
                   <span className="text-xs">Pay Class 2 NIC voluntarily (£3.45/week) if profits below Small Profits Threshold</span>
                 </label>
+              </div>
+            </div>
+          </div>
+
+          {/* SA101 Additional Reliefs & Investments (Capium Art 47: 9000271638) */}
+          <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <div>
+                <h3 className="font-bold text-xs text-slate-900 dark:text-slate-100 uppercase tracking-wider flex items-center gap-1.5">
+                  <Shield size={14} className="text-purple-600" />
+                  SA101: Additional Reliefs & Investments
+                </h3>
+                <p className="text-[10px] text-slate-400 mt-0.5">Statutory tax reducers for qualifying UK venture investments</p>
+              </div>
+              {((parseFloat(seisReliefClaimed || "0") * 0.5) + (parseFloat(eisReliefClaimed || "0") * 0.3) + (parseFloat(vctReliefClaimed || "0") * 0.3)) > 0 && (
+                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
+                  Tax Reduced: -£{((parseFloat(seisReliefClaimed || "0") * 0.5) + (parseFloat(eisReliefClaimed || "0") * 0.3) + (parseFloat(vctReliefClaimed || "0") * 0.3)).toFixed(2)}
+                </span>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                    Box 10: Seed Enterprise Investment Scheme (SEIS) Relief
+                  </label>
+                  <span className="text-[10px] font-bold text-purple-600 bg-purple-50 dark:bg-purple-900/30 px-1.5 py-0.5 rounded">
+                    50% Tax Relief
+                  </span>
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3 top-2 text-slate-400 font-semibold">£</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={seisReliefClaimed}
+                    onChange={(e) => setSeisReliefClaimed(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full pl-7 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-mono focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none"
+                  />
+                </div>
+                <span className="text-[10px] text-slate-400">
+                  Subscription for shares in qualifying early-stage companies (ITA 2007 Part 5A, up to £200,000 max)
+                </span>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                    Enterprise Investment Scheme (EIS) Relief
+                  </label>
+                  <span className="text-[10px] font-bold text-purple-600 bg-purple-50 dark:bg-purple-900/30 px-1.5 py-0.5 rounded">
+                    30% Tax Relief
+                  </span>
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3 top-2 text-slate-400 font-semibold">£</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={eisReliefClaimed}
+                    onChange={(e) => setEisReliefClaimed(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full pl-7 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-mono focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none"
+                  />
+                </div>
+                <span className="text-[10px] text-slate-400">
+                  Qualifying EIS share investments (ITA 2007 Part 5, up to £1,000,000 or £2,000,000 for KIC)
+                </span>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                    Venture Capital Trust (VCT) Relief
+                  </label>
+                  <span className="text-[10px] font-bold text-purple-600 bg-purple-50 dark:bg-purple-900/30 px-1.5 py-0.5 rounded">
+                    30% Tax Relief
+                  </span>
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3 top-2 text-slate-400 font-semibold">£</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={vctReliefClaimed}
+                    onChange={(e) => setVctReliefClaimed(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full pl-7 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-mono focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none"
+                  />
+                </div>
+                <span className="text-[10px] text-slate-400">
+                  New eligible ordinary shares in VCTs (ITA 2007 Part 6, up to £200,000 max)
+                </span>
               </div>
             </div>
           </div>

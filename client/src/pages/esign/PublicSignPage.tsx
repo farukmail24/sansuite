@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { generatePdfCertificate } from "../../lib/pdfCertificateGenerator";
 import StatutoryAccountsReview from "../../components/esign/StatutoryAccountsReview";
+import StatutoryCT600Review from "../../components/esign/StatutoryCT600Review";
 
 export default function PublicSignPage() {
   const [matcheSign, paramseSign] = useRoute("/esign/public/:token");
@@ -451,8 +452,51 @@ export default function PublicSignPage() {
               </div>
             )}
 
-            {/* Statutory Accounts Review Pack or Generic Document Preview */}
-            {documentData.statutoryAccountsSummary ? (
+            {/* Statutory CT600 Review Pack, Statutory Accounts Review Pack, or Generic Document Preview */}
+            {documentData.statutoryCT600Summary ? (
+              <div className="space-y-4">
+                <StatutoryCT600Review
+                  ct600={documentData.statutoryCT600Summary}
+                  signerName={documentData.signerName}
+                  signerRole={documentData.signerRole}
+                />
+
+                {/* Additional Attached PDF Documents if available */}
+                {Array.isArray(documentData.attachments) && documentData.attachments.length > 0 && (
+                  <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-2">
+                    <span className="text-xs font-bold text-slate-700 block">
+                      Attached Documents to Review ({documentData.attachments.length}):
+                    </span>
+                    <div className="grid grid-cols-1 gap-2">
+                      {documentData.attachments.map((att: any, attIdx: number) => {
+                        const fileUrl = att.filePath?.startsWith("/uploads/")
+                          ? att.filePath
+                          : `/uploads/esign/${att.filePath}`;
+                        return (
+                          <div
+                            key={attIdx}
+                            className="bg-white border border-slate-200 rounded-xl p-3 flex items-center justify-between gap-3 shadow-2xs"
+                          >
+                            <div className="flex items-center gap-2">
+                              <FileText size={16} className="text-purple-600" />
+                              <span className="text-xs font-bold text-slate-800">{att.fileName}</span>
+                            </div>
+                            <a
+                              href={fileUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="px-3 py-1 bg-purple-50 text-purple-700 rounded text-xs font-semibold hover:bg-purple-100 flex items-center gap-1"
+                            >
+                              <ExternalLink size={12} /> View Document
+                            </a>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : documentData.statutoryAccountsSummary ? (
               <div className="space-y-4">
                 <StatutoryAccountsReview
                   accounts={documentData.statutoryAccountsSummary}

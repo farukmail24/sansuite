@@ -42,7 +42,7 @@ async function ensureTablesAndSeed(practiceId: number) {
         billable BOOLEAN DEFAULT TRUE,
         fee DECIMAL(10, 2) DEFAULT 35.00,
         estimated_hours DECIMAL(6, 2) DEFAULT 4.00,
-        service_manager VARCHAR(100) DEFAULT 'Suleman Shah',
+        service_manager VARCHAR(100) DEFAULT NULL,
         service_type VARCHAR(50) DEFAULT 'Default',
         is_active BOOLEAN DEFAULT TRUE,
         add_to_calendar BOOLEAN DEFAULT TRUE,
@@ -253,6 +253,15 @@ async function ensureTablesAndSeed(practiceId: number) {
       [practiceId]
     );
 
+    // Dynamically retrieve primary staff name from users table
+    const [practiceUsers]: any = await pool.query(
+      "SELECT id, first_name, last_name, email FROM users WHERE practice_id = ? AND is_active = 1 ORDER BY id ASC LIMIT 1",
+      [practiceId]
+    );
+    const defaultStaff = practiceUsers[0]
+      ? `${practiceUsers[0].first_name || ""} ${practiceUsers[0].last_name || ""}`.trim() || practiceUsers[0].email
+      : "Practice Staff";
+
     if (existingServices[0]?.count === 0) {
       const defaultServices = [
         {
@@ -262,7 +271,7 @@ async function ensureTablesAndSeed(practiceId: number) {
           billable: 1,
           fee: 35.0,
           estimated_hours: 4.0,
-          service_manager: "Suleman Shah",
+          service_manager: defaultStaff,
           service_type: "Default",
           is_active: 1,
           add_to_calendar: 1,
@@ -278,9 +287,9 @@ async function ensureTablesAndSeed(practiceId: number) {
           assign_all: 1,
           custom_workflow: 0,
           reminders_json: JSON.stringify([
-            { id: "r1", timing: "1 Month prior to deadlines", staffUser: "Suleman Shah", clientUser: "All Client Contacts", cc: "" },
-            { id: "r2", timing: "2 Weeks prior to deadlines", staffUser: "Suleman Shah", clientUser: "All Client Contacts", cc: "" },
-            { id: "r3", timing: "5 Days prior to deadlines", staffUser: "Suleman Shah", clientUser: "All Client Contacts", cc: "" },
+            { id: "r1", timing: "1 Month prior to deadlines", staffUser: defaultStaff, clientUser: "All Client Contacts", cc: "" },
+            { id: "r2", timing: "2 Weeks prior to deadlines", staffUser: defaultStaff, clientUser: "All Client Contacts", cc: "" },
+            { id: "r3", timing: "5 Days prior to deadlines", staffUser: defaultStaff, clientUser: "All Client Contacts", cc: "" },
           ]),
         },
         {
@@ -290,7 +299,7 @@ async function ensureTablesAndSeed(practiceId: number) {
           billable: 1,
           fee: 25.0,
           estimated_hours: 2.0,
-          service_manager: "Suleman Shah",
+          service_manager: defaultStaff,
           service_type: "Default",
           is_active: 1,
           add_to_calendar: 1,
@@ -306,8 +315,8 @@ async function ensureTablesAndSeed(practiceId: number) {
           assign_all: 0,
           custom_workflow: 0,
           reminders_json: JSON.stringify([
-            { id: "r1", timing: "1 Month prior to deadlines", staffUser: "Suleman Shah", clientUser: "All Client Contacts", cc: "" },
-            { id: "r2", timing: "2 Weeks prior to deadlines", staffUser: "Suleman Shah", clientUser: "All Client Contacts", cc: "" },
+            { id: "r1", timing: "1 Month prior to deadlines", staffUser: defaultStaff, clientUser: "All Client Contacts", cc: "" },
+            { id: "r2", timing: "2 Weeks prior to deadlines", staffUser: defaultStaff, clientUser: "All Client Contacts", cc: "" },
           ]),
         },
         {
@@ -317,7 +326,7 @@ async function ensureTablesAndSeed(practiceId: number) {
           billable: 1,
           fee: 45.0,
           estimated_hours: 4.0,
-          service_manager: "Suleman Shah",
+          service_manager: defaultStaff,
           service_type: "Default",
           is_active: 1,
           add_to_calendar: 1,
@@ -333,7 +342,7 @@ async function ensureTablesAndSeed(practiceId: number) {
           assign_all: 1,
           custom_workflow: 0,
           reminders_json: JSON.stringify([
-            { id: "r1", timing: "1 Month prior to deadlines", staffUser: "Suleman Shah", clientUser: "All Client Contacts", cc: "" },
+            { id: "r1", timing: "1 Month prior to deadlines", staffUser: defaultStaff, clientUser: "All Client Contacts", cc: "" },
           ]),
         },
         {
@@ -343,7 +352,7 @@ async function ensureTablesAndSeed(practiceId: number) {
           billable: 1,
           fee: 15.0,
           estimated_hours: 0.25,
-          service_manager: "Suleman Shah",
+          service_manager: defaultStaff,
           service_type: "Default",
           is_active: 1,
           add_to_calendar: 1,
@@ -363,7 +372,7 @@ async function ensureTablesAndSeed(practiceId: number) {
           assign_all: 1,
           custom_workflow: 0,
           reminders_json: JSON.stringify([
-            { id: "r1", timing: "2 Weeks prior to deadlines", staffUser: "Suleman Shah", clientUser: "All Client Contacts", cc: "" },
+            { id: "r1", timing: "2 Weeks prior to deadlines", staffUser: defaultStaff, clientUser: "All Client Contacts", cc: "" },
           ]),
         },
         {
@@ -373,7 +382,7 @@ async function ensureTablesAndSeed(practiceId: number) {
           billable: 1,
           fee: 20.0,
           estimated_hours: 1.0,
-          service_manager: "Suleman Shah",
+          service_manager: defaultStaff,
           service_type: "Default",
           is_active: 1,
           add_to_calendar: 1,
@@ -389,7 +398,7 @@ async function ensureTablesAndSeed(practiceId: number) {
           assign_all: 1,
           custom_workflow: 0,
           reminders_json: JSON.stringify([
-            { id: "r1", timing: "5 Days prior to deadlines", staffUser: "Suleman Shah", clientUser: "All Client Contacts", cc: "" },
+            { id: "r1", timing: "5 Days prior to deadlines", staffUser: defaultStaff, clientUser: "All Client Contacts", cc: "" },
           ]),
         },
         {
@@ -399,7 +408,7 @@ async function ensureTablesAndSeed(practiceId: number) {
           billable: 1,
           fee: 30.0,
           estimated_hours: 2.0,
-          service_manager: "Suleman Shah",
+          service_manager: defaultStaff,
           service_type: "Default",
           is_active: 1,
           add_to_calendar: 1,
@@ -415,7 +424,7 @@ async function ensureTablesAndSeed(practiceId: number) {
           assign_all: 1,
           custom_workflow: 0,
           reminders_json: JSON.stringify([
-            { id: "r1", timing: "2 Weeks prior to deadlines", staffUser: "Suleman Shah", clientUser: "All Client Contacts", cc: "" },
+            { id: "r1", timing: "2 Weeks prior to deadlines", staffUser: defaultStaff, clientUser: "All Client Contacts", cc: "" },
           ]),
         },
         {
@@ -425,7 +434,7 @@ async function ensureTablesAndSeed(practiceId: number) {
           billable: 1,
           fee: 50.0,
           estimated_hours: 4.0,
-          service_manager: "Suleman Shah",
+          service_manager: defaultStaff,
           service_type: "Default",
           is_active: 1,
           add_to_calendar: 1,
@@ -441,7 +450,7 @@ async function ensureTablesAndSeed(practiceId: number) {
           assign_all: 0,
           custom_workflow: 0,
           reminders_json: JSON.stringify([
-            { id: "r1", timing: "1 Month prior to deadlines", staffUser: "Suleman Shah", clientUser: "All Client Contacts", cc: "" },
+            { id: "r1", timing: "1 Month prior to deadlines", staffUser: defaultStaff, clientUser: "All Client Contacts", cc: "" },
           ]),
         },
         {
@@ -451,7 +460,7 @@ async function ensureTablesAndSeed(practiceId: number) {
           billable: 1,
           fee: 40.0,
           estimated_hours: 4.0,
-          service_manager: "Suleman Shah",
+          service_manager: defaultStaff,
           service_type: "Default",
           is_active: 1,
           add_to_calendar: 1,
@@ -467,7 +476,7 @@ async function ensureTablesAndSeed(practiceId: number) {
           assign_all: 0,
           custom_workflow: 0,
           reminders_json: JSON.stringify([
-            { id: "r1", timing: "1 Month prior to deadlines", staffUser: "Suleman Shah", clientUser: "All Client Contacts", cc: "" },
+            { id: "r1", timing: "1 Month prior to deadlines", staffUser: defaultStaff, clientUser: "All Client Contacts", cc: "" },
           ]),
         },
         {
@@ -477,7 +486,7 @@ async function ensureTablesAndSeed(practiceId: number) {
           billable: 1,
           fee: 30.0,
           estimated_hours: 4.0,
-          service_manager: "Suleman Shah",
+          service_manager: defaultStaff,
           service_type: "Default",
           is_active: 1,
           add_to_calendar: 1,
@@ -493,7 +502,7 @@ async function ensureTablesAndSeed(practiceId: number) {
           assign_all: 0,
           custom_workflow: 0,
           reminders_json: JSON.stringify([
-            { id: "r1", timing: "1 Month prior to deadlines", staffUser: "Suleman Shah", clientUser: "All Client Contacts", cc: "" },
+            { id: "r1", timing: "1 Month prior to deadlines", staffUser: defaultStaff, clientUser: "All Client Contacts", cc: "" },
           ]),
         },
         {
@@ -503,7 +512,7 @@ async function ensureTablesAndSeed(practiceId: number) {
           billable: 1,
           fee: 40.0,
           estimated_hours: 4.0,
-          service_manager: "Suleman Shah",
+          service_manager: defaultStaff,
           service_type: "Default",
           is_active: 1,
           add_to_calendar: 1,
@@ -519,7 +528,7 @@ async function ensureTablesAndSeed(practiceId: number) {
           assign_all: 0,
           custom_workflow: 0,
           reminders_json: JSON.stringify([
-            { id: "r1", timing: "1 Month prior to deadlines", staffUser: "Suleman Shah", clientUser: "All Client Contacts", cc: "" },
+            { id: "r1", timing: "1 Month prior to deadlines", staffUser: defaultStaff, clientUser: "All Client Contacts", cc: "" },
           ]),
         },
         {
@@ -529,7 +538,7 @@ async function ensureTablesAndSeed(practiceId: number) {
           billable: 1,
           fee: 150.0,
           estimated_hours: 48.0,
-          service_manager: "Suleman Shah",
+          service_manager: defaultStaff,
           service_type: "Default",
           is_active: 1,
           add_to_calendar: 1,
@@ -549,7 +558,7 @@ async function ensureTablesAndSeed(practiceId: number) {
           assign_all: 1,
           custom_workflow: 0,
           reminders_json: JSON.stringify([
-            { id: "r1", timing: "5 Days prior to deadlines", staffUser: "Suleman Shah", clientUser: "All Client Contacts", cc: "" },
+            { id: "r1", timing: "5 Days prior to deadlines", staffUser: defaultStaff, clientUser: "All Client Contacts", cc: "" },
           ]),
         },
         {
@@ -559,7 +568,7 @@ async function ensureTablesAndSeed(practiceId: number) {
           billable: 1,
           fee: 25.0,
           estimated_hours: 1.0,
-          service_manager: "Suleman Shah",
+          service_manager: defaultStaff,
           service_type: "Default",
           is_active: 1,
           add_to_calendar: 1,
@@ -576,7 +585,7 @@ async function ensureTablesAndSeed(practiceId: number) {
           assign_all: 0,
           custom_workflow: 0,
           reminders_json: JSON.stringify([
-            { id: "r1", timing: "5 Days prior to deadlines", staffUser: "Suleman Shah", clientUser: "All Client Contacts", cc: "" },
+            { id: "r1", timing: "5 Days prior to deadlines", staffUser: defaultStaff, clientUser: "All Client Contacts", cc: "" },
           ]),
         },
         {
@@ -586,7 +595,7 @@ async function ensureTablesAndSeed(practiceId: number) {
           billable: 1,
           fee: 75.0,
           estimated_hours: 4.0,
-          service_manager: "Suleman Shah",
+          service_manager: defaultStaff,
           service_type: "Default",
           is_active: 1,
           add_to_calendar: 1,
@@ -607,7 +616,7 @@ async function ensureTablesAndSeed(practiceId: number) {
           billable: 1,
           fee: 35.0,
           estimated_hours: 0.25,
-          service_manager: "Suleman Shah",
+          service_manager: defaultStaff,
           service_type: "Default",
           is_active: 1,
           add_to_calendar: 0,
@@ -670,7 +679,7 @@ async function ensureTablesAndSeed(practiceId: number) {
             practice_id, title, category, frequency, billable, fee, estimated_hours,
             service_manager, service_type, is_active, add_to_calendar, client_types_json,
             steps_json, remind_team, assign_all, custom_workflow, reminders_json
-          ) VALUES (?, 'MTD - IT', 'Taxation', 'Quarterly/Yearly', 1, 35.00, 0.25, 'Suleman Shah', 'Default', 1, 0, ?, ?, 1, 0, 0, '[]')`,
+          ) VALUES (?, 'MTD - IT', 'Taxation', 'Quarterly/Yearly', 1, 35.00, 0.25, defaultStaff, 'Default', 1, 0, ?, ?, 1, 0, 0, '[]')`,
           [
             practiceId,
             JSON.stringify(["Sole Trader", "Individual"]),
@@ -740,6 +749,15 @@ async function ensureTablesAndSeed(practiceId: number) {
         );
       }
     }
+
+    // Self-heal: ensure any legacy or hardcoded 'Suleman Shah' / 'Jane Smith' or null is cleaned up
+    await pool.query(
+      `UPDATE practice_services 
+       SET service_manager = ? 
+       WHERE practice_id = ? 
+         AND (service_manager IN ('Suleman Shah', 'Jane Smith') OR service_manager IS NULL OR service_manager = '')`,
+      [defaultStaff, practiceId]
+    );
 
     // B. Seed Custom Fields
     const [existingFields]: any = await pool.query(
@@ -1290,21 +1308,39 @@ router.get("/", async (req: any, res) => {
     const practiceId = req.user?.practiceId || 1;
     await ensureTablesAndSeed(practiceId);
 
-    // 1. Fetch Services
+    // 1. Fetch Services with Dynamic Staff Validation
     const [servicesRows]: any = await pool.query(
       "SELECT * FROM practice_services WHERE practice_id = ? ORDER BY id ASC",
       [practiceId]
     );
 
-    const services = (servicesRows || []).map((row: any) => ({
-      id: row.id,
-      title: row.title,
-      category: row.category,
-      frequency: row.frequency,
-      billable: !!row.billable,
-      fee: row.fee ? String(row.fee) : "35.00",
-      estimatedHours: row.estimated_hours ? parseFloat(row.estimated_hours) : 4,
-      serviceManager: row.service_manager,
+    // Fetch active users for the practice to ensure valid dynamic service manager resolution
+    const [pUsers]: any = await pool.query(
+      "SELECT id, first_name, last_name, email FROM users WHERE practice_id = ? AND is_active = 1 ORDER BY id ASC",
+      [practiceId]
+    );
+    const validStaffNames = new Set(
+      pUsers.map((u: any) => `${u.first_name || ""} ${u.last_name || ""}`.trim() || u.email)
+    );
+    const defaultStaffName = pUsers[0]
+      ? `${pUsers[0].first_name || ""} ${pUsers[0].last_name || ""}`.trim() || pUsers[0].email
+      : "Practice Staff";
+
+    const services = (servicesRows || []).map((row: any) => {
+      const currentMgr = row.service_manager?.trim();
+      const resolvedMgr = (currentMgr && validStaffNames.has(currentMgr))
+        ? currentMgr
+        : defaultStaffName;
+
+      return {
+        id: row.id,
+        title: row.title,
+        category: row.category,
+        frequency: row.frequency,
+        billable: !!row.billable,
+        fee: row.fee ? String(row.fee) : "35.00",
+        estimatedHours: row.estimated_hours ? parseFloat(row.estimated_hours) : 4,
+        serviceManager: resolvedMgr,
       serviceType: row.service_type || "Default",
       isActive: !!row.is_active,
       addToCalendar: !!row.add_to_calendar,
@@ -1314,7 +1350,8 @@ router.get("/", async (req: any, res) => {
       assignAll: !!row.assign_all,
       customWorkflow: !!row.custom_workflow,
       reminders: row.reminders_json ? JSON.parse(row.reminders_json) : [],
-    }));
+    };
+  });
 
     // 2. Fetch Client Service Assignments
     const [assignmentsRows]: any = await pool.query(
@@ -1559,6 +1596,18 @@ router.post("/services", async (req: any, res) => {
       return res.status(400).json({ message: "Service title is required." });
     }
 
+    // Resolve dynamic service manager from practice users if empty
+    let finalServiceManager = serviceManager?.trim();
+    if (!finalServiceManager) {
+      const [pUsers]: any = await pool.query(
+        "SELECT first_name, last_name, email FROM users WHERE practice_id = ? AND is_active = 1 ORDER BY id ASC LIMIT 1",
+        [practiceId]
+      );
+      finalServiceManager = pUsers[0]
+        ? `${pUsers[0].first_name || ""} ${pUsers[0].last_name || ""}`.trim() || pUsers[0].email
+        : "Practice Staff";
+    }
+
     if (id) {
       // Update existing
       await pool.query(
@@ -1575,7 +1624,7 @@ router.post("/services", async (req: any, res) => {
           billable !== false ? 1 : 0,
           fee || "35.00",
           estimatedHours || 4.0,
-          serviceManager || "Suleman Shah",
+          finalServiceManager,
           serviceType || "Custom",
           isActive !== false ? 1 : 0,
           addToCalendar !== false ? 1 : 0,
@@ -1605,7 +1654,7 @@ router.post("/services", async (req: any, res) => {
           billable !== false ? 1 : 0,
           fee || "35.00",
           estimatedHours || 4.0,
-          serviceManager || "Suleman Shah",
+          finalServiceManager,
           "Custom",
           isActive !== false ? 1 : 0,
           addToCalendar !== false ? 1 : 0,
@@ -1617,6 +1666,28 @@ router.post("/services", async (req: any, res) => {
           JSON.stringify(reminders || []),
         ]
       );
+    }
+
+    // Dual-Sync: Ensure pm_services has the matching record
+    try {
+      const sCode = title.toLowerCase().replace(/[^a-z0-9]/g, "_").slice(0, 45);
+      const [existingPm]: any = await pool.query(
+        "SELECT id FROM pm_services WHERE practice_id = ? AND (service_code = ? OR service_name = ?)",
+        [practiceId, sCode, title.trim()]
+      );
+      if (existingPm.length > 0) {
+        await pool.query(
+          "UPDATE pm_services SET service_name = ?, service_category = ?, default_fee = ?, default_billing_frequency = ?, is_active = ? WHERE id = ?",
+          [title.trim(), category || "Accounting", fee || "35.00", frequency || "Yearly", isActive !== false ? 1 : 0, existingPm[0].id]
+        );
+      } else {
+        await pool.query(
+          "INSERT INTO pm_services (practice_id, service_code, service_name, service_category, default_fee, default_billing_frequency, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          [practiceId, sCode, title.trim(), category || "Accounting", fee || "35.00", frequency || "Yearly", isActive !== false ? 1 : 0]
+        );
+      }
+    } catch (e) {
+      console.warn("Dual service sync notice:", e);
     }
 
     res.json({ message: "Service saved to database successfully." });
@@ -1631,6 +1702,13 @@ router.delete("/services/:id", async (req: any, res) => {
   try {
     const practiceId = req.user?.practiceId || 1;
     const serviceId = parseInt(req.params.id);
+
+    try {
+      const [pRow]: any = await pool.query("SELECT title FROM practice_services WHERE id = ? AND practice_id = ?", [serviceId, practiceId]);
+      if (pRow[0]) {
+        await pool.query("UPDATE pm_services SET is_active = 0 WHERE practice_id = ? AND service_name = ?", [practiceId, pRow[0].title]);
+      }
+    } catch (e) {}
 
     await pool.query("DELETE FROM practice_services WHERE id = ? AND practice_id = ?", [
       serviceId,

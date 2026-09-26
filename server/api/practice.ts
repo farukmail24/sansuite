@@ -6,7 +6,7 @@ import {
   pmCustomFieldValues, pmClientServices, pmDeadlines, pmServices, users,
   pmOnboardingChecks, pmAmlChecklistAnswers, pmKycDocuments,
   pmClientPeriods, pmAgentAuthorizations, pmCalendarIntegrations,
-  pmAmlStaffTraining
+  pmAmlStaffTraining, firmDetails, practiceServices, clientServiceAssignments
 } from "@shared/schema";
 import { eq, and, sql, desc, inArray } from "drizzle-orm";
 import { authMiddleware } from "../lib/authUtils";
@@ -40,6 +40,32 @@ router.get("/clients", async (req: any, res) => {
       );
     }
 
+    // Fetch all client services for practice to attach cleanly
+    let servicesByClient: Record<number, any[]> = {};
+    try {
+      const allClientServices = await db
+        .select({
+          clientId: pmClientServices.clientId,
+          serviceId: pmClientServices.serviceId,
+          serviceCode: pmServices.serviceCode,
+          serviceName: pmServices.serviceName,
+          serviceCategory: pmServices.serviceCategory,
+          agreedFee: pmClientServices.agreedFee,
+          billingFrequency: pmClientServices.billingFrequency,
+          status: pmClientServices.status,
+        })
+        .from(pmClientServices)
+        .innerJoin(pmServices, eq(pmClientServices.serviceId, pmServices.id))
+        .where(eq(pmClientServices.practiceId, practiceId));
+
+      for (const cs of allClientServices) {
+        if (!servicesByClient[cs.clientId]) servicesByClient[cs.clientId] = [];
+        servicesByClient[cs.clientId].push(cs);
+      }
+    } catch (e) {
+      console.warn("Could not fetch client services batch:", e);
+    }
+
     const mappedResult = result.map(c => {
       let extra: any = {};
       if (c.extraDetailsJson) {
@@ -47,9 +73,16 @@ router.get("/clients", async (req: any, res) => {
       }
       return {
         ...c,
-        industry: extra.source || "LinkedIn",
+        clientManager: extra.clientManager || extra.assignedManager || null,
+        leadSource: extra.source || extra.leadSource || null,
+        industry: extra.industry || extra.source || null,
         employeeCount: extra.employeeCount || "",
-        turnover: extra.turnover || ""
+        annualTurnover: extra.annualTurnover || extra.turnover || "",
+        turnover: extra.turnover || extra.annualTurnover || "",
+        pipelineStage: extra.pipelineStage || (c.tradingStatus === "Lead" ? "Lead" : (c.tradingStatus === "Prospect" ? "Prospect" : (c.tradingStatus === "Lost" ? "Lost" : "Client"))),
+        dealValue: extra.dealValue || extra.targetFee || null,
+        winProbability: extra.winProbability || null,
+        assignedServices: servicesByClient[c.id] || [],
       };
     });
 
@@ -86,7 +119,14 @@ router.get("/clients/:id/360", async (req: any, res) => {
     const clientRows = await db.select().from(clients).where(and(eq(clients.id, clientId), eq(clients.practiceId, practiceId))).limit(1);
     if (clientRows.length === 0) return res.status(404).json({ message: "Client not found" });
 
-    const client = clientRows[0];
+    const rawClient = clientRows[0];
+    const client = {
+      ...rawClient,
+      addressLine1: rawClient.addressLine1 || (rawClient.address ? rawClient.address.split(",")[0]?.trim() : "") || "",
+      addressLine2: rawClient.addressLine2 || (rawClient.address && rawClient.address.includes(",") ? rawClient.address.split(",").slice(1).join(",").trim() : "") || "",
+      city: rawClient.city || "",
+      townCity: rawClient.city || "",
+    };
 
     // Assigned Services
     const assignedServices = await db
@@ -162,13 +202,14 @@ router.post("/clients", async (req: any, res) => {
     const practiceId = req.user.practiceId;
     const {
       clientCode, clientName, clientType, registrationNumber,
-      utrNumber, niNumber, vatNumber, vatScheme, email, phone, address, postcode, country,
+      utrNumber, niNumber, vatNumber, vatScheme, email, phone, address, addressLine1, addressLine2, city, townCity, postcode, country,
       tradingStatus, auditStatus, nextCsDue, nextAccountsDue, businessStartDate,
       bookStartDate, yearEnd,
       sicCode, chDataJson, customFieldsJson, industry, services,
       payeReference, payeAccountsOfficeRef
     } = req.body;
 
+    const resolvedCity = city || townCity || null;
     const clientData: any = {
       practiceId,
       clientName: clientName || "Unnamed Client",
@@ -180,7 +221,10 @@ router.post("/clients", async (req: any, res) => {
       vatNumber: vatNumber || null,
       email: email || null,
       phone: phone || null,
-      address: address || null,
+      address: address || [addressLine1, addressLine2, resolvedCity].filter(Boolean).join(", ") || null,
+      addressLine1: addressLine1 || null,
+      addressLine2: addressLine2 || null,
+      city: resolvedCity,
       postcode: postcode || null,
       country: country || "United Kingdom",
       tradingStatus: tradingStatus || "Trading",
@@ -331,7 +375,50 @@ router.patch("/clients/:id", async (req: any, res) => {
   try {
     const practiceId = req.user.practiceId;
     const clientId = parseInt(req.params.id);
-    const { officers, psc, ...data } = req.body;
+    const {
+      officers, psc, clientManager, leadSource, pipelineStage,
+      annualTurnover, employeeCount, dealValue, winProbability, ...data
+    } = req.body;
+
+    // Merge CRM extra fields into extraDetailsJson
+    if (
+      clientManager !== undefined || leadSource !== undefined || pipelineStage !== undefined ||
+      annualTurnover !== undefined || employeeCount !== undefined || dealValue !== undefined || winProbability !== undefined
+    ) {
+      const [existing] = await db
+        .select({ extraDetailsJson: clients.extraDetailsJson })
+        .from(clients)
+        .where(and(eq(clients.id, clientId), eq(clients.practiceId, practiceId)))
+        .limit(1);
+
+      let extra: any = {};
+      if (existing?.extraDetailsJson) {
+        try { extra = JSON.parse(existing.extraDetailsJson); } catch (e) {}
+      }
+      if (clientManager !== undefined) extra.clientManager = clientManager;
+      if (leadSource !== undefined) { extra.source = leadSource; extra.leadSource = leadSource; }
+      if (pipelineStage !== undefined) extra.pipelineStage = pipelineStage;
+      if (annualTurnover !== undefined) { extra.turnover = annualTurnover; extra.annualTurnover = annualTurnover; }
+      if (employeeCount !== undefined) extra.employeeCount = employeeCount;
+      if (dealValue !== undefined) extra.dealValue = dealValue;
+      if (winProbability !== undefined) extra.winProbability = winProbability;
+
+      data.extraDetailsJson = JSON.stringify(extra);
+    }
+
+    // Normalize townCity to city if provided
+    if (data.townCity !== undefined && data.city === undefined) {
+      data.city = data.townCity;
+    }
+    delete data.townCity;
+
+    // Auto-compose address if addressLine1 or city is updated and address is not explicitly given
+    if ((data.addressLine1 !== undefined || data.addressLine2 !== undefined || data.city !== undefined) && !data.address) {
+      const parts = [data.addressLine1, data.addressLine2, data.city].filter(Boolean);
+      if (parts.length > 0) {
+        data.address = parts.join(", ");
+      }
+    }
 
     // 1. Update basic client fields
     if (Object.keys(data).length > 0) {
@@ -399,6 +486,94 @@ router.patch("/clients/:id", async (req: any, res) => {
   } catch (error) {
     console.error("Failed to update client:", error);
     res.status(500).json({ message: "Failed to update client" });
+  }
+});
+
+// POST /api/pm/clients/:id/convert - Convert Lead / Prospect into Active Accounting Client
+router.post("/clients/:id/convert", async (req: any, res) => {
+  try {
+    const practiceId = req.user.practiceId;
+    const clientId = parseInt(req.params.id);
+    if (isNaN(clientId)) return res.status(400).json({ message: "Invalid client ID" });
+
+    const [client] = await db
+      .select()
+      .from(clients)
+      .where(and(eq(clients.id, clientId), eq(clients.practiceId, practiceId)))
+      .limit(1);
+
+    if (!client) return res.status(404).json({ message: "Client not found" });
+
+    let extra: any = {};
+    if (client.extraDetailsJson) {
+      try { extra = JSON.parse(client.extraDetailsJson); } catch (e) {}
+    }
+
+    extra.pipelineStage = "Client";
+    extra.convertedAt = new Date().toISOString();
+    if (req.body.clientManager) extra.clientManager = req.body.clientManager;
+
+    // Update client trading status to Trading / Active
+    await db.update(clients)
+      .set({
+        tradingStatus: "Trading",
+        extraDetailsJson: JSON.stringify(extra),
+      })
+      .where(eq(clients.id, clientId));
+
+    // Refresh statutory deadlines for this client
+    try {
+      const { refreshClientDeadlines } = await import("./practice-deadlines");
+      await refreshClientDeadlines(practiceId, clientId);
+    } catch (e) {
+      console.warn("Deadlines auto-refresh on convert notice:", e);
+    }
+
+    // Initialize Standard Onboarding Checklist if not already present
+    const existingChecks = await db
+      .select()
+      .from(pmOnboardingChecks)
+      .where(and(eq(pmOnboardingChecks.clientId, clientId), eq(pmOnboardingChecks.practiceId, practiceId)));
+
+    if (existingChecks.length === 0) {
+      const standardChecks = [
+        { criteria: "Verify Identity & Proof of Address (AML Check)", status: "No", todo: "Pending", isCompleted: false },
+        { criteria: "Issue & Execute Letter of Engagement (LoE)", status: "No", todo: "Pending", isCompleted: false },
+        { criteria: "Submit HMRC 64-8 Agent Authorisation", status: "No", todo: "Pending", isCompleted: false },
+        { criteria: "Request Professional Clearance from Previous Accountant", status: "No", todo: "Pending", isCompleted: false },
+        { criteria: "Set up Chart of Accounts & Bank Feeds", status: "No", todo: "Pending", isCompleted: false },
+      ];
+
+      await db.insert(pmOnboardingChecks).values(
+        standardChecks.map(c => ({
+          practiceId,
+          clientId,
+          criteria: c.criteria,
+          status: c.status,
+          todo: c.todo,
+          isCompleted: c.isCompleted,
+        }))
+      );
+    }
+
+    // Add timeline log
+    await db.insert(pmClientTimeline).values({
+      practiceId,
+      clientId,
+      userId: req.user.id,
+      activityType: "Note",
+      title: "Lead Converted to Active Client",
+      content: `Lead ${client.clientName} was officially converted to an Active Accounting Client. Statutory deadlines and onboarding checklist initiated.`,
+    });
+
+    res.json({
+      success: true,
+      message: `Successfully converted ${client.clientName} to an Active Accounting Client.`,
+      clientId,
+    });
+  } catch (error: any) {
+    console.error("Convert to client error:", error);
+    res.status(500).json({ message: error.message || "Failed to convert client" });
   }
 });
 
@@ -709,6 +884,35 @@ router.patch("/tasks/:id", async (req: any, res) => {
     res.json({ message: "Task updated" });
   } catch (error) {
     res.status(500).json({ message: "Failed to update task" });
+  }
+});
+
+// --- MASTER CONTACTS DIRECTORY ---
+router.get("/contacts", async (req: any, res) => {
+  try {
+    const practiceId = req.user.practiceId;
+    const result = await db
+      .select({
+        id: contacts.id,
+        name: contacts.name,
+        contactType: contacts.contactType,
+        email: contacts.email,
+        phone: contacts.phone,
+        address: contacts.address,
+        designation: contacts.designation,
+        clientId: contacts.clientId,
+        clientName: clients.clientName,
+        clientCode: clients.clientCode,
+        clientType: clients.clientType,
+        createdAt: contacts.createdAt,
+      })
+      .from(contacts)
+      .leftJoin(clients, eq(contacts.clientId, clients.id))
+      .where(eq(contacts.practiceId, practiceId))
+      .orderBy(desc(contacts.createdAt));
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch contacts" });
   }
 });
 
@@ -2600,6 +2804,269 @@ router.delete("/calendar/integrations/:id", async (req: any, res) => {
     res.json({ success: true, message: "Calendar integration disconnected." });
   } catch (error: any) {
     res.status(500).json({ message: error.message || "Failed to disconnect calendar" });
+  }
+});
+
+// =========================================================================
+// HMRC 64-8 / DIGITAL AGENT AUTHORISATIONS
+// =========================================================================
+
+// GET all agent authorisations for a client
+router.get("/clients/:clientId/authorizations", async (req: any, res) => {
+  try {
+    const practiceId = req.user.practiceId;
+    const clientId = parseInt(req.params.clientId);
+
+    const auths = await db
+      .select()
+      .from(pmAgentAuthorizations)
+      .where(and(eq(pmAgentAuthorizations.practiceId, practiceId), eq(pmAgentAuthorizations.clientId, clientId)))
+      .orderBy(desc(pmAgentAuthorizations.createdAt));
+
+    res.json(auths);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message || "Failed to fetch agent authorizations" });
+  }
+});
+
+// GET merged HMRC Form 64-8 dataset for preview / PDF printing
+router.get("/clients/:clientId/64-8-data", async (req: any, res) => {
+  try {
+    const practiceId = req.user.practiceId;
+    const clientId = parseInt(req.params.clientId);
+
+    // Fetch client
+    const [client] = await db
+      .select()
+      .from(clients)
+      .where(and(eq(clients.id, clientId), eq(clients.practiceId, practiceId)))
+      .limit(1);
+
+    if (!client) {
+      return res.status(404).json({ message: "Client not found" });
+    }
+
+    // Fetch practice firm details
+    const [firm] = await db
+      .select()
+      .from(firmDetails)
+      .where(eq(firmDetails.practiceId, practiceId))
+      .limit(1);
+
+    // Fetch current authorisations
+    const auths = await db
+      .select()
+      .from(pmAgentAuthorizations)
+      .where(and(eq(pmAgentAuthorizations.practiceId, practiceId), eq(pmAgentAuthorizations.clientId, clientId)));
+
+    res.json({
+      client: {
+        id: client.id,
+        clientName: client.clientName,
+        tradingName: client.clientName,
+        clientType: client.clientType,
+        registrationNumber: client.registrationNumber || "",
+        taxReferenceNumber: client.utrNumber || "", // UTR
+        utrNumber: client.utrNumber || "",
+        niNumber: client.niNumber || "",
+        vatNumber: client.vatNumber || "",
+        payeReference: (client as any).payeReference || "",
+        address: client.address || "",
+        postcode: client.postcode || "",
+        phone: client.phone || "",
+        email: client.email || "",
+      },
+      firm: firm ? {
+        legalName: firm.firmName || "Accounting & Advisory Practice",
+        tradingName: firm.firmName || "Practice Team",
+        address: firm.address || "",
+        city: firm.city || "",
+        postcode: firm.postCode || "",
+        phone: firm.phone || "",
+        email: firm.email || "",
+        hmrcAgentCode: firm.hmrcAgentCode || "",
+        saAgentId: firm.saAgentId || "",
+        ctAgentId: firm.ctAgentId || "",
+      } : {
+        legalName: "Chartered Certified Accountants",
+        tradingName: "SanSuite Practice",
+        address: "100 High Street",
+        city: "London",
+        postcode: "EC1A 1BB",
+        phone: "+44 20 7946 0000",
+        email: "compliance@sansuite.co.uk",
+        hmrcAgentCode: "AGNT-UK-001",
+        saAgentId: "SA-99482",
+        ctAgentId: "CT-88291",
+      },
+      authorizations: auths,
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message || "Failed to generate 64-8 data" });
+  }
+});
+
+// POST single agent authorisation
+router.post("/clients/:clientId/authorizations", async (req: any, res) => {
+  try {
+    const practiceId = req.user.practiceId;
+    const clientId = parseInt(req.params.clientId);
+    const { serviceType, status, codeStatus, submissionDate, agentReference, notes } = req.body;
+
+    if (!serviceType) {
+      return res.status(400).json({ message: "Service type is required" });
+    }
+
+    const [newAuth] = await db
+      .insert(pmAgentAuthorizations)
+      .values({
+        practiceId,
+        clientId,
+        serviceType,
+        status: status || "Pending",
+        codeStatus: codeStatus || "Auth Code Sent",
+        submissionDate: submissionDate ? new Date(submissionDate) as any : new Date() as any,
+        agentReference: agentReference || null,
+        notes: notes || null,
+      })
+      .$returningId();
+
+    // Log to client timeline
+    await db.insert(pmClientTimeline).values({
+      practiceId,
+      clientId,
+      userId: req.user.id,
+      activityType: "StatusChange",
+      title: `HMRC 64-8 Agent Authorisation: ${serviceType}`,
+      content: `Authorisation created with status '${status || "Pending"}' (${codeStatus || "Auth Code Sent"}).`,
+    });
+
+    res.status(201).json({ id: newAuth.id, message: "Agent authorization saved successfully" });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message || "Failed to create agent authorization" });
+  }
+});
+
+// POST bulk save / update agent authorisations for standard regimes
+router.post("/clients/:clientId/authorizations/bulk-save", async (req: any, res) => {
+  try {
+    const practiceId = req.user.practiceId;
+    const clientId = parseInt(req.params.clientId);
+    const { authorizations } = req.body; // Array of { serviceType, status, codeStatus, agentReference, notes }
+
+    if (!Array.isArray(authorizations)) {
+      return res.status(400).json({ message: "Authorizations must be an array" });
+    }
+
+    for (const item of authorizations) {
+      if (!item.serviceType) continue;
+
+      // Check if this serviceType already exists for this client
+      const [existing] = await db
+        .select()
+        .from(pmAgentAuthorizations)
+        .where(
+          and(
+            eq(pmAgentAuthorizations.practiceId, practiceId),
+            eq(pmAgentAuthorizations.clientId, clientId),
+            eq(pmAgentAuthorizations.serviceType, item.serviceType)
+          )
+        )
+        .limit(1);
+
+      if (existing) {
+        await db
+          .update(pmAgentAuthorizations)
+          .set({
+            status: item.status || existing.status,
+            codeStatus: item.codeStatus || existing.codeStatus,
+            submissionDate: item.submissionDate ? new Date(item.submissionDate) as any : existing.submissionDate,
+            agentReference: item.agentReference ?? existing.agentReference,
+            notes: item.notes ?? existing.notes,
+            updatedAt: new Date(),
+          })
+          .where(eq(pmAgentAuthorizations.id, existing.id));
+      } else {
+        await db.insert(pmAgentAuthorizations).values({
+          practiceId,
+          clientId,
+          serviceType: item.serviceType,
+          status: item.status || "Authorized",
+          codeStatus: item.codeStatus || "Code Verified",
+          submissionDate: new Date() as any,
+          agentReference: item.agentReference || null,
+          notes: item.notes || null,
+        });
+      }
+    }
+
+    // Log to client timeline
+    await db.insert(pmClientTimeline).values({
+      practiceId,
+      clientId,
+      userId: req.user.id,
+      activityType: "StatusChange",
+      title: "HMRC 64-8 Agent Authorisations Updated",
+      content: `Authorisations updated for ${authorizations.map((a: any) => a.serviceType).join(", ")}.`,
+    });
+
+    res.json({ success: true, message: "HMRC 64-8 authorisations saved successfully." });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message || "Failed to bulk update authorizations" });
+  }
+});
+
+// PATCH single agent authorisation
+router.patch("/clients/:clientId/authorizations/:id", async (req: any, res) => {
+  try {
+    const practiceId = req.user.practiceId;
+    const clientId = parseInt(req.params.clientId);
+    const id = parseInt(req.params.id);
+    const { status, codeStatus, submissionDate, agentReference, notes } = req.body;
+
+    const [existing] = await db
+      .select()
+      .from(pmAgentAuthorizations)
+      .where(and(eq(pmAgentAuthorizations.id, id), eq(pmAgentAuthorizations.practiceId, practiceId), eq(pmAgentAuthorizations.clientId, clientId)))
+      .limit(1);
+
+    if (!existing) {
+      return res.status(404).json({ message: "Authorization not found" });
+    }
+
+    await db
+      .update(pmAgentAuthorizations)
+      .set({
+        status: status ?? existing.status,
+        codeStatus: codeStatus ?? existing.codeStatus,
+        submissionDate: submissionDate ? new Date(submissionDate) as any : existing.submissionDate,
+        agentReference: agentReference ?? existing.agentReference,
+        notes: notes ?? existing.notes,
+        updatedAt: new Date(),
+      })
+      .where(eq(pmAgentAuthorizations.id, id));
+
+    res.json({ success: true, message: "Authorization updated." });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message || "Failed to update authorization" });
+  }
+});
+
+// DELETE single agent authorisation
+router.delete("/clients/:clientId/authorizations/:id", async (req: any, res) => {
+  try {
+    const practiceId = req.user.practiceId;
+    const clientId = parseInt(req.params.clientId);
+    const id = parseInt(req.params.id);
+
+    await db
+      .delete(pmAgentAuthorizations)
+      .where(and(eq(pmAgentAuthorizations.id, id), eq(pmAgentAuthorizations.practiceId, practiceId), eq(pmAgentAuthorizations.clientId, clientId)));
+
+    res.json({ success: true, message: "Authorization deleted." });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message || "Failed to delete authorization" });
   }
 });
 

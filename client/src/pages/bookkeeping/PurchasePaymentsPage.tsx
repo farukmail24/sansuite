@@ -7,7 +7,8 @@ import { useToast } from "../../hooks/useToast";
 import {
   Save, X, Search, FileText, Download, CheckCircle2,
   AlertTriangle, CreditCard, ChevronRight, DollarSign,
-  Building, Calendar, CheckSquare, Square, RefreshCw
+  Building, Calendar, CheckSquare, Square, RefreshCw,
+  Undo2, History
 } from "lucide-react";
 import { bookkeepingSidebar, getClientSidebar } from "./sidebar";
 import ClientGuard from "./ClientGuard";
@@ -18,7 +19,7 @@ export default function PurchasePaymentsPage() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<"single" | "bacs">("bacs");
+  const [activeTab, setActiveTab] = useState<"single" | "bacs" | "history">("bacs");
   const [searchTerm, setSearchTerm] = useState("");
 
   // Single payment modal
@@ -123,6 +124,46 @@ export default function PurchasePaymentsPage() {
     onError: (e: any) => toast({ title: "Error", description: e.message, type: "error" })
   });
 
+  const { data: allPurchases = [], isLoading: loadingAllPurchases } = useQuery({
+    queryKey: ["/api/bookkeeping/purchases/client", clientId],
+    queryFn: async () => {
+      if (!clientId) return [];
+      const res = await apiRequest("GET", `/api/bookkeeping/purchases/client/${clientId}`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!clientId
+  });
+
+  const paidBills = allPurchases.filter((b: any) => parseFloat(b.paidAmount || "0") > 0);
+
+  const deallocatePurchaseMutation = useMutation({
+    mutationFn: async ({ billId, amount }: { billId: number; amount?: number }) => {
+      const res = await apiRequest("POST", `/api/bookkeeping/purchase-payments/${billId}/deallocate`, { amount });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed to deallocate purchase payment");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookkeeping/purchases/client", clientId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/bookkeeping/bacs/client/${clientId}/unpaid-bills`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/bookkeeping/client/${clientId}/dashboard-analytics`] });
+      toast({
+        title: "Payment Deallocated",
+        description: data.message || "Payment reversed and bill balance restored.",
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Deallocation Failed",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   if (!clientId) {
     return <ClientGuard featureTitle="Purchase Payments" />;
   }
@@ -210,6 +251,14 @@ export default function PurchasePaymentsPage() {
             >
               <CreditCard size={14} /> BACS Batch Payment Export
             </button>
+            <button
+              onClick={() => setActiveTab("history")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+                activeTab === "history" ? "bg-purple-600 text-white shadow-sm" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              <History size={14} /> Payment History & Deallocation
+            </button>
           </div>
         </div>
 
@@ -218,11 +267,13 @@ export default function PurchasePaymentsPage() {
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
-                {activeTab === "bacs" ? "BACS Batch Supplier Payments" : "Outstanding Purchase Bills"}
+                {activeTab === "bacs" ? "BACS Batch Supplier Payments" : activeTab === "history" ? "Supplier Payment History & Deallocation" : "Outstanding Purchase Bills"}
               </h1>
               <p className="text-sm text-gray-500 mt-1">
                 {activeTab === "bacs"
                   ? "Select multiple approved bills, verify UK sort codes and account numbers, and export Standard 18 BACS files for online banking."
+                  : activeTab === "history"
+                  ? "Audit recorded supplier bill payments and deallocate/reverse settlements if needed."
                   : "Review open supplier invoices and record manual settlements."}
               </p>
             </div>
@@ -294,7 +345,7 @@ export default function PurchasePaymentsPage() {
           <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
               <h3 className="font-semibold text-gray-800 text-sm">
-                {activeTab === "bacs" ? "Select Bills to Include in BACS Batch" : "Unpaid Bills"}
+                {activeTab === "bacs" ? "Select Bills to Include in BACS Batch" : activeTab === "history" ? "Recorded Supplier Payments" : "Unpaid Bills"}
               </h3>
               <div className="relative">
                 <Search size={14} className="absolute left-3 top-2.5 text-gray-400" />
@@ -308,100 +359,168 @@ export default function PurchasePaymentsPage() {
               </div>
             </div>
 
-            <table className="w-full text-left text-sm">
-              <thead className="bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-200 uppercase tracking-wider">
-                <tr>
-                  {activeTab === "bacs" && (
-                    <th className="px-4 py-3 w-10 text-center">
-                      <input
-                        type="checkbox"
-                        checked={selectedBacsIds.length === filteredBills.length && filteredBills.length > 0}
-                        onChange={handleSelectAllBacs}
-                        className="rounded border-gray-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
-                      />
-                    </th>
-                  )}
-                  <th className="px-4 py-3">Bill Date</th>
-                  <th className="px-4 py-3">Bill No.</th>
-                  <th className="px-4 py-3">Supplier Name</th>
-                  {activeTab === "bacs" && <th className="px-4 py-3">Bank Details (Sort / Acc)</th>}
-                  <th className="px-4 py-3 text-right">Total (£)</th>
-                  <th className="px-4 py-3 text-right">Balance Due (£)</th>
-                  <th className="px-4 py-3 text-right">Due Date</th>
-                  <th className="px-4 py-3 text-center">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {loadingBills ? (
-                  <tr><td colSpan={8} className="text-center py-10 text-gray-400">Loading unpaid bills...</td></tr>
-                ) : filteredBills.length === 0 ? (
+            {activeTab === "history" ? (
+              <table className="w-full text-left text-sm">
+                <thead className="bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-200 uppercase tracking-wider">
                   <tr>
-                    <td colSpan={8} className="text-center py-12">
-                      <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 mx-auto flex items-center justify-center mb-2">
-                        <CheckCircle2 size={24} />
-                      </div>
-                      <p className="text-sm font-semibold text-gray-700">No Unpaid Bills Found</p>
-                      <p className="text-xs text-gray-400 mt-1">All purchase invoices are fully paid or none exist.</p>
-                    </td>
+                    <th className="px-4 py-3">Bill Date</th>
+                    <th className="px-4 py-3">Bill No.</th>
+                    <th className="px-4 py-3 text-right">Grand Total (£)</th>
+                    <th className="px-4 py-3 text-right">Paid Amount (£)</th>
+                    <th className="px-4 py-3 text-right">Remaining (£)</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3 text-center">Action</th>
                   </tr>
-                ) : (
-                  filteredBills.map((bill: any) => {
-                    const isSelected = selectedBacsIds.includes(bill.id);
-                    return (
-                      <tr
-                        key={bill.id}
-                        className={`transition-colors ${isSelected ? "bg-purple-50/50" : "hover:bg-gray-50/70"}`}
-                      >
-                        {activeTab === "bacs" && (
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {loadingAllPurchases ? (
+                    <tr><td colSpan={7} className="text-center py-10 text-gray-400">Loading payment history...</td></tr>
+                  ) : paidBills.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="text-center py-12">
+                        <div className="w-12 h-12 rounded-full bg-gray-100 text-gray-500 mx-auto flex items-center justify-center mb-2">
+                          <History size={24} />
+                        </div>
+                        <p className="text-sm font-semibold text-gray-700">No Settled Bills Found</p>
+                        <p className="text-xs text-gray-400 mt-1">There are no paid or partially paid purchase bills to deallocate.</p>
+                      </td>
+                    </tr>
+                  ) : (
+                    paidBills.map((bill: any) => {
+                      const grandTotal = parseFloat(bill.grandTotal || "0");
+                      const paidAmount = parseFloat(bill.paidAmount || "0");
+                      const remaining = Math.max(0, grandTotal - paidAmount);
+                      return (
+                        <tr key={bill.id} className="hover:bg-gray-50/70 transition-colors">
+                          <td className="px-4 py-3 text-gray-600 font-mono text-xs">
+                            {bill.billDate ? new Date(bill.billDate).toLocaleDateString("en-GB") : "—"}
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-purple-700">{bill.billNumber}</td>
+                          <td className="px-4 py-3 text-right font-mono text-gray-700">£{grandTotal.toFixed(2)}</td>
+                          <td className="px-4 py-3 text-right font-mono font-bold text-emerald-600">£{paidAmount.toFixed(2)}</td>
+                          <td className="px-4 py-3 text-right font-mono text-gray-500">£{remaining.toFixed(2)}</td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                              bill.status === "Paid" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                            }`}>
+                              {bill.status}
+                            </span>
+                          </td>
                           <td className="px-4 py-3 text-center">
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => handleToggleBacsSelect(bill.id)}
-                              className="rounded border-gray-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
-                            />
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`Are you sure you want to deallocate/reverse payments of £${paidAmount.toFixed(2)} on bill ${bill.billNumber}?`)) {
+                                  deallocatePurchaseMutation.mutate({ billId: bill.id });
+                                }
+                              }}
+                              disabled={deallocatePurchaseMutation.isPending}
+                              className="px-3 py-1 bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 rounded text-xs font-medium inline-flex items-center gap-1 transition-colors disabled:opacity-50"
+                            >
+                              <Undo2 size={12} /> Deallocate Payment
+                            </button>
                           </td>
-                        )}
-                        <td className="px-4 py-3 text-gray-600 font-mono text-xs">
-                          {new Date(bill.billDate).toLocaleDateString("en-GB")}
-                        </td>
-                        <td className="px-4 py-3 font-semibold text-purple-700">{bill.billNumber}</td>
-                        <td className="px-4 py-3 font-medium text-gray-900">{bill.supplierName || "Supplier"}</td>
-
-                        {activeTab === "bacs" && (
-                          <td className="px-4 py-3 text-xs">
-                            {bill.hasValidBank ? (
-                              <span className="inline-flex items-center gap-1 text-emerald-700 font-mono bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                                <CheckCircle2 size={12} />
-                                {bill.cleanSortCode} / {bill.cleanAccountNumber}
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                                <AlertTriangle size={12} /> Missing bank details
-                              </span>
-                            )}
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            ) : (
+              <table className="w-full text-left text-sm">
+                <thead className="bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-200 uppercase tracking-wider">
+                  <tr>
+                    {activeTab === "bacs" && (
+                      <th className="px-4 py-3 w-10 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedBacsIds.length === filteredBills.length && filteredBills.length > 0}
+                          onChange={handleSelectAllBacs}
+                          className="rounded border-gray-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
+                        />
+                      </th>
+                    )}
+                    <th className="px-4 py-3">Bill Date</th>
+                    <th className="px-4 py-3">Bill No.</th>
+                    <th className="px-4 py-3">Supplier Name</th>
+                    {activeTab === "bacs" && <th className="px-4 py-3">Bank Details (Sort / Acc)</th>}
+                    <th className="px-4 py-3 text-right">Total (£)</th>
+                    <th className="px-4 py-3 text-right">Balance Due (£)</th>
+                    <th className="px-4 py-3 text-right">Due Date</th>
+                    <th className="px-4 py-3 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {loadingBills ? (
+                    <tr><td colSpan={8} className="text-center py-10 text-gray-400">Loading unpaid bills...</td></tr>
+                  ) : filteredBills.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="text-center py-12">
+                        <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 mx-auto flex items-center justify-center mb-2">
+                          <CheckCircle2 size={24} />
+                        </div>
+                        <p className="text-sm font-semibold text-gray-700">No Unpaid Bills Found</p>
+                        <p className="text-xs text-gray-400 mt-1">All purchase invoices are fully paid or none exist.</p>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredBills.map((bill: any) => {
+                      const isSelected = selectedBacsIds.includes(bill.id);
+                      return (
+                        <tr
+                          key={bill.id}
+                          className={`transition-colors ${isSelected ? "bg-purple-50/50" : "hover:bg-gray-50/70"}`}
+                        >
+                          {activeTab === "bacs" && (
+                            <td className="px-4 py-3 text-center">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => handleToggleBacsSelect(bill.id)}
+                                className="rounded border-gray-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
+                              />
+                            </td>
+                          )}
+                          <td className="px-4 py-3 text-gray-600 font-mono text-xs">
+                            {new Date(bill.billDate).toLocaleDateString("en-GB")}
                           </td>
-                        )}
+                          <td className="px-4 py-3 font-semibold text-purple-700">{bill.billNumber}</td>
+                          <td className="px-4 py-3 font-medium text-gray-900">{bill.supplierName || "Supplier"}</td>
 
-                        <td className="px-4 py-3 text-right font-mono text-gray-700">£{parseFloat(bill.grandTotal).toFixed(2)}</td>
-                        <td className="px-4 py-3 text-right font-mono font-bold text-red-600">£{parseFloat(bill.remainingAmount).toFixed(2)}</td>
-                        <td className="px-4 py-3 text-right text-xs text-orange-600">
-                          {bill.dueDate ? new Date(bill.dueDate).toLocaleDateString("en-GB") : "—"}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <button
-                            onClick={() => openPaymentModal(bill)}
-                            className="px-3 py-1 bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 rounded text-xs font-medium transition-colors"
-                          >
-                            Pay Bill
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                          {activeTab === "bacs" && (
+                            <td className="px-4 py-3 text-xs">
+                              {bill.hasValidBank ? (
+                                <span className="inline-flex items-center gap-1 text-emerald-700 font-mono bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                  <CheckCircle2 size={12} />
+                                  {bill.cleanSortCode} / {bill.cleanAccountNumber}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                                  <AlertTriangle size={12} /> Missing bank details
+                                </span>
+                              )}
+                            </td>
+                          )}
+
+                          <td className="px-4 py-3 text-right font-mono text-gray-700">£{parseFloat(bill.grandTotal).toFixed(2)}</td>
+                          <td className="px-4 py-3 text-right font-mono font-bold text-red-600">£{parseFloat(bill.remainingAmount).toFixed(2)}</td>
+                          <td className="px-4 py-3 text-right text-xs text-orange-600">
+                            {bill.dueDate ? new Date(bill.dueDate).toLocaleDateString("en-GB") : "—"}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              onClick={() => openPaymentModal(bill)}
+                              className="px-3 py-1 bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 rounded text-xs font-medium transition-colors"
+                            >
+                              Pay Bill
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
 

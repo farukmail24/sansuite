@@ -4,17 +4,17 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import AppLayout from "../../components/layout/AppLayout";
 import { apiRequest, queryClient } from "../../lib/queryClient";
 import { useToast } from "../../hooks/useToast";
-import { Save, Plus, X, Search, FileText, CheckCircle2, UserCheck, ArrowDownRight, RefreshCw, Wallet } from "lucide-react";
+import { Save, Plus, X, Search, FileText, CheckCircle2, UserCheck, ArrowDownRight, RefreshCw, Wallet, RotateCcw, History } from "lucide-react";
 import { bookkeepingSidebar, getClientSidebar } from "./sidebar";
 import ClientGuard from "./ClientGuard";
 
 export default function ReceiptsPage() {
   const [match, params] = useRoute("/bookkeeping/:id/receipts");
-  const clientId = match ? params.id : "";
+  const clientId = match ? params?.id : "";
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<"invoices" | "multi">("invoices");
+  const [activeTab, setActiveTab] = useState<"invoices" | "multi" | "history">("invoices");
   const [searchTerm, setSearchTerm] = useState("");
 
   // Single-invoice Quick Pay Modal State
@@ -87,6 +87,38 @@ export default function ReceiptsPage() {
   const unpaidInvoices = useMemo(() => {
     return invoices.filter((inv: any) => inv.status !== "Paid" && inv.status !== "Void");
   }, [invoices]);
+
+  // Invoices with payment allocations
+  const paidInvoices = useMemo(() => {
+    return invoices.filter((inv: any) => parseFloat(inv.paidAmount || "0") > 0);
+  }, [invoices]);
+
+  // Deallocate Receipt Mutation (Capium Parity Article 9000204574)
+  const deallocateMutation = useMutation({
+    mutationFn: async ({ invoiceId, amount }: { invoiceId: number; amount?: number }) => {
+      const res = await apiRequest("POST", `/api/bookkeeping/receipts/${invoiceId}/deallocate`, { amount });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed to deallocate payment");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookkeeping/invoices/client", clientId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/bookkeeping/client/${clientId}/dashboard-analytics`] });
+      toast({
+        title: "Payment Deallocated",
+        description: data.message || "Payment reversed and invoice status updated.",
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Deallocation Failed",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
 
   // Outstanding invoices for the selected customer in Multi-Receipt workflow
   const customerOpenInvoices = useMemo(() => {
@@ -238,18 +270,28 @@ export default function ReceiptsPage() {
           </div>
           <div className="flex items-center gap-2">
             <button 
-              onClick={() => setActiveTab(activeTab === "invoices" ? "multi" : "invoices")}
-              className="btn-SanSuite flex items-center gap-2"
+              onClick={() => setActiveTab("invoices")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                activeTab === "invoices" ? "bg-purple-600 text-white" : "bg-white text-gray-700 hover:bg-gray-100 border"
+              }`}
             >
-              {activeTab === "invoices" ? (
-                <>
-                  <UserCheck size={14} /> + Multi-Invoice / Advance Receipt
-                </>
-              ) : (
-                <>
-                  <FileText size={14} /> Back to Open Invoices List
-                </>
-              )}
+              <FileText size={13} /> Open Invoices ({unpaidInvoices.length})
+            </button>
+            <button 
+              onClick={() => setActiveTab("multi")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                activeTab === "multi" ? "bg-purple-600 text-white" : "bg-white text-gray-700 hover:bg-gray-100 border"
+              }`}
+            >
+              <UserCheck size={13} /> + Multi-Invoice Receipt
+            </button>
+            <button 
+              onClick={() => setActiveTab("history")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                activeTab === "history" ? "bg-purple-600 text-white" : "bg-white text-gray-700 hover:bg-gray-100 border"
+              }`}
+            >
+              <History size={13} /> Payment History & Deallocation ({paidInvoices.length})
             </button>
           </div>
         </div>
@@ -480,6 +522,68 @@ export default function ReceiptsPage() {
                   </div>
                 </div>
               </div>
+            </div>
+          ) : activeTab === "history" ? (
+            /* Paid Invoices & Deallocation History */
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                <div>
+                  <h2 className="font-semibold text-gray-800">Allocated Receipts & Deallocation</h2>
+                  <p className="text-xs text-gray-400">View customer invoice payments and reverse allocations to restore open balances (Capium Article 9000204574)</p>
+                </div>
+              </div>
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-200 uppercase">
+                    <th className="px-5 py-3">Date</th>
+                    <th className="px-5 py-3">Invoice No.</th>
+                    <th className="px-5 py-3 text-right">Grand Total</th>
+                    <th className="px-5 py-3 text-right">Amount Paid</th>
+                    <th className="px-5 py-3 text-right">Remaining Due</th>
+                    <th className="px-5 py-3 text-center">Status</th>
+                    <th className="px-5 py-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="text-sm">
+                  {paidInvoices.length === 0 ? (
+                    <tr><td colSpan={7} className="text-center py-10 text-gray-500 text-xs">No invoices with allocated payments found.</td></tr>
+                  ) : paidInvoices.map((inv: any) => {
+                    const grand = parseFloat(inv.grandTotal || "0");
+                    const paid = parseFloat(inv.paidAmount || "0");
+                    const rem = Math.max(0, grand - paid);
+                    return (
+                      <tr key={inv.id} className="border-b border-gray-100 hover:bg-gray-50/50">
+                        <td className="px-5 py-3 text-gray-600">
+                          {inv.invoiceDate ? new Date(inv.invoiceDate).toLocaleDateString("en-GB") : "—"}
+                        </td>
+                        <td className="px-5 py-3 font-semibold text-purple-700">{inv.invoiceNumber}</td>
+                        <td className="px-5 py-3 text-right font-mono text-xs">£{grand.toFixed(2)}</td>
+                        <td className="px-5 py-3 text-right font-mono text-xs text-emerald-600 font-semibold">£{paid.toFixed(2)}</td>
+                        <td className="px-5 py-3 text-right font-mono text-xs text-gray-700">£{rem.toFixed(2)}</td>
+                        <td className="px-5 py-3 text-center">
+                          <span className={inv.status === "Paid" ? "badge-success" : "badge-info"}>
+                            {inv.status}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3 text-right">
+                          <button
+                            onClick={() => {
+                              if (confirm(`Deallocate £${paid.toFixed(2)} from Invoice ${inv.invoiceNumber}? This will revert the invoice balance back to unpaid.`)) {
+                                deallocateMutation.mutate({ invoiceId: inv.id, amount: paid });
+                              }
+                            }}
+                            disabled={deallocateMutation.isPending}
+                            className="px-3 py-1 bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 rounded text-xs font-medium inline-flex items-center gap-1 cursor-pointer transition-colors"
+                            title="Reverse payment allocation"
+                          >
+                            <RotateCcw size={12} /> Deallocate
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           ) : (
             /* Open Invoices List with Quick Pay */

@@ -7,6 +7,7 @@ import SettingsTabs from "../../../components/bookkeeping/SettingsTabs";
 import { apiRequest } from "../../../lib/queryClient";
 import { useToast } from "../../../hooks/useToast";
 import { useAuth } from "../../../hooks/useAuth";
+import GlobalMediaLibraryModal, { MediaFile } from "../../../components/common/GlobalMediaLibraryModal";
 import {
   ChevronRight,
   Building2,
@@ -15,6 +16,8 @@ import {
   UploadCloud,
   Trash2,
   Building,
+  FolderOpen,
+  Sparkles,
 } from "lucide-react";
 
 export default function CompanyLogoPage() {
@@ -26,6 +29,8 @@ export default function CompanyLogoPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [isMediaModalOpen, setIsMediaModalOpen] = useState(false);
 
   const { data: clients = [] } = useQuery<any[]>({
     queryKey: ["/api/practice/clients"],
@@ -91,6 +96,34 @@ export default function CompanyLogoPage() {
     } finally {
       setLogoUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const selectFromLibraryMutation = useMutation({
+    mutationFn: async (logoUrl: string) => {
+      const res = await apiRequest("POST", `/api/bookkeeping/settings/${effectiveClientId}/select-logo`, { logoUrl });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || "Failed to update logo");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/bookkeeping/settings/${effectiveClientId}/company-info`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/practice/clients"] });
+      toast({ title: "Logo Updated", description: "Company logo selected from Media Library successfully." });
+      setIsMediaModalOpen(false);
+    },
+    onError: (err: any) => {
+      toast({ title: "Update Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleMediaSelect = (file: MediaFile) => {
+    if (file.url) {
+      selectFromLibraryMutation.mutate(file.url);
+    } else {
+      toast({ title: "Selection Error", description: "Selected item does not have a valid URL.", variant: "destructive" });
     }
   };
 
@@ -169,6 +202,15 @@ export default function CompanyLogoPage() {
                 Upload and manage corporate branding logo for high-resolution rendering on Invoices, Quotations, and Client Statements.
               </p>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setIsMediaModalOpen(true)}
+              className="px-4 py-2.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold rounded-xl text-xs flex items-center gap-2 transition-all cursor-pointer shadow-2xs shrink-0"
+            >
+              <FolderOpen size={15} />
+              <span>Global Media Library</span>
+            </button>
           </div>
 
           <SettingsTabs activeTab="company_logo" clientId={effectiveClientId} />
@@ -200,15 +242,23 @@ export default function CompanyLogoPage() {
                     className="max-h-24 max-w-full object-contain"
                   />
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsMediaModalOpen(true)}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <FolderOpen size={13} />
+                    <span>Choose from Media Library</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={logoUploading}
-                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
                   >
                     <RefreshCw size={13} className={logoUploading ? "animate-spin" : ""} />
-                    <span>{logoUploading ? "Uploading..." : "Replace Logo"}</span>
+                    <span>{logoUploading ? "Uploading..." : "Upload from Computer"}</span>
                   </button>
                   <button
                     type="button"
@@ -227,19 +277,34 @@ export default function CompanyLogoPage() {
               </div>
             ) : (
               <div
-                onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-300 hover:border-purple-500 bg-slate-50 hover:bg-purple-50/40 rounded-2xl p-12 text-center transition-colors cursor-pointer space-y-3"
+                className="border-2 border-dashed border-slate-300 hover:border-purple-500 bg-slate-50 hover:bg-purple-50/40 rounded-2xl p-10 text-center transition-colors space-y-4"
               >
                 <div className="w-14 h-14 rounded-2xl bg-white shadow-xs border border-slate-200 text-purple-600 mx-auto flex items-center justify-center">
                   <UploadCloud size={28} />
                 </div>
                 <div>
-                  <span className="text-sm font-bold text-slate-800 block">Click to upload company logo</span>
-                  <span className="text-xs text-slate-500">or drag and drop your file here</span>
+                  <span className="text-sm font-bold text-slate-800 block">Upload or Choose Company Logo</span>
+                  <span className="text-xs text-slate-500">Pick from practice media vault or upload a new branding image</span>
                 </div>
-                <span className="inline-block px-3 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 shadow-2xs">
-                  Browse File
-                </span>
+                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsMediaModalOpen(true)}
+                    className="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs shadow-xs flex items-center gap-2 transition-all cursor-pointer"
+                  >
+                    <FolderOpen size={15} />
+                    <span>Choose from Global Media Library</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={logoUploading}
+                    className="px-5 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-xs shadow-2xs flex items-center gap-2 transition-all cursor-pointer"
+                  >
+                    <UploadCloud size={15} />
+                    <span>{logoUploading ? "Uploading..." : "Browse Local File"}</span>
+                  </button>
+                </div>
               </div>
             )}
 
@@ -253,6 +318,15 @@ export default function CompanyLogoPage() {
           </div>
         </div>
       </div>
+
+      {/* Global Media Library Modal */}
+      <GlobalMediaLibraryModal
+        isOpen={isMediaModalOpen}
+        onClose={() => setIsMediaModalOpen(false)}
+        onSelectFile={handleMediaSelect}
+        allowedTypes="Images"
+        title="Global Practice Media Library — Select Company Logo"
+      />
     </AppLayout>
   );
 }

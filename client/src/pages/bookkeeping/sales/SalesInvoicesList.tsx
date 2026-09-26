@@ -7,7 +7,7 @@ import { useToast } from "../../../hooks/useToast";
 import {
   FileText, Plus, Search, ChevronRight, Pencil, Trash2, Send,
   Mail, X, Building2, Download, Eye, Upload, FileSpreadsheet,
-  CheckCircle2, AlertCircle, History, Info
+  CheckCircle2, AlertCircle, History, Info, Ban
 } from "lucide-react";
 import { getClientSidebar, bookkeepingSidebar } from "../sidebar";
 import { generateSanSuiteInvoicePdf } from "../../../lib/sanSuiteInvoicePdfGenerator";
@@ -24,6 +24,11 @@ export default function SalesInvoicesList() {
   // Send Email Modal State
   const [emailModalInvoice, setEmailModalInvoice] = useState<any>(null);
   const [recipientEmail, setRecipientEmail] = useState("");
+
+  // Bad Debt Write-Off State (Capium Parity)
+  const [badDebtModalInvoice, setBadDebtModalInvoice] = useState<any>(null);
+  const [badDebtReason, setBadDebtReason] = useState("Customer Insolvent / Liquidation");
+  const [badDebtDate, setBadDebtDate] = useState(new Date().toISOString().split("T")[0]);
 
   // CSV Import State (Capium Parity)
   const [showImportModal, setShowImportModal] = useState(false);
@@ -332,6 +337,57 @@ export default function SalesInvoicesList() {
     },
   });
 
+  // Bad Debt Write-off Mutation (Capium Parity: Auto-journal to #7100 Bad Debt Expense / #1100 Trade Debtors)
+  const badDebtMutation = useMutation({
+    mutationFn: async ({ invoice, writeOffReason, writeOffDate }: { invoice: any; writeOffReason: string; writeOffDate: string }) => {
+      const amount = parseFloat(invoice.grandTotal || invoice.totalAmount || "0");
+      // 1. Post balanced journal: Debit #7100 Bad Debt Expense, Credit #1100 Trade Debtors
+      const journalRes = await apiRequest("POST", "/api/journals", {
+        clientId: parseInt(clientId || "1"),
+        journalDate: writeOffDate,
+        reference: `BAD-DEBT-${invoice.invoiceNumber || invoice.id}`,
+        description: `Bad Debt Write-off for invoice ${invoice.invoiceNumber || invoice.id} (${invoice.customerName || "Customer"}) - Reason: ${writeOffReason}`,
+        totalAmount: amount,
+        lines: [
+          {
+            nominalCode: "7100",
+            description: `Bad Debt Expense: Write-off of ${invoice.invoiceNumber || invoice.id}`,
+            debit: amount.toFixed(2),
+            credit: "0.00"
+          },
+          {
+            nominalCode: "1100",
+            description: `Trade Debtors: Write-off of ${invoice.invoiceNumber || invoice.id}`,
+            debit: "0.00",
+            credit: amount.toFixed(2)
+          }
+        ]
+      });
+      if (!journalRes.ok) {
+        const err = await journalRes.json().catch(() => ({}));
+        throw new Error(err.message || "Failed to post bad debt journal entry");
+      }
+
+      // 2. Update invoice status to "BadDebt"
+      const updateRes = await apiRequest("PUT", `/api/bookkeeping/invoices/${invoice.id}`, { status: "BadDebt" });
+      if (!updateRes.ok) throw new Error("Failed to update invoice status");
+      return updateRes.json();
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/bookkeeping/invoices/client/${clientId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bookkeeping/invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/journals", clientId] });
+      toast({
+        title: "Bad Debt Written Off",
+        description: `Invoice ${vars.invoice.invoiceNumber} has been written off and posted to Nominal Ledger (#7100 Bad Debt Expense).`
+      });
+      setBadDebtModalInvoice(null);
+    },
+    onError: (err: any) => {
+      toast({ title: "Write-off Failed", description: err.message, variant: "destructive" });
+    }
+  });
+
   const filteredInvoices = invoices.filter((inv: any) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
@@ -587,8 +643,20 @@ export default function SalesInvoicesList() {
                           {/* STATUS DROPDOWN SELECTOR */}
                           <select
                             value={inv.status || "Draft"}
-                            onChange={(e) => updateStatusMutation.mutate({ id: inv.id, status: e.target.value })}
-                            className="text-xs font-semibold px-2.5 py-1 rounded-full border border-purple-200 bg-purple-50 text-purple-800 outline-none cursor-pointer hover:bg-purple-100 transition-colors capitalize"
+                            onChange={(e) => {
+                              if (e.target.value === "BadDebt") {
+                                setBadDebtModalInvoice(inv);
+                              } else {
+                                updateStatusMutation.mutate({ id: inv.id, status: e.target.value });
+                              }
+                            }}
+                            className={`text-xs font-semibold px-2.5 py-1 rounded-full border outline-none cursor-pointer transition-colors capitalize ${
+                              inv.status === "BadDebt"
+                                ? "bg-rose-100 border-rose-300 text-rose-800"
+                                : inv.status === "Paid"
+                                ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                                : "border-purple-200 bg-purple-50 text-purple-800 hover:bg-purple-100"
+                            }`}
                           >
                             <option value="Draft">Draft</option>
                             <option value="Sent">Sent</option>
@@ -596,6 +664,7 @@ export default function SalesInvoicesList() {
                             <option value="PartiallyPaid">Partially Paid</option>
                             <option value="Paid">Paid</option>
                             <option value="Void">Void</option>
+                            <option value="BadDebt">Bad Debt (Write Off)</option>
                           </select>
                         </td>
                         <td className="px-5 py-4 text-center">
@@ -632,6 +701,16 @@ export default function SalesInvoicesList() {
                             >
                               <Send size={15} />
                             </button>
+                            {/* WRITE OFF AS BAD DEBT BUTTON (CAPIUM PARITY) */}
+                            {inv.status !== "Paid" && inv.status !== "BadDebt" && inv.status !== "Void" && (
+                              <button
+                                onClick={() => setBadDebtModalInvoice(inv)}
+                                className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                                title="Write Off as Bad Debt (Auto-posts journal to #7100)"
+                              >
+                                <Ban size={15} />
+                              </button>
+                            )}
                             {/* EDIT BUTTON */}
                             <button
                               onClick={() => navigate(`/bookkeeping/${clientId}/invoices/${inv.id}/edit`)}
@@ -1022,6 +1101,114 @@ export default function SalesInvoicesList() {
                     : `Import ${parsedInvoices.length} Invoice Lines`}
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bad Debt Write-Off Modal (Capium Parity) */}
+      {badDebtModalInvoice && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-rose-50 to-white">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 bg-rose-100 text-rose-600 rounded-xl flex items-center justify-center">
+                  <Ban size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800">Write Off as Bad Debt</h3>
+                  <p className="text-xs text-slate-500 font-mono">Invoice #{badDebtModalInvoice.invoiceNumber || badDebtModalInvoice.id}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setBadDebtModalInvoice(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="bg-rose-50/70 border border-rose-200 rounded-xl p-4 text-xs text-rose-900 space-y-1">
+                <p className="font-semibold flex items-center gap-1.5">
+                  <AlertCircle size={14} className="text-rose-600" />
+                  Statutory Bad Debt Write-off Notice
+                </p>
+                <p className="text-rose-800 leading-relaxed">
+                  Writing off this invoice will record the outstanding debt as irrecoverable. The invoice status will update to <strong>Bad Debt</strong> and an automatic balanced journal will be posted to the client's nominal ledger:
+                </p>
+                <div className="mt-2 bg-white/80 rounded-lg p-2.5 font-mono text-[11px] space-y-1 text-slate-700 border border-rose-100">
+                  <div className="flex justify-between">
+                    <span>DR #7100 Bad Debt Expense:</span>
+                    <span className="font-bold text-rose-700">£{parseFloat(badDebtModalInvoice.grandTotal || "0").toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>CR #1100 Trade Debtors:</span>
+                    <span className="font-bold text-slate-700">£{parseFloat(badDebtModalInvoice.grandTotal || "0").toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 text-xs">
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                  <span className="text-slate-400 block mb-0.5">Customer Name</span>
+                  <span className="font-semibold text-slate-800">{badDebtModalInvoice.customerName || "Customer"}</span>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                  <span className="text-slate-400 block mb-0.5">Invoice Amount</span>
+                  <span className="font-bold text-base text-rose-700">£{parseFloat(badDebtModalInvoice.grandTotal || "0").toFixed(2)}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Write-off Date *</label>
+                <input
+                  type="date"
+                  value={badDebtDate}
+                  onChange={(e) => setBadDebtDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Write-off Reason *</label>
+                <select
+                  value={badDebtReason}
+                  onChange={(e) => setBadDebtReason(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
+                >
+                  <option value="Customer Insolvent / Liquidation">Customer Insolvent / In Liquidation</option>
+                  <option value="Dispute Unresolved / Settled without payment">Commercial Dispute Unresolved</option>
+                  <option value="Untraceable Debtor / Ceased Trading">Untraceable Debtor / Ceased Trading</option>
+                  <option value="Small Balance Immaterial / Uneconomical to recover">Small Immaterial Balance Uneconomical to Pursue</option>
+                  <option value="Statute Barred (Over 6 Years)">Statute Barred Debt</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setBadDebtModalInvoice(null)}
+                className="px-4 py-2 border border-slate-300 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={badDebtMutation.isPending}
+                onClick={() =>
+                  badDebtMutation.mutate({
+                    invoice: badDebtModalInvoice,
+                    writeOffReason: badDebtReason,
+                    writeOffDate: badDebtDate
+                  })
+                }
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+              >
+                <Ban size={14} />
+                {badDebtMutation.isPending ? "Posting Write-off Journal..." : "Confirm Write-Off & Post Journal"}
+              </button>
             </div>
           </div>
         </div>

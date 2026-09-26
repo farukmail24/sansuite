@@ -17,7 +17,8 @@ import {
   journalEntries,
   journalLines,
   apAccountingPolicies,
-  apStatutoryNotes
+  apStatutoryNotes,
+  ct600Returns
 } from "@shared/schema";
 import { eq, desc, and, or, sql } from "drizzle-orm";
 import { authMiddleware } from "../lib/authUtils";
@@ -353,6 +354,56 @@ async function getStatutoryAccountsSummary(clientId: number) {
   }
 }
 
+// Helper to build authentic statutory CT600 summary for signers to review
+async function getStatutoryCT600Summary(clientId: number) {
+  try {
+    const [client] = await db.select().from(clients).where(eq(clients.id, clientId));
+    if (!client) return null;
+
+    const [ret] = await db
+      .select()
+      .from(ct600Returns)
+      .where(eq(ct600Returns.clientId, clientId))
+      .orderBy(desc(ct600Returns.accountingPeriodEnd), desc(ct600Returns.id))
+      .limit(1);
+
+    if (!ret) return null;
+
+    return {
+      returnId: ret.id,
+      clientId,
+      companyName: client.clientName,
+      companyNumber: client.registrationNumber || (client as any).companyNumber || "",
+      utrNumber: ret.utrNumber || client.utrNumber || "",
+      taxYear: ret.taxYear || "2026/2027",
+      periodStartDate: ret.accountingPeriodStart,
+      periodEndDate: ret.accountingPeriodEnd,
+      turnover: parseFloat(ret.turnover || "0"),
+      netAccountingProfit: parseFloat(ret.netAccountingProfit || "0"),
+      disallowableExpenses: parseFloat(ret.disallowableExpenses || "0"),
+      depreciationAddBack: parseFloat(ret.depreciationAddBack || "0"),
+      capitalAllowancesClaimed: parseFloat(ret.capitalAllowancesClaimed || "0"),
+      tradingLossesBroughtForward: parseFloat(ret.tradingLossesBroughtForward || "0"),
+      tradingLossesRelievedCurrentYear: parseFloat(ret.tradingLossesRelievedCurrentYear || "0"),
+      taxableTradingProfit: parseFloat(ret.taxableTradingProfit || "0"),
+      nonTradingIncome: parseFloat(ret.nonTradingIncome || "0"),
+      qualifyingDonations: parseFloat(ret.qualifyingDonations || "0"),
+      profitsChargeableToCt: parseFloat(ret.profitsChargeableToCt || "0"),
+      ctRatePercentage: parseFloat(ret.ctRatePercentage || "19"),
+      marginalReliefAmount: parseFloat(ret.marginalReliefAmount || "0"),
+      corporationTaxPayable: parseFloat(ret.corporationTaxPayable || "0"),
+      taxDeductedAtSource: parseFloat(ret.taxDeductedAtSource || "0"),
+      netTaxDue: parseFloat(ret.netTaxDue || "0"),
+      paymentDueDate: ret.paymentDueDate,
+      filingDueDate: ret.filingDueDate,
+      status: ret.status,
+    };
+  } catch (err) {
+    console.error("Failed to compile statutoryCT600Summary:", err);
+    return null;
+  }
+}
+
 // 1. Get document details for public signing page
 router.get("/public/documents/:token", async (req, res) => {
   try {
@@ -404,12 +455,25 @@ router.get("/public/documents/:token", async (req, res) => {
       });
     }
 
-    const attachments = parseAttachmentsList(doc.attachmentsJson, doc.title, doc.filePath, doc.fileSize);
+    const rawAttachments = parseAttachmentsList(doc.attachmentsJson, doc.title, doc.filePath, doc.fileSize);
+    // Only return attachments if the file actually exists on physical disk (never return fake 404 links)
+    const attachments = rawAttachments.filter((att) => {
+      if (!att.filePath) return false;
+      const cleanPath = att.filePath.startsWith("/") ? att.filePath.substring(1) : att.filePath;
+      const fullDiskPath = path.resolve(process.cwd(), cleanPath);
+      return fs.existsSync(fullDiskPath);
+    });
 
     // If source module is Accounts Production or client ID is present, attach live statutory accounts summary
     let statutoryAccountsSummary = null;
     if (doc.clientId && (doc.sourceModule === "Accounts Production" || (doc.title && doc.title.toLowerCase().includes("account")))) {
       statutoryAccountsSummary = await getStatutoryAccountsSummary(doc.clientId);
+    }
+
+    // If source module is Corporation Tax or title contains CT600, attach live CT600 tax computation summary
+    let statutoryCT600Summary = null;
+    if (doc.clientId && (doc.sourceModule === "Corporation Tax" || (doc.title && doc.title.toLowerCase().includes("ct600")))) {
+      statutoryCT600Summary = await getStatutoryCT600Summary(doc.clientId);
     }
 
     res.json({
@@ -435,6 +499,7 @@ router.get("/public/documents/:token", async (req, res) => {
       fields,
       firmInfo,
       statutoryAccountsSummary,
+      statutoryCT600Summary,
     });
   } catch (error) {
     console.error("Public signature lookup error:", error);
@@ -560,7 +625,7 @@ router.post("/public/documents/:token/sign", async (req, res) => {
         signerName: signer.signerName || "Client Signer",
         signerEmail: signer.signerEmail || "",
         documentTitle: doc.title || "Statutory Document",
-        firmName: firmRecord?.firmName || "San Accounts Ltd.",
+        firmName: firmRecord?.firmName || "",
         ipAddress: clientIp,
         signedAt: new Date(),
         verificationToken: token,
@@ -587,6 +652,23 @@ router.post("/public/documents/:token/sign", async (req, res) => {
           signedFilePath: signedFilePath || undefined,
         })
         .where(eq(esignDocuments.id, doc.id));
+
+      // Synchronize with Corporation Tax if relevant
+      if (doc.clientId && (doc.sourceModule === "Corporation Tax" || (doc.title && doc.title.includes("CT600")))) {
+        try {
+          await db
+            .update(ct600Returns)
+            .set({ status: "Signed" })
+            .where(
+              and(
+                eq(ct600Returns.clientId, doc.clientId),
+                or(eq(ct600Returns.status, "Draft"), eq(ct600Returns.status, "SentToCapisign"))
+              )
+            );
+        } catch (ctErr) {
+          console.warn("[eSign] Failed to update CT600 return status:", ctErr);
+        }
+      }
     }
 
     // Record digital audit log
@@ -1018,6 +1100,21 @@ router.post("/documents", async (req: any, res) => {
 
     // Dispatches live/simulated email invitations with dynamic template
     if (!isDraft) {
+      if (clientId && (sourceModule === "Corporation Tax" || (title && title.includes("CT600")))) {
+        try {
+          await db
+            .update(ct600Returns)
+            .set({ status: "SentToCapisign" })
+            .where(
+              and(
+                eq(ct600Returns.clientId, parseInt(clientId)),
+                eq(ct600Returns.status, "Draft")
+              )
+            );
+        } catch (ctErr) {
+          console.warn("[eSign] Failed to update CT600 return status on dispatch:", ctErr);
+        }
+      }
       const proto = req.headers["x-forwarded-proto"] || req.protocol || "http";
       const host = req.headers["x-forwarded-host"] || req.get("host");
       const reqBaseUrl = host ? `${proto}://${host}` : undefined;

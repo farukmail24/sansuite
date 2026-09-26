@@ -4,7 +4,7 @@ import { useRoute, useLocation } from "wouter";
 import AppLayout from "../../../components/layout/AppLayout";
 import { apiRequest, queryClient } from "../../../lib/queryClient";
 import { useToast } from "../../../hooks/useToast";
-import { FileText, Plus, Search, ChevronRight, Pencil, Trash2, Send, Mail, X, Building2, Download, Eye } from "lucide-react";
+import { FileText, Plus, Search, ChevronRight, Pencil, Trash2, Send, Mail, X, Building2, Download, Eye, FileCheck } from "lucide-react";
 import { getClientSidebar, bookkeepingSidebar } from "../sidebar";
 import { generateSanSuiteInvoicePdf } from "../../../lib/sanSuiteInvoicePdfGenerator";
 
@@ -262,6 +262,37 @@ export default function QuotationsList() {
     },
   });
 
+  const convertToInvoiceMutation = useMutation({
+    mutationFn: async (quoteId: number) => {
+      const res = await apiRequest("POST", `/api/bookkeeping/quotations/${quoteId}/convert-to-invoice`, {});
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed to convert quotation to invoice");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/bookkeeping/quotes/client/${clientId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bookkeeping/quotes"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/bookkeeping/invoices/client/${clientId}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/bookkeeping/client/${clientId}/dashboard-analytics`] });
+      toast({
+        title: "Quotation Converted",
+        description: data.message || `Sales Invoice ${data.invoiceNumber} created.`,
+      });
+      if (clientId) {
+        navigate(`/bookkeeping/${clientId}/invoices`);
+      }
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Conversion Failed",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const filteredQuotes = quotes.filter((q: any) => {
     if (!searchQuery.trim()) return true;
     const search = searchQuery.toLowerCase();
@@ -437,6 +468,21 @@ export default function QuotationsList() {
                             >
                               <Send size={15} />
                             </button>
+                            {/* CONVERT TO SALES INVOICE BUTTON */}
+                            {q.status !== "Accepted" && (
+                              <button
+                                onClick={() => {
+                                  if (confirm(`Convert quotation ${q.quoteNumber} into an active Sales Invoice?`)) {
+                                    convertToInvoiceMutation.mutate(q.id);
+                                  }
+                                }}
+                                disabled={convertToInvoiceMutation.isPending}
+                                className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded transition-colors cursor-pointer"
+                                title="Convert to Sales Invoice (Capium Parity)"
+                              >
+                                <FileCheck size={15} />
+                              </button>
+                            )}
                             {/* EDIT BUTTON */}
                             <button
                               onClick={() => navigate(clientId ? `/bookkeeping/${clientId}/quotes/${q.id}/edit` : `/bookkeeping/quotes/${q.id}/edit`)}

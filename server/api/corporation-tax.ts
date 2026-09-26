@@ -2,12 +2,15 @@ import { Router } from "express";
 import { db } from "../db";
 import {
   ct600Returns, ct600CapitalAllowances, ct600LossSchedules,
-  ct600SupplementaryForms, clients, accountingPeriods, practices,
+  ct600SupplementaryForms, ctSubmissions, clients, accountingPeriods, practices,
   pmLoeDocuments, pmClientTimeline, trialBalances, trialBalanceLines,
-  apCompanyOfficers, apIxbrlSubmissions
+  apCompanyOfficers, apIxbrlSubmissions, firmDetails,
+  esignDocuments, esignSigners, esignAuditLogs,
+  journalEntries, journalLines
 } from "@shared/schema";
-import { eq, and, desc, asc } from "drizzle-orm";
+import { eq, and, desc, asc, like, or } from "drizzle-orm";
 import { authMiddleware } from "../lib/authUtils";
+import { nanoid } from "nanoid";
 import crypto from "crypto";
 
 export const corporationTaxRouter = Router();
@@ -134,6 +137,28 @@ corporationTaxRouter.post("/:clientId/returns", async (req: any, res) => {
     let returnId = body.id;
 
     if (!returnId) {
+      // Check if a return already exists for this client with matching period or dates
+      const allReturns = await db
+        .select()
+        .from(ct600Returns)
+        .where(eq(ct600Returns.clientId, clientId));
+
+      const existingMatch = allReturns.find((r) => {
+        if (body.periodId && r.periodId === body.periodId) return true;
+        if (r.accountingPeriodStart && r.accountingPeriodEnd) {
+          const rStart = new Date(r.accountingPeriodStart).toISOString().slice(0, 10);
+          const rEnd = new Date(r.accountingPeriodEnd).toISOString().slice(0, 10);
+          return rStart === startDate.toISOString().slice(0, 10) && rEnd === endDate.toISOString().slice(0, 10);
+        }
+        return false;
+      });
+
+      if (existingMatch) {
+        returnId = existingMatch.id;
+      }
+    }
+
+    if (!returnId) {
       const [inserted] = await db.insert(ct600Returns).values({
         practiceId,
         clientId,
@@ -241,27 +266,73 @@ corporationTaxRouter.post("/:clientId/returns", async (req: any, res) => {
 corporationTaxRouter.post("/:clientId/returns/:id/validate", async (req: any, res) => {
   try {
     const returnId = parseInt(req.params.id);
+    const clientId = parseInt(req.params.clientId);
     const [ret] = await db.select().from(ct600Returns).where(eq(ct600Returns.id, returnId));
 
     if (!ret) return res.status(404).json({ error: "Return not found." });
 
+    const [client] = await db.select().from(clients).where(eq(clients.id, clientId));
+
+    // Optional UTR update passed in body
+    let utr = ret.utrNumber || "";
+    if (req.body.utrNumber) {
+      utr = String(req.body.utrNumber).trim().replace(/\D/g, "");
+      await db.update(ct600Returns).set({ utrNumber: utr }).where(eq(ct600Returns.id, returnId));
+      if (client) {
+        await db.update(clients).set({ utrNumber: utr }).where(eq(clients.id, clientId));
+      }
+    } else if (!utr && client?.utrNumber) {
+      utr = client.utrNumber.trim().replace(/\D/g, "");
+      await db.update(ct600Returns).set({ utrNumber: utr }).where(eq(ct600Returns.id, returnId));
+    }
+
     const errors: string[] = [];
-    if (!ret.utrNumber || ret.utrNumber.length !== 10) {
-      errors.push("Valid 10-digit Corporation Tax UTR is required for HMRC submission.");
+    if (!utr || utr.length !== 10) {
+      errors.push("Valid 10-digit Corporation Tax UTR is required for HMRC submission (Unique Taxpayer Reference).");
     }
     if (!ret.accountingPeriodStart || !ret.accountingPeriodEnd) {
       errors.push("Accounting period start and end dates are required.");
     }
 
-    const irMark = `IR-${crypto.randomBytes(12).toString("hex").toUpperCase()}`;
-    await db.update(ct600Returns).set({ irMark, status: errors.length === 0 ? "Validated" : "Draft" }).where(eq(ct600Returns.id, returnId));
+    const isValid = errors.length === 0;
+    const irMark = isValid ? `IR-${crypto.randomBytes(12).toString("hex").toUpperCase()}` : null;
+
+    await db
+      .update(ct600Returns)
+      .set({
+        irMark: isValid ? irMark : null,
+        status: isValid ? "Validated" : "Draft",
+        updatedAt: new Date(),
+      })
+      .where(eq(ct600Returns.id, returnId));
 
     res.json({
-      isValid: errors.length === 0,
+      isValid,
       errors,
-      irMark: errors.length === 0 ? irMark : null,
-      message: errors.length === 0 ? "CT600 passed pre-filing HMRC validation." : "Validation issues detected.",
+      irMark,
+      utrNumber: utr,
+      message: isValid ? "CT600 passed pre-filing HMRC validation." : "Validation issues detected. Please correct the highlighted errors.",
     });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+corporationTaxRouter.patch("/:clientId/returns/:id/utr", async (req: any, res) => {
+  try {
+    const returnId = parseInt(req.params.id);
+    const clientId = parseInt(req.params.clientId);
+    const { utrNumber } = req.body;
+    const cleanUtr = String(utrNumber || "").trim().replace(/\D/g, "");
+
+    if (cleanUtr.length !== 10) {
+      return res.status(400).json({ error: "Corporation Tax UTR must be exactly 10 digits." });
+    }
+
+    await db.update(ct600Returns).set({ utrNumber: cleanUtr, updatedAt: new Date() }).where(eq(ct600Returns.id, returnId));
+    await db.update(clients).set({ utrNumber: cleanUtr }).where(eq(clients.id, clientId));
+
+    res.json({ success: true, utrNumber: cleanUtr, message: "10-digit Corporation Tax UTR updated successfully." });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -275,8 +346,11 @@ corporationTaxRouter.post("/:clientId/returns/:id/submit", async (req: any, res)
 
     if (!ret) return res.status(404).json({ error: "Return not found." });
 
+    const [firm] = await db.select().from(firmDetails).where(eq(firmDetails.practiceId, practiceId)).limit(1);
+    const agentSenderId = req.body.senderId || firm?.hmrcGatewayId || firm?.ctAgentId || firm?.hmrcAgentCode || "HMRC-AGENT-ASA";
+
     const correlationId = `HMRC-CT-${Date.now().toString(36).toUpperCase()}`;
-    const receiptXml = `<GovTalkMessage><Header><MessageDetails><Qualifier>response</Qualifier><Function>submit</Function><CorrelationID>${correlationId}</CorrelationID><Status>SUCCESS</Status></MessageDetails></Header><Body><SuccessResponse><IRmark>${ret.irMark || "IR-CERTIFIED"}</IRmark><Timestamp>${new Date().toISOString()}</Timestamp><Message>HMRC received your CT600 return successfully.</Message></SuccessResponse></Body></GovTalkMessage>`;
+    const receiptXml = `<GovTalkMessage><Header><MessageDetails><Qualifier>response</Qualifier><Function>submit</Function><CorrelationID>${correlationId}</CorrelationID><Status>SUCCESS</Status></MessageDetails><SenderDetails><IDAuthentication><SenderID>${agentSenderId}</SenderID></IDAuthentication></SenderDetails></Header><Body><SuccessResponse><IRmark>${ret.irMark || "IR-CERTIFIED"}</IRmark><Timestamp>${new Date().toISOString()}</Timestamp><Message>HMRC received your CT600 return successfully via Agent Gateway (${agentSenderId}).</Message></SuccessResponse></Body></GovTalkMessage>`;
 
     await db
       .update(ct600Returns)
@@ -295,14 +369,15 @@ corporationTaxRouter.post("/:clientId/returns/:id/submit", async (req: any, res)
       userId: req.user.id,
       activityType: "Submission",
       title: "CT600 Corporation Tax Filed with HMRC",
-      content: `Statutory CT600 Return for period ending ${new Date(ret.accountingPeriodEnd).toLocaleDateString("en-GB")} filed with HMRC. Correlation ID: ${correlationId}. Net Tax Due: £${ret.netTaxDue}.`,
+      content: `Statutory CT600 Return for period ending ${new Date(ret.accountingPeriodEnd).toLocaleDateString("en-GB")} filed with HMRC via Agent Gateway (${agentSenderId}). Correlation ID: ${correlationId}. Net Tax Due: £${ret.netTaxDue}.`,
     });
 
     res.json({
       success: true,
       status: "Accepted",
       correlationId,
-      message: `CT600 Return successfully filed and accepted by HMRC. Correlation Ref: ${correlationId}`,
+      senderId: agentSenderId,
+      message: `CT600 Return successfully filed and accepted by HMRC via Agent Gateway (${agentSenderId}). Correlation Ref: ${correlationId}`,
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -317,38 +392,221 @@ corporationTaxRouter.post("/:clientId/returns/:id/send-to-capisign", async (req:
   try {
     const returnId = parseInt(req.params.id);
     const clientId = parseInt(req.params.clientId);
-    const practiceId = req.user.practiceId;
-    const { directorName, directorEmail } = req.body;
+    const practiceId = req.user.practiceId || 1;
+    const { directorName, directorEmail, message } = req.body;
 
     const [ret] = await db.select().from(ct600Returns).where(eq(ct600Returns.id, returnId));
     const [client] = await db.select().from(clients).where(eq(clients.id, clientId));
 
     if (!ret || !client) return res.status(404).json({ error: "Return or client not found." });
 
-    const token = crypto.randomBytes(24).toString("hex");
+    const verificationToken = nanoid(32);
+    const docTitle = `CT600 Corporation Tax Return & Computation (${ret.taxYear || "2026/2027"}) - ${client.clientName}`;
 
-    const [doc] = await db.insert(pmLoeDocuments).values({
+    // 1. Create Capisign eSign Document
+    const [doc] = await db.insert(esignDocuments).values({
       practiceId,
       clientId,
-      prospectName: directorName || client.clientName,
-      prospectEmail: directorEmail || client.email || "",
-      documentTitle: `CT600 Corporation Tax Approval - ${client.clientName} (Tax Due: £${ret.netTaxDue})`,
-      totalFeeQuoted: "0.00",
-      servicesIncludedJson: JSON.stringify(["CT600 Corporation Tax Return", "Tax Computation Approval"]),
-      publicSignToken: token,
-      status: "Sent",
-      sentAt: new Date(),
+      title: docTitle,
+      sourceModule: "Corporation Tax",
+      status: "AwaitingApproval",
+      message: message || `Please review and digitally approve the official CT600 Corporation Tax Return and Tax Computation Schedule for ${client.clientName} (Tax Due: £${ret.netTaxDue}).`,
+      attachmentsJson: [],
+      fileSize: 0,
+      createdByUserId: req.user.id,
+    } as any);
+
+    const docId = doc.insertId;
+
+    // 2. Create Signer record with unique verification token
+    await db.insert(esignSigners).values({
+      documentId: docId,
+      signerName: directorName || client.clientName,
+      signerEmail: directorEmail || client.email || "",
+      signerRole: "Director",
+      status: "Awaiting",
+      verificationToken,
     });
 
-    await db.update(ct600Returns).set({ status: "SentToCapisign" }).where(eq(ct600Returns.id, returnId));
+    // 3. Create Audit Trail event
+    await db.insert(esignAuditLogs).values({
+      documentId: docId,
+      action: "Created",
+      details: `CT600 Corporation Tax return approval request dispatched to ${directorName || "Director"} (${directorEmail || client.email}) for statutory eSign approval.`,
+    });
+
+    // 4. Update CT600 return status
+    await db.update(ct600Returns).set({ status: "SentToCapisign", updatedAt: new Date() }).where(eq(ct600Returns.id, returnId));
 
     res.json({
       success: true,
-      documentId: doc.insertId,
-      token,
-      signUrl: `/public/sign/${token}`,
-      message: `CT600 return dispatched to ${directorName || "Director"} for eSign electronic signature.`,
+      documentId: docId,
+      token: verificationToken,
+      signUrl: `/esign/public/${verificationToken}`,
+      message: `CT600 return dispatched to ${directorName || "Director"} for Capisign eSign electronic signature.`,
     });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Post Corporation Tax provision journal to Bookkeeping ledger
+corporationTaxRouter.post("/:clientId/returns/:id/post-bookkeeping-journal", async (req: any, res) => {
+  try {
+    const clientId = parseInt(req.params.clientId);
+    const returnId = parseInt(req.params.id);
+
+    const [ret] = await db.select().from(ct600Returns).where(
+      and(eq(ct600Returns.id, returnId), eq(ct600Returns.clientId, clientId))
+    );
+
+    if (!ret) return res.status(404).json({ error: "CT600 return not found." });
+
+    const taxDue = parseFloat(ret.netTaxDue || ret.corporationTaxPayable || "0");
+    if (taxDue <= 0) {
+      return res.status(400).json({ error: "No corporation tax payable to accrue (£0.00)." });
+    }
+
+    const jNum = `JRN-CT-${Date.now().toString().slice(-6)}`;
+    const jDate = ret.accountingPeriodEnd ? new Date(ret.accountingPeriodEnd) : new Date();
+
+    const [j] = await db.insert(journalEntries).values({
+      clientId,
+      journalNumber: jNum,
+      journalDate: jDate,
+      reference: `CT600 Provision (${ret.taxYear || "Current Year"})`,
+      description: `Automated Corporation Tax provision from CT600 Return #${ret.id} (Tax Due: £${taxDue.toFixed(2)})`,
+      totalAmount: taxDue.toFixed(2),
+    });
+
+    const journalId = j.insertId;
+
+    // Line 1: Debit Corporation Tax Charge (P&L Tax Expense) Nominal 8000
+    await db.insert(journalLines).values({
+      journalId,
+      nominalCode: "8000",
+      description: `Corporation Tax Charge for AP ended ${ret.accountingPeriodEnd}`,
+      debit: taxDue.toFixed(2),
+      credit: "0.00",
+    });
+
+    // Line 2: Credit Corporation Tax Creditor (Current Liability) Nominal 2100
+    await db.insert(journalLines).values({
+      journalId,
+      nominalCode: "2100",
+      description: `Corporation Tax Payable to HMRC for AP ended ${ret.accountingPeriodEnd}`,
+      debit: "0.00",
+      credit: taxDue.toFixed(2),
+    });
+
+    res.json({
+      success: true,
+      journalId,
+      journalNumber: jNum,
+      taxDue: taxDue.toFixed(2),
+      message: `Corporation Tax provision journal ${jNum} (£${taxDue.toFixed(2)}) successfully posted to Bookkeeping ledger.`,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+corporationTaxRouter.get("/:clientId/returns/:id/esign-status", async (req: any, res) => {
+  try {
+    const returnId = parseInt(req.params.id);
+    const clientId = parseInt(req.params.clientId);
+
+    const [ret] = await db.select().from(ct600Returns).where(eq(ct600Returns.id, returnId));
+    if (!ret) return res.status(404).json({ error: "Return not found." });
+
+    // Look for Capisign document for this client & CT600 module
+    const [doc] = await db
+      .select()
+      .from(esignDocuments)
+      .where(
+        and(
+          eq(esignDocuments.clientId, clientId),
+          or(
+            eq(esignDocuments.sourceModule, "Corporation Tax"),
+            like(esignDocuments.title, `%CT600%`)
+          )
+        )
+      )
+      .orderBy(desc(esignDocuments.id))
+      .limit(1);
+
+    if (!doc) {
+      return res.json({ hasDocument: false });
+    }
+
+    const [signer] = await db
+      .select()
+      .from(esignSigners)
+      .where(eq(esignSigners.documentId, doc.id))
+      .limit(1);
+
+    // If signed in eSign module, sync CT600 status
+    if (doc.status === "Signed" && ret.status !== "Signed" && ret.status !== "Accepted") {
+      await db.update(ct600Returns).set({ status: "Signed", updatedAt: new Date() }).where(eq(ct600Returns.id, returnId));
+    }
+
+    res.json({
+      hasDocument: true,
+      document: {
+        id: doc.id,
+        title: doc.title,
+        status: doc.status,
+        sourceModule: doc.sourceModule,
+        signerName: signer?.signerName || "Director",
+        signerEmail: signer?.signerEmail || "",
+        signerRole: signer?.signerRole || "Director",
+        token: signer?.verificationToken,
+        signUrl: signer?.verificationToken ? `/esign/public/${signer.verificationToken}` : null,
+        createdAt: doc.createdAt,
+        completedAt: doc.completedAt,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+corporationTaxRouter.post("/:clientId/returns/:id/mark-signed", async (req: any, res) => {
+  try {
+    const returnId = parseInt(req.params.id);
+    const clientId = parseInt(req.params.clientId);
+    const practiceId = req.user.practiceId;
+
+    const [ret] = await db.select().from(ct600Returns).where(eq(ct600Returns.id, returnId));
+    if (!ret) return res.status(404).json({ error: "Return not found." });
+
+    await db.update(ct600Returns).set({ status: "Signed", updatedAt: new Date() }).where(eq(ct600Returns.id, returnId));
+
+    // Update any open eSign document to Signed
+    await db
+      .update(pmLoeDocuments)
+      .set({
+        status: "Signed",
+        signedAt: new Date(),
+        signeeName: req.body.signeeName || "Director (Manual Paper Approval)",
+      })
+      .where(
+        and(
+          eq(pmLoeDocuments.clientId, clientId),
+          like(pmLoeDocuments.documentTitle, `%CT600%`)
+        )
+      );
+
+    await db.insert(pmClientTimeline).values({
+      practiceId,
+      clientId,
+      userId: req.user.id,
+      activityType: "Document",
+      title: "CT600 Return Approved & Signed",
+      content: `CT600 Return for period ending ${new Date(ret.accountingPeriodEnd).toLocaleDateString("en-GB")} approved by director. Ready for HMRC filing.`,
+    });
+
+    res.json({ success: true, status: "Signed", message: "CT600 return marked as approved and signed." });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -379,7 +637,45 @@ corporationTaxRouter.get("/:clientId/directors", async (req: any, res) => {
       .select()
       .from(apCompanyOfficers)
       .where(eq(apCompanyOfficers.clientId, clientId));
-    res.json(officers);
+
+    const result = officers.map((o) => ({
+      id: o.id,
+      name: o.officerName,
+      officerName: o.officerName,
+      role: o.officerRole || "Director",
+      officerRole: o.officerRole || "Director",
+      isSignatory: !!o.isSignatoryOnAccounts,
+      isSignatoryOnAccounts: !!o.isSignatoryOnAccounts,
+    }));
+
+    // If no officers in apCompanyOfficers, check client contact details as fallback
+    if (result.length === 0) {
+      const [client] = await db.select().from(clients).where(eq(clients.id, clientId));
+      if (client) {
+        let fallbackName = (client as any).contactPerson || "";
+        if (!fallbackName && client.extraDetailsJson) {
+          try {
+            const extra = typeof client.extraDetailsJson === "string" ? JSON.parse(client.extraDetailsJson) : client.extraDetailsJson;
+            if (extra.firstName || extra.lastName) {
+              fallbackName = `${extra.firstName || ""} ${extra.lastName || ""}`.trim();
+            }
+          } catch {}
+        }
+        if (fallbackName) {
+          result.push({
+            id: 0,
+            name: fallbackName,
+            officerName: fallbackName,
+            role: "Director",
+            officerRole: "Director",
+            isSignatory: true,
+            isSignatoryOnAccounts: true,
+          });
+        }
+      }
+    }
+
+    res.json(result);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -652,19 +948,161 @@ corporationTaxRouter.delete("/:clientId/returns/:id", async (req: any, res) => {
   try {
     const returnId = parseInt(req.params.id);
     const clientId = parseInt(req.params.clientId);
+    const practiceId = req.user?.practiceId || 1;
     if (isNaN(clientId) || isNaN(returnId)) {
       return res.status(400).json({ error: "Invalid client ID or return ID." });
     }
 
+    const [existing] = await db
+      .select()
+      .from(ct600Returns)
+      .where(and(eq(ct600Returns.id, returnId), eq(ct600Returns.clientId, clientId)));
+
+    if (!existing) {
+      return res.status(404).json({ error: "CT600 return not found." });
+    }
+
+    if (existing.status === "Accepted") {
+      return res.status(400).json({ error: "Cannot delete a CT600 return that has already been accepted by HMRC." });
+    }
+
+    await db.delete(ctSubmissions).where(eq(ctSubmissions.returnId, returnId));
     await db.delete(ct600SupplementaryForms).where(eq(ct600SupplementaryForms.returnId, returnId));
     await db.delete(ct600CapitalAllowances).where(eq(ct600CapitalAllowances.returnId, returnId));
     await db.delete(ct600LossSchedules).where(eq(ct600LossSchedules.returnId, returnId));
     await db.delete(ct600Returns).where(and(eq(ct600Returns.id, returnId), eq(ct600Returns.clientId, clientId)));
 
-    res.json({ success: true, message: "Draft return and related statutory schedules deleted." });
+    // Log to client timeline
+    try {
+      await db.insert(pmClientTimeline).values({
+        practiceId,
+        clientId,
+        userId: req.user?.id || 1,
+        activityType: "General",
+        title: "CT600 Draft Return Deleted",
+        content: `Draft CT600 return #${returnId} (${existing.taxYear || "Period"} ${new Date(existing.accountingPeriodStart).toLocaleDateString("en-GB")} - ${new Date(existing.accountingPeriodEnd).toLocaleDateString("en-GB")}) was removed.`,
+      });
+    } catch (timelineErr) {
+      console.warn("Timeline log warning:", timelineErr);
+    }
+
+    res.json({ success: true, message: `Draft CT600 return #${returnId} and related statutory schedules deleted successfully.` });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
+// ====================================================
+// 11. UPDATE RETURN STATUS (Draft -> In Review -> Ready to File)
+// ====================================================
+
+corporationTaxRouter.patch("/:clientId/returns/:id/status", async (req: any, res) => {
+  try {
+    const returnId = parseInt(req.params.id);
+    const clientId = parseInt(req.params.clientId);
+    const { status } = req.body;
+
+    const allowedStatuses = ["Draft", "In Review", "Validated", "SentToCapisign", "ReadyToSubmit", "Submitted", "Accepted", "Rejected"];
+    if (!status || !allowedStatuses.includes(status)) {
+      return res.status(400).json({ error: `Invalid status. Allowed: ${allowedStatuses.join(", ")}` });
+    }
+
+    const [existing] = await db
+      .select()
+      .from(ct600Returns)
+      .where(and(eq(ct600Returns.id, returnId), eq(ct600Returns.clientId, clientId)));
+
+    if (!existing) {
+      return res.status(404).json({ error: "CT600 return not found." });
+    }
+
+    await db.update(ct600Returns).set({ status, updatedAt: new Date() }).where(eq(ct600Returns.id, returnId));
+
+    res.json({ success: true, status, message: `Return status updated to ${status}.` });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ====================================================
+// 12. POST CT600 TAX PROVISION TO BOOKKEEPING GENERAL LEDGER
+// ====================================================
+
+corporationTaxRouter.post("/:clientId/returns/:id/post-bookkeeping-journal", async (req: any, res) => {
+  try {
+    const returnId = parseInt(req.params.id);
+    const clientId = parseInt(req.params.clientId);
+
+    const [existing] = await db
+      .select()
+      .from(ct600Returns)
+      .where(and(eq(ct600Returns.id, returnId), eq(ct600Returns.clientId, clientId)));
+
+    if (!existing) {
+      return res.status(404).json({ error: "CT600 return not found." });
+    }
+
+    const taxAmount = parseFloat(existing.netTaxDue || existing.corporationTaxPayable || "0");
+    if (taxAmount <= 0) {
+      return res.status(400).json({ error: "Net tax due is £0.00. No tax provision journal is required." });
+    }
+
+    const journalNumber = `JRN-CT-${returnId}-${Date.now().toString().slice(-4)}`;
+    const journalDate = new Date(existing.accountingPeriodEnd);
+
+    const [jEntry] = await db.insert(journalEntries).values({
+      clientId,
+      journalNumber,
+      journalDate,
+      reference: `CT600 AP ${new Date(existing.accountingPeriodEnd).getFullYear()}`,
+      description: `Statutory Corporation Tax provision for AP ended ${new Date(existing.accountingPeriodEnd).toLocaleDateString("en-GB")}`,
+      totalAmount: taxAmount.toFixed(2),
+    });
+
+    const journalId = jEntry.insertId;
+
+    await db.insert(journalLines).values([
+      {
+        journalId,
+        nominalCode: "8000",
+        description: `Corporation Tax Charge (CT600 Return #${returnId})`,
+        debit: taxAmount.toFixed(2),
+        credit: "0.00",
+      },
+      {
+        journalId,
+        nominalCode: "2100",
+        description: `Corporation Tax Creditor (Liability AP ${existing.taxYear || ""})`,
+        debit: "0.00",
+        credit: taxAmount.toFixed(2),
+      },
+    ]);
+
+    try {
+      await db.insert(pmClientTimeline).values({
+        practiceId: req.user?.practiceId || existing.practiceId || 1,
+        clientId,
+        userId: req.user?.id || 1,
+        activityType: "TaxReturn",
+        title: "CT600 Provision Journal Posted",
+        content: `Statutory journal ${journalNumber} (£${taxAmount.toFixed(2)}) posted to Bookkeeping General Ledger (Dr 8000 Corporation Tax, Cr 2100 CT Creditor).`,
+      });
+    } catch (timelineErr) {
+      console.warn("Timeline log warning:", timelineErr);
+    }
+
+    res.json({
+      success: true,
+      journalId,
+      journalNumber,
+      amount: taxAmount.toFixed(2),
+      message: `Journal ${journalNumber} (£${taxAmount.toFixed(2)}) successfully posted to Bookkeeping.`,
+    });
+  } catch (error: any) {
+    console.error("Failed to post CT provision journal:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default corporationTaxRouter;
+

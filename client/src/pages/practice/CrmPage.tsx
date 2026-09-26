@@ -25,70 +25,74 @@ export default function CrmPage() {
     }
   });
 
-  // Calculate Pipeline Metrics Dynamically from Clients
+  // Calculate Pipeline Metrics Dynamically from Authentic Database Records
   const pipelineStats = useMemo(() => {
     const total = clientsList.length;
     const limitedCount = clientsList.filter(c => (c.clientType || "").toLowerCase() === "limited").length;
     const partnerCount = clientsList.filter(c => (c.clientType || "").toLowerCase() === "partnership" || (c.clientType || "").toLowerCase() === "llp").length;
     const soleCount = clientsList.filter(c => (c.clientType || "").toLowerCase() === "soletrader" || (c.clientType || "").toLowerCase() === "individual").length;
 
-    // 1. Source Breakdown
+    // 1. Source Breakdown (Real Database Records)
     let linkedInCount = 0;
     let directCount = 0;
     let referralCount = 0;
-    let partnerNetCount = 0;
+    let adsCount = 0;
+    let otherCount = 0;
 
-    clientsList.forEach((c, idx) => {
-      const src = (c.leadSource || "").toLowerCase();
+    clientsList.forEach(c => {
+      const src = (c.leadSource || c.industry || "").toLowerCase();
       if (src.includes("linkedin") || src.includes("social")) linkedInCount++;
       else if (src.includes("website") || src.includes("direct")) directCount++;
       else if (src.includes("referral")) referralCount++;
-      else if (src.includes("partner")) partnerNetCount++;
-      else {
-        const mod = idx % 4;
-        if (mod === 0) linkedInCount++;
-        else if (mod === 1) directCount++;
-        else if (mod === 2) referralCount++;
-        else partnerNetCount++;
-      }
+      else if (src.includes("google") || src.includes("ad")) adsCount++;
+      else if (src) otherCount++;
     });
 
-    const linkedInPct = total > 0 ? Math.round((linkedInCount / total) * 100) : 0;
-    const directPct = total > 0 ? Math.round((directCount / total) * 100) : 0;
-    const referralPct = total > 0 ? Math.round((referralCount / total) * 100) : 0;
-    const partnerPct = total > 0 ? Math.max(0, 100 - linkedInPct - directPct - referralPct) : 0;
+    const classifiedSourceTotal = linkedInCount + directCount + referralCount + adsCount + otherCount;
+    const linkedInPct = classifiedSourceTotal > 0 ? Math.round((linkedInCount / classifiedSourceTotal) * 100) : 0;
+    const directPct = classifiedSourceTotal > 0 ? Math.round((directCount / classifiedSourceTotal) * 100) : 0;
+    const referralPct = classifiedSourceTotal > 0 ? Math.round((referralCount / classifiedSourceTotal) * 100) : 0;
+    const adsPct = classifiedSourceTotal > 0 ? Math.max(0, 100 - linkedInPct - directPct - referralPct) : 0;
 
-    // 2. Employee Breakdown
+    // 2. Employee Breakdown (Authentic Records with Defined Employee Count)
     let microCount = 0;
     let smallCount = 0;
     let mediumCount = 0;
+    let classifiedEmpTotal = 0;
 
     clientsList.forEach(c => {
-      const emp = parseInt(c.employeeCount) || (c.clientType === "Sole Trader" || c.clientType === "Individual" ? 1 : 12);
-      if (emp < 10) microCount++;
-      else if (emp < 50) smallCount++;
-      else mediumCount++;
+      const empNum = parseInt(c.employeeCount);
+      if (!isNaN(empNum) && empNum > 0) {
+        classifiedEmpTotal++;
+        if (empNum < 10) microCount++;
+        else if (empNum < 50) smallCount++;
+        else mediumCount++;
+      }
     });
 
-    const microPct = total > 0 ? Math.round((microCount / total) * 100) : 0;
-    const smallPct = total > 0 ? Math.round((smallCount / total) * 100) : 0;
-    const mediumPct = total > 0 ? Math.max(0, 100 - microPct - smallPct) : 0;
+    const microPct = classifiedEmpTotal > 0 ? Math.round((microCount / classifiedEmpTotal) * 100) : 0;
+    const smallPct = classifiedEmpTotal > 0 ? Math.round((smallCount / classifiedEmpTotal) * 100) : 0;
+    const mediumPct = classifiedEmpTotal > 0 ? Math.max(0, 100 - microPct - smallPct) : 0;
 
-    // 3. Turnover Breakdown
+    // 3. Turnover Breakdown (Authentic Records with Defined Annual Turnover)
     let under250k = 0;
     let to1m = 0;
     let over1m = 0;
+    let classifiedTurnoverTotal = 0;
 
     clientsList.forEach(c => {
-      const turnover = parseFloat(c.annualTurnover) || (c.clientType === "Limited" ? 450000 : 85000);
-      if (turnover < 250000) under250k++;
-      else if (turnover <= 1000000) to1m++;
-      else over1m++;
+      const tVal = parseFloat(c.annualTurnover || c.turnover);
+      if (!isNaN(tVal) && tVal > 0) {
+        classifiedTurnoverTotal++;
+        if (tVal < 250000) under250k++;
+        else if (tVal <= 1000000) to1m++;
+        else over1m++;
+      }
     });
 
-    const under250kPct = total > 0 ? Math.round((under250k / total) * 100) : 0;
-    const to1mPct = total > 0 ? Math.round((to1m / total) * 100) : 0;
-    const over1mPct = total > 0 ? Math.max(0, 100 - under250kPct - to1mPct) : 0;
+    const under250kPct = classifiedTurnoverTotal > 0 ? Math.round((under250k / classifiedTurnoverTotal) * 100) : 0;
+    const to1mPct = classifiedTurnoverTotal > 0 ? Math.round((to1m / classifiedTurnoverTotal) * 100) : 0;
+    const over1mPct = classifiedTurnoverTotal > 0 ? Math.max(0, 100 - under250kPct - to1mPct) : 0;
 
     return {
       total,
@@ -96,8 +100,11 @@ export default function CrmPage() {
       partnerCount,
       soleCount,
       activeCount: clientsList.filter(c => c.tradingStatus === "Trading" || c.tradingStatus === "Active").length,
-      leadCount: clientsList.filter(c => c.tradingStatus === "Lead" || c.tradingStatus === "Prospect").length,
-      source: { linkedInPct, directPct, referralPct, partnerPct },
+      leadCount: clientsList.filter(c => c.tradingStatus === "Lead" || c.tradingStatus === "Prospect" || c.pipelineStage === "Lead" || c.pipelineStage === "Prospect").length,
+      classifiedSourceTotal,
+      classifiedEmpTotal,
+      classifiedTurnoverTotal,
+      source: { linkedInPct, directPct, referralPct, adsPct, partnerPct: adsPct },
       employees: { microPct, smallPct, mediumPct },
       turnover: { under250kPct, to1mPct, over1mPct },
     };

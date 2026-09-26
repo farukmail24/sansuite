@@ -38,6 +38,8 @@ function SACalculatorsContent() {
   const [lossSetOffCurrent, setLossSetOffCurrent] = useState("0.00");
   const [lossCarriedBack, setLossCarriedBack] = useState("0.00");
 
+  const [isImportingPrior, setIsImportingPrior] = useState(false);
+
   // Sync with currentReturn
   useEffect(() => {
     if (currentReturn) {
@@ -50,8 +52,55 @@ function SACalculatorsContent() {
       if (currentReturn.tradingLossesRelieved) {
         setLossSetOffCurrent(currentReturn.tradingLossesRelieved);
       }
+      let sched: any = {};
+      if (currentReturn.schedulesData) {
+        try {
+          sched = typeof currentReturn.schedulesData === "string" ? JSON.parse(currentReturn.schedulesData) : currentReturn.schedulesData;
+        } catch {}
+      }
+      if (sched.mainPoolWdvBf !== undefined) setMainPoolWdvBf(sched.mainPoolWdvBf);
+      if (sched.mainPoolAdditions !== undefined) setMainPoolAdditions(sched.mainPoolAdditions);
+      if (sched.mainPoolDisposals !== undefined) setMainPoolDisposals(sched.mainPoolDisposals);
+      if (sched.mainPoolWdaClaimed !== undefined) setMainPoolWdaClaimed(sched.mainPoolWdaClaimed);
+      if (sched.specialRateAdditions !== undefined) setSpecialRateAdditions(sched.specialRateAdditions);
+      if (sched.specialRateWdaClaimed !== undefined) setSpecialRateWdaClaimed(sched.specialRateWdaClaimed);
+      if (sched.sbaClaimed !== undefined) setSbaClaimed(sched.sbaClaimed);
+      if (sched.fyaClaimed !== undefined) setFyaClaimed(sched.fyaClaimed);
+      if (sched.aiaClaimed !== undefined) setAiaClaimed(sched.aiaClaimed);
     }
   }, [currentReturn]);
+
+  // 1-Click Prior Year Capital Allowances Import (Capium Art 14: 9000216928)
+  const handleImportPriorYear = async () => {
+    if (!clientId) return;
+    try {
+      setIsImportingPrior(true);
+      const res = await apiRequest("GET", `/api/self-assessment/${clientId}/prior-capital-allowances/${encodeURIComponent(selectedTaxYear)}`);
+      if (!res.ok) throw new Error("Failed to fetch prior year capital allowances");
+      const data = await res.json();
+      if (!data.found) {
+        toast({
+          title: "No Prior Return Found",
+          description: data.message || "No earlier tax return exists for this taxpayer in the database.",
+          type: "info",
+        });
+        return;
+      }
+      const bFwd = data.mainPoolWdvBf || "0.00";
+      setMainPoolWdvBf(bFwd);
+      const pool = parseFloat(bFwd || "0") + parseFloat(mainPoolAdditions || "0") - parseFloat(mainPoolDisposals || "0");
+      setMainPoolWdaClaimed(Math.max(0, pool * 0.18).toFixed(2));
+      toast({
+        title: "Prior Year WDV Imported",
+        description: `Imported £${bFwd} from ${data.priorTaxYear || "prior year"} closing WDV into Main Pool b/fwd.`,
+        type: "success",
+      });
+    } catch (err: any) {
+      toast({ title: "Import Error", description: err.message, type: "error" });
+    } finally {
+      setIsImportingPrior(false);
+    }
+  };
 
   // Derived Capital Allowances Total
   const totalCapitalAllowances = (
@@ -73,6 +122,15 @@ function SACalculatorsContent() {
         capitalAllowancesClaimed: totalCapitalAllowances.toFixed(2),
         tradingLossesBroughtForward: lossBroughtForward,
         tradingLossesRelieved: lossSetOffCurrent,
+        mainPoolWdvBf,
+        mainPoolAdditions,
+        mainPoolDisposals,
+        mainPoolWdaClaimed,
+        specialRateAdditions,
+        specialRateWdaClaimed,
+        sbaClaimed,
+        fyaClaimed,
+        aiaClaimed,
       };
 
       const res = await apiRequest("POST", `/api/self-assessment/${clientId}/returns/${currentReturn?.id}/calculators`, payload);
@@ -110,23 +168,35 @@ function SACalculatorsContent() {
           </p>
         </div>
 
-        <button
-          onClick={() => saveMutation.mutate()}
-          disabled={saveMutation.isPending}
-          className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer disabled:opacity-50"
-        >
-          {saveMutation.isPending ? (
-            <>
-              <RefreshCw size={13} className="animate-spin" />
-              Saving...
-            </>
-          ) : (
-            <>
-              <Save size={13} />
-              Save Schedules & Apply
-            </>
-          )}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleImportPriorYear}
+            disabled={isImportingPrior}
+            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-200 dark:border-slate-700 disabled:opacity-50"
+          >
+            <RefreshCw size={13} className={isImportingPrior ? "animate-spin text-purple-600" : "text-purple-600"} />
+            <span>Import B/Fwd from Prior Year</span>
+          </button>
+
+          <button
+            onClick={() => saveMutation.mutate()}
+            disabled={saveMutation.isPending}
+            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+          >
+            {saveMutation.isPending ? (
+              <>
+                <RefreshCw size={13} className="animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save size={13} />
+                Save Schedules & Apply
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -137,9 +207,20 @@ function SACalculatorsContent() {
               <Layers size={14} className="text-purple-600" />
               Capital Allowances Schedule
             </h3>
-            <span className="text-[11px] font-mono font-bold text-purple-600">
-              Total: £{totalCapitalAllowances.toFixed(2)}
-            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleImportPriorYear}
+                disabled={isImportingPrior}
+                className="text-[11px] text-purple-600 hover:text-purple-700 font-semibold flex items-center gap-1 cursor-pointer"
+              >
+                <RefreshCw size={11} className={isImportingPrior ? "animate-spin" : ""} />
+                <span>Import Prior WDV</span>
+              </button>
+              <span className="text-[11px] font-mono font-bold text-purple-600 bg-purple-50 dark:bg-purple-950/40 px-2 py-0.5 rounded border border-purple-200 dark:border-purple-800">
+                Total: £{totalCapitalAllowances.toFixed(2)}
+              </span>
+            </div>
           </div>
 
           <div className="space-y-3">

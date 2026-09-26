@@ -13,7 +13,10 @@ import {
   RefreshCw, 
   Layers, 
   Filter, 
-  Check 
+  Check,
+  Trash2,
+  AlertTriangle,
+  ShieldAlert
 } from "lucide-react";
 
 interface TransactionItem {
@@ -35,6 +38,7 @@ export default function BulkEditPage() {
   if (!clientId) return <ClientGuard featureTitle="Bulk Edit" />;
   const queryClient = useQueryClient();
 
+  const [activeMode, setActiveMode] = useState<"reclassify" | "delete">("reclassify");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "Sales" | "Purchase">("all");
@@ -132,6 +136,57 @@ export default function BulkEditPage() {
     }
   });
 
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async () => {
+      const salesIds = filteredTransactions
+        .filter(t => selectedIds.includes(t.id) && t.type === "Sales")
+        .map(t => t.id);
+
+      const purchaseIds = filteredTransactions
+        .filter(t => selectedIds.includes(t.id) && t.type === "Purchase")
+        .map(t => t.id - 10000);
+
+      let totalDeleted = 0;
+
+      if (salesIds.length > 0) {
+        const res = await apiRequest("POST", "/api/bookkeeping/bulk-delete", {
+          clientId: parseInt(clientId),
+          entityType: "Sales",
+          ids: salesIds,
+        });
+        if (!res.ok) throw new Error("Failed to delete sales invoices");
+        const d = await res.json();
+        totalDeleted += d.deletedCount;
+      }
+
+      if (purchaseIds.length > 0) {
+        const res = await apiRequest("POST", "/api/bookkeeping/bulk-delete", {
+          clientId: parseInt(clientId),
+          entityType: "Purchases",
+          ids: purchaseIds,
+        });
+        if (!res.ok) throw new Error("Failed to delete purchase bills");
+        const d = await res.json();
+        totalDeleted += d.deletedCount;
+      }
+
+      return { totalDeleted };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/bookkeeping/invoices/client/${clientId || 1}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/bookkeeping/purchases/client/${clientId || 1}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/bookkeeping/client/${clientId}/dashboard-analytics`] });
+      setSelectedIds([]);
+      toast({
+        title: "Bulk Purge Complete",
+        description: `Successfully deleted ${data.totalDeleted} records from general ledger.`,
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Delete Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   const handleBulkReclassify = () => {
     if (selectedIds.length === 0) {
       toast({ title: "Selection Error", description: "Select at least one transaction to reclassify.", variant: "destructive" });
@@ -147,15 +202,41 @@ export default function BulkEditPage() {
         <div className="bg-white px-4 py-2.5 border-b border-gray-200 flex items-center text-sm text-gray-500 gap-2">
           <button onClick={() => navigate("/bookkeeping")} className="hover:text-purple-600 font-medium transition-colors">Bookkeeping</button>
           <ChevronRight size={14} />
-          <span className="font-semibold text-gray-800">Bulk Reclassify</span>
+          <span className="font-semibold text-gray-800">Bulk Maintenance</span>
         </div>
 
         <div className="p-6 max-w-[1600px] mx-auto space-y-6">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Bulk Reclassify Transactions</h1>
-              <p className="text-xs text-gray-500 mt-0.5">Mass-modify nominal codes and reassign transactions across the general ledger.</p>
+              <h1 className="text-2xl font-bold text-gray-900">
+                {activeMode === "reclassify" ? "Bulk Reclassify Transactions" : "Bulk Delete Transactions"}
+              </h1>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {activeMode === "reclassify" 
+                  ? "Mass-modify nominal codes and reassign transactions across the general ledger." 
+                  : "Purge imported or mistaken transactions in bulk with double-entry ledger cleanup (Capium Article 9000172241)."}
+              </p>
             </div>
+          </div>
+
+          {/* Mode Switcher Tabs */}
+          <div className="flex border-b border-gray-200 gap-6">
+            <button
+              onClick={() => { setActiveMode("reclassify"); setSelectedIds([]); }}
+              className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
+                activeMode === "reclassify" ? "border-purple-600 text-purple-700" : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              <RefreshCw size={15} /> Bulk Reclassify Nominal Codes
+            </button>
+            <button
+              onClick={() => { setActiveMode("delete"); setSelectedIds([]); }}
+              className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
+                activeMode === "delete" ? "border-red-600 text-red-600" : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              <Trash2 size={15} /> Bulk Delete Transactions (Capium Parity)
+            </button>
           </div>
 
           {/* Search & Filter Bar */}
@@ -197,26 +278,47 @@ export default function BulkEditPage() {
               </div>
 
               <div className="flex items-center gap-3 w-full md:w-auto">
-                <select
-                  value={targetNominal}
-                  onChange={(e) => setTargetNominal(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-purple-500 font-medium bg-white"
-                >
-                  <option value="7500 - Printing & Stationery">7500 - Printing & Stationery</option>
-                  <option value="7506 - IT & Software">7506 - IT & Software</option>
-                  <option value="7400 - Travel & Entertainment">7400 - Travel & Entertainment</option>
-                  <option value="5000 - Cost of Goods Sold">5000 - Cost of Goods Sold</option>
-                  <option value="4000 - General Sales">4000 - General Sales</option>
-                </select>
+                {activeMode === "reclassify" ? (
+                  <>
+                    <select
+                      value={targetNominal}
+                      onChange={(e) => setTargetNominal(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-purple-500 font-medium bg-white"
+                    >
+                      <option value="7500 - Printing & Stationery">7500 - Printing & Stationery</option>
+                      <option value="7506 - IT & Software">7506 - IT & Software</option>
+                      <option value="7400 - Travel & Entertainment">7400 - Travel & Entertainment</option>
+                      <option value="5000 - Cost of Goods Sold">5000 - Cost of Goods Sold</option>
+                      <option value="4000 - General Sales">4000 - General Sales</option>
+                    </select>
 
-                <button
-                  onClick={handleBulkReclassify}
-                  disabled={selectedIds.length === 0 || bulkReclassifyMutation.isPending}
-                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold shadow-sm flex items-center gap-1.5 transition-colors disabled:opacity-50"
-                >
-                  <RefreshCw size={14} className={bulkReclassifyMutation.isPending ? "animate-spin" : ""} />
-                  {bulkReclassifyMutation.isPending ? "Reclassifying..." : "Apply Bulk Reclassify"}
-                </button>
+                    <button
+                      onClick={handleBulkReclassify}
+                      disabled={selectedIds.length === 0 || bulkReclassifyMutation.isPending}
+                      className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold shadow-sm flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                    >
+                      <RefreshCw size={14} className={bulkReclassifyMutation.isPending ? "animate-spin" : ""} />
+                      {bulkReclassifyMutation.isPending ? "Reclassifying..." : "Apply Bulk Reclassify"}
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => {
+                      if (selectedIds.length === 0) {
+                        toast({ title: "No Selection", description: "Please select at least one record to delete.", variant: "destructive" });
+                        return;
+                      }
+                      if (window.confirm(`Are you sure you want to permanently delete ${selectedIds.length} selected transaction(s)? This will also clean up associated ledger entries.`)) {
+                        bulkDeleteMutation.mutate();
+                      }
+                    }}
+                    disabled={selectedIds.length === 0 || bulkDeleteMutation.isPending}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold shadow-sm flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                  >
+                    <Trash2 size={14} className={bulkDeleteMutation.isPending ? "animate-spin" : ""} />
+                    {bulkDeleteMutation.isPending ? "Purging Records..." : `Purge Selected (${selectedIds.length})`}
+                  </button>
+                )}
               </div>
             </div>
 

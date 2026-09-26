@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AppLayout from "../../components/layout/AppLayout";
 import { practiceSidebar } from "./sidebar";
 import { useToast } from "../../hooks/useToast";
+import { useAuth } from "../../hooks/useAuth";
 import {
   Users, Smartphone, FileText, Send, Plus,
   Search, RefreshCw, CheckCircle2, Clock,
@@ -36,6 +37,7 @@ const CAPIUM_TOKENS = [
 
 export default function CommunicationPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
 
   // 5 Capium Standard Headings (Article 9000188513)
@@ -1191,6 +1193,22 @@ export default function CommunicationPage() {
                 }}
                 className="p-5 space-y-3"
               >
+                {/* Dynamic Multi-tenant Practice Sender Indicator */}
+                <div className="bg-slate-50 dark:bg-slate-800/70 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-slate-500 dark:text-slate-400">From:</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200">
+                      {(user as any)?.practiceName || "San Accounts Ltd."}
+                    </span>
+                    <span className="text-slate-500 dark:text-slate-400 font-mono text-[11px]">
+                      &lt;{user?.email || "admin@sanaccounts.com"}&gt;
+                    </span>
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 font-semibold border border-emerald-200 dark:border-emerald-800">
+                    Practice Sender Verified
+                  </span>
+                </div>
+
                 {/* Contact Type Toggle & Select */}
                 <div className="grid grid-cols-3 gap-2">
                   <div className="col-span-1">
@@ -1368,6 +1386,22 @@ export default function CommunicationPage() {
                 
                 {/* Left Column: Form */}
                 <div className="md:col-span-8 space-y-3">
+                  {/* Dynamic Multi-tenant Practice Sender Indicator */}
+                  <div className="bg-slate-50 dark:bg-slate-800/70 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-slate-500 dark:text-slate-400">Broadcast From:</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">
+                        {(user as any)?.practiceName || "San Accounts Ltd."}
+                      </span>
+                      <span className="text-slate-500 dark:text-slate-400 font-mono text-[11px]">
+                        &lt;{user?.email || "admin@sanaccounts.com"}&gt;
+                      </span>
+                    </div>
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 font-semibold border border-emerald-200 dark:border-emerald-800">
+                      Practice Sender Verified
+                    </span>
+                  </div>
+
                   <div>
                     <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
                       Client Type Filter

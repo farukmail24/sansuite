@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Calculator, FileSpreadsheet, Layers, FileText,
   FileSignature, Shield, CheckSquare, Building2, History, ExternalLink,
   Plus, Calendar, AlertCircle, RefreshCw, X, CheckCircle2, ChevronRight,
-  Printer, ArrowRight
+  Printer, ArrowRight, Trash2, Check, ChevronDown
 } from "lucide-react";
 import { apiRequest } from "../../../lib/queryClient";
 import { useToast } from "../../../hooks/useToast";
@@ -24,6 +24,10 @@ interface CTWorkspaceContextType {
   refetchReturns: () => Promise<any>;
   refetchClient: () => Promise<any>;
   openNewReturnModal: () => void;
+  openDeleteModal: (ret?: any) => void;
+  openManageReturnsModal: () => void;
+  deleteReturn: (id: number) => Promise<any>;
+  updateReturnStatus: (id: number, status: string) => Promise<any>;
 }
 
 const CTWorkspaceContext = createContext<CTWorkspaceContextType | null>(null);
@@ -52,6 +56,10 @@ export default function CTWorkspaceLayout({ children, activeSection }: CTWorkspa
 
   const [selectedReturnId, setSelectedReturnId] = useState<number | null>(null);
   const [showReturnModal, setShowReturnModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [returnToDelete, setReturnToDelete] = useState<any | null>(null);
+  const [showManageReturnsModal, setShowManageReturnsModal] = useState(false);
+
   const [returnForm, setReturnForm] = useState({
     periodId: 0,
     startDate: new Date().getFullYear() - 1 + "-04-01",
@@ -121,7 +129,12 @@ export default function CTWorkspaceLayout({ children, activeSection }: CTWorkspa
   // Mutation: Create CT600 Return
   const createReturnMutation = useMutation({
     mutationFn: async (payload: any) => {
-      return await apiRequest("POST", `/api/corporation-tax/${clientId}/returns`, payload);
+      const res = await apiRequest("POST", `/api/corporation-tax/${clientId}/returns`, payload);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to create return.");
+      }
+      return await res.json();
     },
     onSuccess: async (data: any) => {
       await refetchReturns();
@@ -143,6 +156,66 @@ export default function CTWorkspaceLayout({ children, activeSection }: CTWorkspa
     },
   });
 
+  // Mutation: Delete CT600 Return
+  const deleteReturnMutation = useMutation({
+    mutationFn: async (returnId: number) => {
+      const res = await apiRequest("DELETE", `/api/corporation-tax/${clientId}/returns/${returnId}`);
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to delete return.");
+      }
+      return res.json();
+    },
+    onSuccess: async (_data, returnId) => {
+      await refetchReturns();
+      setShowDeleteModal(false);
+      setReturnToDelete(null);
+      const remaining = returns.filter((r) => r.id !== returnId);
+      if (remaining.length > 0) {
+        setSelectedReturnId(remaining[0].id);
+      } else {
+        setSelectedReturnId(null);
+      }
+      toast({
+        title: "CT600 Return Deleted",
+        description: "The draft CT600 return and related schedules have been permanently removed.",
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Deletion Failed",
+        description: err.message || "Failed to delete CT600 return.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Mutation: Update Return Status
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ returnId, status }: { returnId: number; status: string }) => {
+      const res = await apiRequest("PATCH", `/api/corporation-tax/${clientId}/returns/${returnId}/status`, { status });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to update return status.");
+      }
+      return res.json();
+    },
+    onSuccess: async (_data, variables) => {
+      await refetchReturns();
+      toast({
+        title: "Status Updated",
+        description: `CT600 return status set to ${variables.status}.`,
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Status Update Failed",
+        description: err.message || "Could not change return status.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const openNewReturnModal = () => {
     const latestPeriod = periods[0];
     setReturnForm({
@@ -153,6 +226,23 @@ export default function CTWorkspaceLayout({ children, activeSection }: CTWorkspa
       utrNumber: client?.utrNumber || "",
     });
     setShowReturnModal(true);
+  };
+
+  const openDeleteModal = (ret?: any) => {
+    setReturnToDelete(ret || currentReturn);
+    setShowDeleteModal(true);
+  };
+
+  const openManageReturnsModal = () => {
+    setShowManageReturnsModal(true);
+  };
+
+  const deleteReturn = async (id: number) => {
+    return await deleteReturnMutation.mutateAsync(id);
+  };
+
+  const updateReturnStatus = async (id: number, status: string) => {
+    return await updateStatusMutation.mutateAsync({ returnId: id, status });
   };
 
   // Dedicated Workspace Sub-Routes in Chronological Workflow Sequence
@@ -221,6 +311,10 @@ export default function CTWorkspaceLayout({ children, activeSection }: CTWorkspa
     refetchReturns,
     refetchClient,
     openNewReturnModal,
+    openDeleteModal,
+    openManageReturnsModal,
+    deleteReturn,
+    updateReturnStatus,
   };
 
   return (
@@ -240,24 +334,28 @@ export default function CTWorkspaceLayout({ children, activeSection }: CTWorkspa
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Return Selector Dropdown */}
+              {/* Return Selector & Period Controls */}
               {returns.length > 0 ? (
                 <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800/80 p-1 rounded-lg border border-slate-200 dark:border-slate-700">
                   <select
                     value={selectedReturnId || ""}
                     onChange={(e) => setSelectedReturnId(parseInt(e.target.value))}
                     className="px-2 py-1 text-xs rounded border-0 bg-transparent text-slate-900 dark:text-slate-100 font-medium focus:outline-hidden cursor-pointer"
+                    title="Switch CT600 Return"
                   >
                     {returns.map((r) => (
                       <option key={r.id} value={r.id} className="dark:bg-slate-900 text-slate-900 dark:text-slate-100">
-                        {r.taxYear || "CT600"} ({new Date(r.accountingPeriodStart).toLocaleDateString("en-GB")} - {new Date(r.accountingPeriodEnd).toLocaleDateString("en-GB")}) [{r.status}]
+                        #{r.id} • {r.taxYear || "CT600"} ({new Date(r.accountingPeriodStart).toLocaleDateString("en-GB")} - {new Date(r.accountingPeriodEnd).toLocaleDateString("en-GB")}) [{r.status}]
                       </option>
                     ))}
                   </select>
 
+                  {/* Status Dropdown */}
                   {currentReturn && (
-                    <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                    <select
+                      value={currentReturn.status || "Draft"}
+                      onChange={(e) => updateReturnStatus(currentReturn.id, e.target.value)}
+                      className={`px-2 py-0.5 rounded text-[10px] font-semibold border-0 cursor-pointer ${
                         currentReturn.status === "Accepted"
                           ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300"
                           : currentReturn.status === "Validated"
@@ -266,12 +364,53 @@ export default function CTWorkspaceLayout({ children, activeSection }: CTWorkspa
                           ? "bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300"
                           : "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200"
                       }`}
+                      title="Update Return Workflow Status"
                     >
-                      {currentReturn.status}
-                    </span>
+                      <option value="Draft">Draft</option>
+                      <option value="In Review">In Review</option>
+                      <option value="Validated">Validated</option>
+                      <option value="ReadyToSubmit">Ready to Submit</option>
+                      <option value="Submitted">Submitted</option>
+                      <option value="Accepted">Accepted</option>
+                    </select>
+                  )}
+
+                  {/* Delete Return Button (For removing duplicates/drafts) */}
+                  {currentReturn && currentReturn.status !== "Accepted" && (
+                    <button
+                      type="button"
+                      onClick={() => openDeleteModal(currentReturn)}
+                      className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded transition-colors cursor-pointer"
+                      title="Delete this Return (e.g. remove duplicate draft)"
+                    >
+                      <Trash2 size={13} />
+                    </button>
                   )}
                 </div>
               ) : null}
+
+              {/* Manage All Returns Button */}
+              {returns.length > 0 && (
+                <button
+                  type="button"
+                  onClick={openManageReturnsModal}
+                  className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-medium px-2.5 py-1.5 rounded-md flex items-center gap-1 shadow-xs transition-colors cursor-pointer"
+                  title="Manage all returns, view duplicates, and switch periods"
+                >
+                  <Layers size={11} className="text-indigo-600" />
+                  <span>Manage Returns ({returns.length})</span>
+                </button>
+              )}
+
+              {/* Link to Accounts Production */}
+              <Link
+                href={`/accounts-production/${clientId}`}
+                className="bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 text-[11px] font-medium px-2.5 py-1.5 rounded-md flex items-center gap-1 shadow-xs transition-colors"
+                title="Jump to Accounts Production module"
+              >
+                <FileSpreadsheet size={11} />
+                <span>Accounts Production</span>
+              </Link>
 
               <button
                 onClick={openNewReturnModal}
@@ -293,6 +432,45 @@ export default function CTWorkspaceLayout({ children, activeSection }: CTWorkspa
               )}
             </div>
           </div>
+
+          {/* Interactive Statutory Workflow Pipeline Bar */}
+          {currentReturn && (
+            <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-5 py-2 overflow-x-auto shadow-2xs">
+              <div className="flex items-center gap-1.5 min-w-max">
+                <Link
+                  href={`/accounts-production/${clientId}`}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 dark:text-slate-400 dark:hover:text-emerald-300 dark:hover:bg-emerald-950/40 transition-colors"
+                  title="Source Accounts Production accounts & Trial Balance"
+                >
+                  <FileSpreadsheet size={13} className="text-emerald-600" />
+                  <span>1. Accounts Production</span>
+                </Link>
+                <ChevronRight size={11} className="text-slate-300 dark:text-slate-600 shrink-0" />
+
+                {navItems.map((step, idx) => {
+                  const isActive = location.startsWith(step.route);
+                  return (
+                    <div key={step.route} className="flex items-center gap-1.5">
+                      <Link
+                        href={step.route}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
+                          isActive
+                            ? "bg-indigo-600 text-white shadow-xs font-semibold"
+                            : "text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                        }`}
+                      >
+                        {step.icon}
+                        <span>{idx + 2}. {step.label}</span>
+                      </Link>
+                      {idx < navItems.length - 1 && (
+                        <ChevronRight size={11} className="text-slate-300 dark:text-slate-600 shrink-0" />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Main Content Area */}
           <div className="p-6 w-full mx-auto space-y-6">
@@ -445,6 +623,190 @@ export default function CTWorkspaceLayout({ children, activeSection }: CTWorkspa
                     className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold shadow-xs disabled:opacity-50 cursor-pointer"
                   >
                     {createReturnMutation.isPending ? "Creating..." : "Initialize Return"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal: Delete Confirmation (Remove Duplicate / Draft Return) */}
+          {showDeleteModal && returnToDelete && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+              <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4 border border-slate-200 dark:border-slate-800 text-xs animate-in fade-in-50">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                  <h3 className="font-bold text-sm text-rose-600 dark:text-rose-400 flex items-center gap-2">
+                    <Trash2 size={16} />
+                    <span>Delete Draft CT600 Return</span>
+                  </h3>
+                  <button
+                    onClick={() => { setShowDeleteModal(false); setReturnToDelete(null); }}
+                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                <div className="p-3.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-xl text-slate-700 dark:text-slate-300 space-y-2">
+                  <div className="font-semibold text-rose-900 dark:text-rose-200 text-xs">
+                    Confirm deletion of CT600 Return #{returnToDelete.id}?
+                  </div>
+                  <div className="text-[11px] text-slate-600 dark:text-slate-400">
+                    Accounting Period: <span className="font-semibold text-slate-900 dark:text-slate-100">{new Date(returnToDelete.accountingPeriodStart).toLocaleDateString("en-GB")} – {new Date(returnToDelete.accountingPeriodEnd).toLocaleDateString("en-GB")}</span> ({returnToDelete.taxYear || "CT600"})
+                  </div>
+                  <p className="text-[11px] text-rose-700 dark:text-rose-300">
+                    This will permanently delete this duplicate/unwanted return, along with any linked draft capital allowances schedules, loss schedules, and calculations.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => { setShowDeleteModal(false); setReturnToDelete(null); }}
+                    className="px-3 py-1.5 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg font-medium text-slate-700 dark:text-slate-300 cursor-pointer transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteReturnMutation.mutate(returnToDelete.id)}
+                    disabled={deleteReturnMutation.isPending}
+                    className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors disabled:opacity-50"
+                  >
+                    {deleteReturnMutation.isPending ? <RefreshCw size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                    <span>Yes, Delete Return</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal: Manage All Returns & Duplicate Periods */}
+          {showManageReturnsModal && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+              <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-2xl p-6 space-y-4 border border-slate-200 dark:border-slate-800 text-xs animate-in fade-in-50">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Layers size={16} className="text-indigo-600" />
+                    <div>
+                      <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                        Manage Client CT600 Returns & Periods
+                      </h3>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Switch active return, update filing workflow status, or remove duplicate draft periods.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowManageReturnsModal(false)}
+                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                <div className="max-h-[60vh] overflow-y-auto">
+                  <table className="w-full text-left text-xs border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden">
+                    <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 uppercase tracking-wider border-b border-slate-200 dark:border-slate-800">
+                      <tr>
+                        <th className="py-2.5 px-3 font-semibold">ID / Period</th>
+                        <th className="py-2.5 px-3 font-semibold">Tax Year</th>
+                        <th className="py-2.5 px-3 font-semibold">Turnover / Tax</th>
+                        <th className="py-2.5 px-3 font-semibold">Status</th>
+                        <th className="py-2.5 px-3 text-right font-semibold">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {returns.map((r) => {
+                        const isSelected = r.id === selectedReturnId;
+                        return (
+                          <tr
+                            key={r.id}
+                            className={isSelected ? "bg-indigo-50/60 dark:bg-indigo-950/30" : "hover:bg-slate-50 dark:hover:bg-slate-800/40"}
+                          >
+                            <td className="py-2.5 px-3">
+                              <div className="font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                                <span className="font-mono text-indigo-600 dark:text-indigo-400 font-bold">#{r.id}</span>
+                                <span>{new Date(r.accountingPeriodStart).toLocaleDateString("en-GB")} – {new Date(r.accountingPeriodEnd).toLocaleDateString("en-GB")}</span>
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-3 font-mono font-medium text-slate-700 dark:text-slate-300">
+                              {r.taxYear || "CT600"}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <div className="text-[11px] text-slate-600 dark:text-slate-400">
+                                Turnover: £{parseFloat(r.turnover || "0").toLocaleString("en-GB", { minimumFractionDigits: 2 })}
+                              </div>
+                              <div className="font-semibold text-emerald-600 dark:text-emerald-400 text-[11px]">
+                                Net Tax: £{parseFloat(r.netTaxDue || "0").toLocaleString("en-GB", { minimumFractionDigits: 2 })}
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <select
+                                value={r.status || "Draft"}
+                                onChange={(e) => updateStatusMutation.mutate({ returnId: r.id, status: e.target.value })}
+                                className="text-[10px] font-semibold px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 cursor-pointer"
+                              >
+                                <option value="Draft">Draft</option>
+                                <option value="In Review">In Review</option>
+                                <option value="Validated">Validated</option>
+                                <option value="ReadyToSubmit">Ready to Submit</option>
+                                <option value="Submitted">Submitted</option>
+                                <option value="Accepted">Accepted</option>
+                              </select>
+                            </td>
+                            <td className="py-2.5 px-3 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                {!isSelected ? (
+                                  <button
+                                    onClick={() => {
+                                      setSelectedReturnId(r.id);
+                                      setShowManageReturnsModal(false);
+                                    }}
+                                    className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 rounded text-[11px] font-medium transition-colors cursor-pointer"
+                                  >
+                                    Select Active
+                                  </button>
+                                ) : (
+                                  <span className="text-emerald-600 text-[11px] font-semibold flex items-center gap-1">
+                                    <CheckCircle2 size={12} /> Active
+                                  </span>
+                                )}
+                                {r.status !== "Accepted" && (
+                                  <button
+                                    onClick={() => {
+                                      setReturnToDelete(r);
+                                      setShowDeleteModal(true);
+                                    }}
+                                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded transition-colors cursor-pointer"
+                                    title="Delete this Return (e.g. duplicate draft)"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    onClick={() => {
+                      setShowManageReturnsModal(false);
+                      openNewReturnModal();
+                    }}
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Plus size={13} /> New CT600 Return
+                  </button>
+                  <button
+                    onClick={() => setShowManageReturnsModal(false)}
+                    className="px-3 py-1.5 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-700 dark:text-slate-300 text-xs font-medium cursor-pointer"
+                  >
+                    Close
                   </button>
                 </div>
               </div>

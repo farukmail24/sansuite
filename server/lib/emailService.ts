@@ -57,7 +57,7 @@ class EmailService {
       if (cfg.mail_host && cfg.mail_user && cfg.mail_pass) {
         const port = parseInt(cfg.mail_port || "465");
         const isSecure = port === 465 || cfg.mail_encryption === "ssl" || cfg.mail_encryption === "tls";
-        const fromAddress = cfg.mail_from || `SanSuite Sign <${cfg.mail_user}>`;
+        const fromAddress = cfg.mail_from || process.env.SMTP_FROM || (cfg.mail_user ? `SanSuite <${cfg.mail_user}>` : this.defaultFrom);
 
         const transporter = nodemailer.createTransport({
           host: cfg.mail_host,
@@ -80,10 +80,10 @@ class EmailService {
 
     // Fallback to process.env
     const host = process.env.SMTP_HOST;
-    const port = parseInt(process.env.SMTP_PORT || "587");
+    const port = parseInt(process.env.SMTP_PORT || "465");
     const user = process.env.SMTP_USER;
     const pass = process.env.SMTP_PASS;
-    const from = process.env.SMTP_FROM || (user ? `SanSuite Sign <${user}>` : this.defaultFrom);
+    const from = process.env.SMTP_FROM || (user ? `SanSuite <${user}>` : this.defaultFrom);
 
     if (host && user && pass) {
       const transporter = nodemailer.createTransport({
@@ -224,7 +224,8 @@ class EmailService {
       </html>
     `;
 
-    return this.sendMail(to, subject, html);
+    const result = await this.sendMail(to, subject, html);
+    return result.success;
   }
 
   /**
@@ -263,7 +264,8 @@ class EmailService {
       </html>
     `;
 
-    return this.sendMail(to, subject, html);
+    const result = await this.sendMail(to, subject, html);
+    return result.success;
   }
 
   /**
@@ -296,7 +298,8 @@ class EmailService {
       </html>
     `;
 
-    return this.sendMail(to, subject, html);
+    const result = await this.sendMail(to, subject, html);
+    return result.success;
   }
 
   /**
@@ -310,6 +313,8 @@ class EmailService {
     priority?: string;
     practiceName?: string;
     senderName?: string;
+    senderEmail?: string;
+    replyTo?: string;
     attachments?: Array<{
       fileName: string;
       contentType?: string;
@@ -317,7 +322,7 @@ class EmailService {
       url?: string;
     }>;
   }): Promise<{ success: boolean; messageId?: string; error?: string }> {
-    const { to, cc, subject, message, priority = "Normal", practiceName = "San Accounts Ltd.", senderName, attachments = [] } = params;
+    const { to, cc, subject, message, priority = "Normal", practiceName = "", senderName, senderEmail, replyTo, attachments = [] } = params;
     const { transporter, fromAddress } = await this.getTransporter();
 
     const formattedMessage = message.includes("<") ? message : message.replace(/\n/g, "<br>");
@@ -391,8 +396,17 @@ class EmailService {
 
     if (transporter) {
       try {
+        const rawSmtpEmail = fromAddress.includes("<")
+          ? fromAddress.match(/<([^>]+)>/)?.[1] || fromAddress
+          : fromAddress;
+        // Fully dynamic – no hardcoded fallback firm name or email
+        const senderDisplayName = senderName || practiceName || "";
+        const resolvedFrom = senderDisplayName ? `"${senderDisplayName}" <${rawSmtpEmail}>` : rawSmtpEmail;
+        const resolvedReplyTo = senderEmail || rawSmtpEmail;
+
         const info: any = await transporter.sendMail({
-          from: fromAddress,
+          from: resolvedFrom,
+          replyTo: resolvedReplyTo,
           to,
           cc: cc ? cc : undefined,
           subject,
@@ -400,7 +414,7 @@ class EmailService {
           attachments: mailAttachments.length > 0 ? mailAttachments : undefined,
           priority: priority === "High" ? "high" : priority === "Low" ? "low" : "normal",
         });
-        console.log(`[EmailService] Live direct email sent to ${to} with ${mailAttachments.length} attachment(s) (MessageId: ${info?.messageId})`);
+        console.log(`[EmailService] Live direct email sent to ${to} (From: ${resolvedFrom}, Reply-To: ${resolvedReplyTo}, MessageId: ${info?.messageId})`);
         return { success: true, messageId: info?.messageId };
       } catch (err: any) {
         console.error(`[EmailService] Error dispatching email to ${to}:`, err);
@@ -412,22 +426,46 @@ class EmailService {
     }
   }
 
-  private async sendMail(to: string, subject: string, html: string): Promise<boolean> {
+  async sendMail(
+    to: string,
+    subject: string,
+    html: string,
+    options?: {
+      text?: string;
+      cc?: string;
+      attachments?: any[];
+      fromName?: string;
+      fromEmail?: string;
+      replyTo?: string;
+    }
+  ): Promise<{ success: boolean; messageId?: string; error?: string }> {
     const { transporter, fromAddress } = await this.getTransporter();
 
     if (transporter) {
       try {
-        const info = await transporter.sendMail({
-          from: fromAddress,
+        const rawSmtpEmail = fromAddress.includes("<")
+          ? fromAddress.match(/<([^>]+)>/)?.[1] || fromAddress
+          : fromAddress;
+        // Fully dynamic – no hardcoded fallback firm name or email
+        const senderDisplayName = options?.fromName || "";
+        const resolvedFrom = senderDisplayName ? `"${senderDisplayName}" <${rawSmtpEmail}>` : rawSmtpEmail;
+        const resolvedReplyTo = options?.replyTo || options?.fromEmail || rawSmtpEmail;
+
+        const info: any = await transporter.sendMail({
+          from: resolvedFrom,
+          replyTo: resolvedReplyTo,
           to,
+          cc: options?.cc ? options.cc : undefined,
           subject,
+          text: options?.text || undefined,
           html,
+          attachments: options?.attachments,
         });
-        console.log(`[EmailService] Live email dispatched successfully to: ${to} (MessageId: ${info.messageId})`);
-        return true;
-      } catch (error) {
+        console.log(`[EmailService] Live email dispatched successfully to: ${to} (From: ${resolvedFrom}, Reply-To: ${resolvedReplyTo}, MessageId: ${info?.messageId})`);
+        return { success: true, messageId: info?.messageId };
+      } catch (error: any) {
         console.error(`[EmailService] Failed to send live email to ${to}:`, error);
-        return false;
+        return { success: false, error: error.message };
       }
     } else {
       // Graceful simulated delivery (logged cleanly)
@@ -436,7 +474,7 @@ To: ${to}
 Subject: ${subject}
 Delivery Mode: Simulated (Configure Mail Server in System Admin Settings or .env for live inbox dispatch)
 -----------------------------------------------------------`);
-      return true;
+      return { success: true, messageId: `sim-${Date.now()}` };
     }
   }
 }

@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { db } from "./db";
+import { db, pool } from "./db";
 import { systemAnnouncements, systemSettings, subscriptionPlans } from "../shared/schema";
 import { eq, and, or, isNull, gt } from "drizzle-orm";
 
@@ -168,6 +168,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true, message: "Media settings updated successfully" });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to update media settings", error: error.message });
+    }
+  });
+
+  // Practice Media Library CRUD (backed by MySQL practice_media_files)
+  app.get("/api/admin/media", async (_req, res) => {
+    try {
+      const [rows]: any = await pool.query(
+        "SELECT id, practice_id as practiceId, name, type, size, url, category, storage_driver as storageDriver, storage_location as storageLocation, created_at as createdAt FROM practice_media_files ORDER BY id DESC"
+      );
+      res.json(rows || []);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to fetch media files", error: error.message });
+    }
+  });
+
+  app.post("/api/admin/media", async (req, res) => {
+    try {
+      const { name, type, size, url, category = "General", storageDriver = "local", storageLocation = "Local Server Storage", practiceId = 1 } = req.body || {};
+      if (!name || !url) {
+        return res.status(400).json({ message: "Name and URL are required" });
+      }
+      const [result]: any = await pool.query(
+        "INSERT INTO practice_media_files (practice_id, name, type, size, url, category, storage_driver, storage_location) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [practiceId, name, type || "application/octet-stream", size || "100 KB", url, category, storageDriver, storageLocation]
+      );
+      res.json({ id: result.insertId, message: "Media saved successfully" });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to save media", error: error.message });
+    }
+  });
+
+  app.delete("/api/admin/media/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await pool.query("DELETE FROM practice_media_files WHERE id = ?", [id]);
+      res.json({ message: "Media removed successfully" });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to delete media", error: error.message });
     }
   });
 

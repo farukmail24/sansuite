@@ -1,11 +1,11 @@
-import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import SAWorkspaceLayout, { useSAWorkspace } from "./SAWorkspaceLayout";
 import { apiRequest } from "../../../lib/queryClient";
 import { useToast } from "../../../hooks/useToast";
 import {
   Shield, CheckCircle2, AlertCircle, RefreshCw, Send,
-  ArrowRight, ArrowLeft, Code, FileText, Download, User, X
+  ArrowRight, ArrowLeft, Code, FileText, Download, User, X, ExternalLink
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -28,9 +28,34 @@ function SASubmitContent() {
   const [irMark, setIrMark] = useState<string | null>(currentReturn?.irMark || null);
   const [showXmlModal, setShowXmlModal] = useState(false);
 
+  // Fetch Practice HMRC Agent Services Account (ASA) Details
+  const { data: firmDetails } = useQuery<any>({
+    queryKey: ["/api/admin/firm-details"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/admin/firm-details");
+      if (!res.ok) return null;
+      return res.json();
+    },
+  });
+
   // HMRC Agent Gateway Credentials state
-  const [senderId, setSenderId] = useState("HMRC-AGENT-7781");
+  const [senderId, setSenderId] = useState("");
+  const [saAgentId, setSaAgentId] = useState("");
   const [isTestSubmission, setIsTestSubmission] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [declarationAgreed, setDeclarationAgreed] = useState(false);
+
+  useEffect(() => {
+    if (firmDetails) {
+      const defaultSender = firmDetails.hmrcGatewayId || firmDetails.saAgentId || firmDetails.hmrcAgentCode || "";
+      if (defaultSender && !senderId) {
+        setSenderId(defaultSender);
+      }
+      if (firmDetails.saAgentId && !saAgentId) {
+        setSaAgentId(firmDetails.saAgentId);
+      }
+    }
+  }, [firmDetails]);
 
   // 1. Mutation: Pre-filing Validation & IR Mark
   const validateMutation = useMutation({
@@ -376,44 +401,122 @@ function SASubmitContent() {
 
       {/* STEP 3: GATEWAY DETAILS */}
       {step === 3 && (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-xs space-y-6">
-          <div className="border-b border-slate-100 dark:border-slate-800 pb-4">
-            <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">
-              Step 3: HMRC Agent Gateway Credentials & Options
-            </h3>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Confirm your Government Gateway credentials and choose Test Service or Live Production.
-            </p>
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-xs space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 gap-2">
+            <div>
+              <h3 className="font-bold text-xs text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+                Step 3: HMRC Online Services Gateway Credentials
+              </h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Practice-wide HMRC Agent Services Account (ASA) credentials for electronic SA100 transmission.
+              </p>
+            </div>
+            <Link
+              href="/admin"
+              className="text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 flex items-center gap-1 self-start sm:self-auto"
+            >
+              <span>Manage Firm ASA Credentials</span>
+              <ExternalLink size={11} />
+            </Link>
           </div>
 
-          <div className="space-y-4 text-xs max-w-lg">
-            <div>
-              <label className="block text-slate-700 dark:text-slate-300 font-medium mb-1">
-                HMRC Agent Sender ID *
-              </label>
-              <input
-                type="text"
-                value={senderId}
-                onChange={(e) => setSenderId(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono"
-              />
+          {firmDetails?.hmrcGatewayId || firmDetails?.saAgentId || firmDetails?.hmrcAgentCode ? (
+            <div className="p-3.5 bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/80 rounded-xl flex items-start gap-3">
+              <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0 mt-0.5">
+                <Shield size={16} />
+              </div>
+              <div className="text-xs space-y-1 flex-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-emerald-900 dark:text-emerald-200">
+                    Practice HMRC ASA Credentials Connected
+                  </span>
+                  <span className="text-[10px] bg-emerald-100 dark:bg-emerald-900/80 text-emerald-800 dark:text-emerald-200 font-semibold px-2 py-0.5 rounded-full">
+                    Global Default Active
+                  </span>
+                </div>
+                <p className="text-[11px] text-emerald-700 dark:text-emerald-300">
+                  Credentials saved in <strong>My Admin &gt; My Firm &gt; Agent Credentials</strong> are automatically applied to this SA100 return.
+                </p>
+                <div className="pt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-mono text-emerald-800 dark:text-emerald-300">
+                  {firmDetails.hmrcGatewayId && (
+                    <span>Gateway ID: <strong>{firmDetails.hmrcGatewayId}</strong></span>
+                  )}
+                  {firmDetails.saAgentId && (
+                    <span>SA Agent ID: <strong>{firmDetails.saAgentId}</strong></span>
+                  )}
+                  {firmDetails.hmrcAgentCode && (
+                    <span>Agent Ref: <strong>{firmDetails.hmrcAgentCode}</strong></span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="p-3.5 bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl flex items-start gap-3">
+              <div className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0 mt-0.5">
+                <AlertCircle size={16} />
+              </div>
+              <div className="text-xs space-y-1 flex-1">
+                <span className="font-bold text-amber-900 dark:text-amber-200 block">
+                  Global Practice HMRC Credentials Not Configured
+                </span>
+                <p className="text-[11px] text-amber-700 dark:text-amber-300">
+                  Save your Government Gateway ID and Agent Reference once in{" "}
+                  <Link href="/admin" className="underline font-bold hover:text-amber-900">
+                    My Admin &gt; My Firm &gt; Agent Credentials
+                  </Link>{" "}
+                  to auto-fill globally across all clients and filing modules.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-4 text-xs max-w-xl">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-slate-700 dark:text-slate-300 font-medium mb-1">
+                  HMRC Sender ID / Government Gateway ID
+                </label>
+                <input
+                  type="text"
+                  value={senderId}
+                  onChange={(e) => setSenderId(e.target.value)}
+                  placeholder="e.g. 123456789012"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono text-xs text-emerald-700 dark:text-emerald-300 font-bold focus:outline-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 dark:text-slate-300 font-medium mb-1">
+                  Self Assessment Agent ID
+                </label>
+                <input
+                  type="text"
+                  value={saAgentId}
+                  onChange={(e) => setSaAgentId(e.target.value)}
+                  placeholder="e.g. SA123456"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono text-xs text-slate-700 dark:text-slate-200 focus:outline-emerald-500"
+                />
+              </div>
             </div>
 
-            <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 space-y-2">
-              <label className="flex items-center gap-2 cursor-pointer">
+            <div className="p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40">
+              <label className="flex items-start gap-2.5 cursor-pointer">
                 <input
                   type="checkbox"
+                  id="testToggleSA"
                   checked={isTestSubmission}
                   onChange={(e) => setIsTestSubmission(e.target.checked)}
-                  className="rounded text-emerald-600"
+                  className="rounded border-slate-300 mt-0.5 text-emerald-600"
                 />
-                <span className="font-semibold text-slate-800 dark:text-slate-200">
-                  Submit to HMRC Test in Live (Test Service)
-                </span>
+                <div>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200 block">
+                    Submit as Test Transmission (HMRC Live Test Service)
+                  </span>
+                  <span className="text-[11px] text-slate-500 block mt-0.5">
+                    Transmits GovTalk XML payload to HMRC gateway for validation verification without logging an official statutory filing.
+                  </span>
+                </div>
               </label>
-              <p className="text-[11px] text-slate-500 pl-6">
-                Enables pre-transmission test mode without filing an official statutory tax return to HMRC live records.
-              </p>
             </div>
           </div>
 
@@ -429,12 +532,15 @@ function SASubmitContent() {
 
             <button
               type="button"
-              onClick={() => submitToHmrcMutation.mutate()}
-              disabled={submitToHmrcMutation.isPending}
-              className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-2 shadow-xs cursor-pointer"
+              disabled={submitToHmrcMutation.isPending || !senderId}
+              onClick={() => {
+                setDeclarationAgreed(false);
+                setShowConfirmModal(true);
+              }}
+              className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center gap-2 shadow-xs cursor-pointer transition-colors"
             >
               <Send size={14} className={submitToHmrcMutation.isPending ? "animate-spin" : ""} />
-              <span>{submitToHmrcMutation.isPending ? "Submitting to HMRC..." : "Transmit SA100 to HMRC"}</span>
+              <span>Transmit SA100 to HMRC</span>
             </button>
           </div>
         </div>
@@ -498,6 +604,140 @@ function SASubmitContent() {
               <span>Download Payment Advice Slip</span>
               <ArrowRight size={13} />
             </Link>
+          </div>
+        </div>
+      )}
+
+      {/* Statutory Filing Confirmation Modal */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-800/40">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                  <Shield size={20} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                    Confirm Statutory SA100 Filing
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    HMRC Self Assessment Electronic Submission Gateway
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowConfirmModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-4 text-xs">
+              {/* Transmission Mode Alert */}
+              {isTestSubmission ? (
+                <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl flex items-start gap-2.5">
+                  <AlertCircle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                  <div className="text-[11px] text-amber-800 dark:text-amber-300">
+                    <span className="font-bold block">Test Transmission Mode</span>
+                    This return will be validated against HMRC gateway test rules without recording an official legal filing.
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl flex items-start gap-2.5">
+                  <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" />
+                  <div className="text-[11px] text-emerald-800 dark:text-emerald-300">
+                    <span className="font-bold block">Live Official Statutory Filing</span>
+                    This transmission will officially submit Form SA100 to HM Revenue &amp; Customs for legal tax assessment.
+                  </div>
+                </div>
+              )}
+
+              {/* Return Details Summary Table */}
+              <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4 border border-slate-200/80 dark:border-slate-800 space-y-2">
+                <div className="flex justify-between border-b border-slate-200/60 dark:border-slate-700/60 pb-1.5">
+                  <span className="text-slate-500">Taxpayer Name:</span>
+                  <span className="font-bold text-slate-900 dark:text-slate-100">{client?.clientName}</span>
+                </div>
+                <div className="flex justify-between border-b border-slate-200/60 dark:border-slate-700/60 pb-1.5">
+                  <span className="text-slate-500">10-Digit Tax UTR:</span>
+                  <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                    {currentReturn.utrNumber || client?.utrNumber || "N/A"}
+                  </span>
+                </div>
+                <div className="flex justify-between border-b border-slate-200/60 dark:border-slate-700/60 pb-1.5">
+                  <span className="text-slate-500">Tax Year:</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">{currentReturn.taxYear}</span>
+                </div>
+                <div className="flex justify-between border-b border-slate-200/60 dark:border-slate-700/60 pb-1.5">
+                  <span className="text-slate-500">Total Taxable Income:</span>
+                  <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+                    £{parseFloat(currentReturn.totalTaxableIncome || "0").toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between border-b border-slate-200/60 dark:border-slate-700/60 pb-1.5">
+                  <span className="text-slate-500">Net Tax Due to HMRC:</span>
+                  <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 text-sm">
+                    £{parseFloat(currentReturn.netTaxDue || "0").toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between border-b border-slate-200/60 dark:border-slate-700/60 pb-1.5">
+                  <span className="text-slate-500">Gateway Sender ID:</span>
+                  <span className="font-mono text-slate-700 dark:text-slate-300 font-semibold">{senderId}</span>
+                </div>
+                <div className="flex justify-between pt-0.5">
+                  <span className="text-slate-500">Certified IR Mark:</span>
+                  <span className="font-mono text-[10px] text-slate-600 dark:text-slate-400 truncate max-w-[240px]">
+                    {currentReturn.irMark || irMark || "Generated"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Statutory Legal Declaration Checkbox */}
+              <div className="p-3.5 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-xl">
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={declarationAgreed}
+                    onChange={(e) => setDeclarationAgreed(e.target.checked)}
+                    className="mt-0.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                  />
+                  <span className="text-[11px] text-slate-700 dark:text-slate-300 leading-relaxed select-none">
+                    I confirm that I have reviewed the SA100 return and computations. I declare that the information is correct and complete to the best of my knowledge, and I am authorized to transmit this return to HM Revenue &amp; Customs.
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-3.5 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/30">
+              <button
+                type="button"
+                onClick={() => setShowConfirmModal(false)}
+                className="px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Cancel &amp; Review
+              </button>
+
+              <button
+                type="button"
+                disabled={!declarationAgreed || submitToHmrcMutation.isPending}
+                onClick={async () => {
+                  try {
+                    await submitToHmrcMutation.mutateAsync();
+                    setShowConfirmModal(false);
+                  } catch (e) {}
+                }}
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center gap-2 shadow-xs cursor-pointer transition-colors"
+              >
+                <Send size={14} className={submitToHmrcMutation.isPending ? "animate-spin" : ""} />
+                <span>{submitToHmrcMutation.isPending ? "Submitting to HMRC..." : "Confirm & Transmit to HMRC"}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

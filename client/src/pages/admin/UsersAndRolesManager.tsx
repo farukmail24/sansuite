@@ -306,14 +306,17 @@ export default function UsersAndRolesManager() {
         addressLine2: user.addressLine2 || "",
         city: user.city || "",
         postCode: user.postCode || "",
-        permissions: user.permissions || {
-          autoAssign: user.role === "admin" || user.role === "accountant",
-          hubAccess: true,
-          bankFeedsAccess: user.role === "admin" || user.role === "accountant",
-          amlOfficer: user.role === "admin",
-          assignedClientIds: [],
-          clientManagerClientIds: [],
-          modulePermissions: { ...DEFAULT_MODULE_PERMS },
+        permissions: {
+          autoAssign: user.permissions?.autoAssign ?? (user.role === "admin" || user.role === "accountant"),
+          hubAccess: user.permissions?.hubAccess ?? true,
+          bankFeedsAccess: user.permissions?.bankFeedsAccess ?? (user.role === "admin" || user.role === "accountant"),
+          amlOfficer: user.permissions?.amlOfficer ?? (user.role === "admin"),
+          assignedClientIds: Array.isArray(user.permissions?.assignedClientIds) ? user.permissions.assignedClientIds : [],
+          clientManagerClientIds: Array.isArray(user.permissions?.clientManagerClientIds) ? user.permissions.clientManagerClientIds : [],
+          modulePermissions: {
+            ...DEFAULT_MODULE_PERMS,
+            ...(user.permissions?.modulePermissions || {}),
+          },
         },
       });
     } else {
@@ -1130,7 +1133,7 @@ export default function UsersAndRolesManager() {
                       : "border-transparent text-slate-500 hover:text-slate-700"
                     }`}
                 >
-                  Companies ({userForm.permissions.assignedClientIds.length} Assigned)
+                  Companies ({(userForm.permissions?.assignedClientIds || []).length} Assigned)
                 </button>
                 <button
                   onClick={() => setEditorPermTab("modules")}
@@ -1213,8 +1216,8 @@ export default function UsersAndRolesManager() {
                           </tr>
                         ) : (
                           filteredCompanies.map((comp) => {
-                            const isAssigned = userForm.permissions.assignedClientIds.includes(comp.id);
-                            const isManager = userForm.permissions.clientManagerClientIds.includes(comp.id);
+                            const isAssigned = (userForm.permissions?.assignedClientIds || []).includes(comp.id);
+                            const isManager = (userForm.permissions?.clientManagerClientIds || []).includes(comp.id);
 
                             return (
                               <tr key={comp.id} className="hover:bg-slate-50 transition">
@@ -1232,13 +1235,13 @@ export default function UsersAndRolesManager() {
                                     onChange={(e) => {
                                       const checked = e.target.checked;
                                       setUserForm((p) => {
-                                        const cur = p.permissions.assignedClientIds;
+                                        const cur = p.permissions?.assignedClientIds || [];
                                         const updated = checked
                                           ? [...cur, comp.id]
                                           : cur.filter((id) => id !== comp.id);
 
                                         // If unassigning, also remove client manager
-                                        const curMgr = p.permissions.clientManagerClientIds;
+                                        const curMgr = p.permissions?.clientManagerClientIds || [];
                                         const updatedMgr = checked
                                           ? curMgr
                                           : curMgr.filter((id) => id !== comp.id);
@@ -1263,13 +1266,13 @@ export default function UsersAndRolesManager() {
                                     onChange={(e) => {
                                       const checked = e.target.checked;
                                       setUserForm((p) => {
-                                        const curMgr = p.permissions.clientManagerClientIds;
+                                        const curMgr = p.permissions?.clientManagerClientIds || [];
                                         const updatedMgr = checked
                                           ? [...curMgr, comp.id]
                                           : curMgr.filter((id) => id !== comp.id);
 
                                         // If making manager, ensure also assigned
-                                        const cur = p.permissions.assignedClientIds;
+                                        const cur = p.permissions?.assignedClientIds || [];
                                         const updated = checked && !cur.includes(comp.id)
                                           ? [...cur, comp.id]
                                           : cur;

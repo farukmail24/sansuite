@@ -1,15 +1,17 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AppLayout from "../../components/layout/AppLayout";
 import {
   LayoutDashboard, FileText, ShoppingCart, Wallet, BarChart2, Settings,
   Plus, X, ChevronRight, ChevronLeft, CheckCircle2, AlertCircle, Send,
+  FileSignature, Check, ShieldCheck
 } from "lucide-react";
 import { apiRequest } from "../../lib/queryClient";
 import { useToast } from "../../hooks/useToast";
 import { bookkeepingSidebar, getClientSidebar } from "./sidebar";
 import ClientGuard from "./ClientGuard";
+import SendToeSignModal from "../../components/esign/SendToeSignModal";
 
 const STEPS = ["Set-up VAT Period", "Review Transactions", "Review Return", "Submit to HMRC"];
 
@@ -23,6 +25,9 @@ export default function VatPage() {
   const { toast } = useToast();
   const [showWizard, setShowWizard] = useState(false);
   const [viewPeriodDetails, setViewPeriodDetails] = useState<any>(null);
+  const [selectedPeriodId, setSelectedPeriodId] = useState<number | null>(null);
+  const [showEsignModal, setShowEsignModal] = useState(false);
+  const [esignPeriod, setEsignPeriod] = useState<any>(null);
   const [step, setStep] = useState(0);
   const [vatForm, setVatForm] = useState({
     clientId: clientId || "", 
@@ -31,6 +36,15 @@ export default function VatPage() {
     toDate: "", 
     lateClaimsIncluded: false,
     deregistered: false,
+  });
+
+  const { data: client } = useQuery({
+    queryKey: ["/api/bookkeeping/clients", clientId],
+    queryFn: async () => {
+      const r = await apiRequest("GET", `/api/bookkeeping/clients/${clientId}`);
+      return r.ok ? r.json() : null;
+    },
+    enabled: !!clientId,
   });
 
   const { data: periods = [], isLoading } = useQuery({
@@ -60,13 +74,45 @@ export default function VatPage() {
     enabled: !!clientId,
   });
 
-  // Statutory VAT 9-Box Calculation (Signed Net VAT supporting HMRC Refund)
-  const vatOnSales = invoices.reduce((s: number, i: any) => s + parseFloat(i.vatTotal || "0"), 0);
-  const vatOnPurchases = purchases.reduce((s: number, p: any) => s + parseFloat(p.vatTotal || "0"), 0);
-  const netVatDue = vatOnSales - vatOnPurchases; // Preserves signed value
+  const wizardInvoices = useMemo(() => {
+    if (!vatForm.fromDate || !vatForm.toDate) return invoices;
+    const from = new Date(vatForm.fromDate);
+    const to = new Date(vatForm.toDate);
+    return invoices.filter((i: any) => {
+      const d = new Date(i.invoiceDate);
+      if (vatForm.lateClaimsIncluded) return d <= to && i.status !== "Void";
+      return d >= from && d <= to && i.status !== "Void";
+    });
+  }, [invoices, vatForm.fromDate, vatForm.toDate, vatForm.lateClaimsIncluded]);
+
+  const wizardPurchases = useMemo(() => {
+    if (!vatForm.fromDate || !vatForm.toDate) return purchases;
+    const from = new Date(vatForm.fromDate);
+    const to = new Date(vatForm.toDate);
+    return purchases.filter((p: any) => {
+      const d = new Date(p.billDate || p.invoiceDate);
+      if (vatForm.lateClaimsIncluded) return d <= to && p.status !== "Void";
+      return d >= from && d <= to && p.status !== "Void";
+    });
+  }, [purchases, vatForm.fromDate, vatForm.toDate, vatForm.lateClaimsIncluded]);
+
+  const wizardVatOnSales = wizardInvoices.reduce((s: number, i: any) => s + parseFloat(i.vatTotal || "0"), 0);
+  const wizardVatOnPurchases = wizardPurchases.reduce((s: number, p: any) => s + parseFloat(p.vatTotal || "0"), 0);
+  const totalValueSales = wizardInvoices.reduce((s: number, i: any) => s + parseFloat(i.subTotal || "0"), 0);
+  const totalValuePurchases = wizardPurchases.reduce((s: number, p: any) => s + parseFloat(p.subTotal || "0"), 0);
+
+  const activePeriod = useMemo(() => {
+    if (selectedPeriodId) {
+      return periods.find((p: any) => p.id === selectedPeriodId) || periods[0] || null;
+    }
+    return periods[0] || null;
+  }, [periods, selectedPeriodId]);
+
+  // Statutory VAT 9-Box Calculation for the active period
+  const vatOnSales = activePeriod ? parseFloat(activePeriod.box1VatDueSales || activePeriod.vatDueOnSales || "0") : 0;
+  const vatOnPurchases = activePeriod ? parseFloat(activePeriod.box4VatReclaimed || activePeriod.vatReclaimedOnPurchases || "0") : 0;
+  const netVatDue = activePeriod ? parseFloat(activePeriod.box5NetVat || activePeriod.netVatDue || "0") : 0;
   const isRefund = netVatDue < 0;
-  const totalValueSales = invoices.reduce((s: number, i: any) => s + parseFloat(i.subTotal || "0"), 0);
-  const totalValuePurchases = purchases.reduce((s: number, p: any) => s + parseFloat(p.subTotal || "0"), 0);
 
   const createPeriod = useMutation({
     mutationFn: async () => {
@@ -81,14 +127,37 @@ export default function VatPage() {
       if (!r.ok) throw new Error(await r.text());
       return r.json();
     },
-    onSuccess: () => {
-      toast({ title: "VAT Return Saved", description: "VAT period successfully calculated and saved.", type: "success" });
+    onSuccess: (data: any) => {
+      toast({ title: "VAT Return Saved", description: "VAT period successfully calculated and saved." });
       qc.invalidateQueries({ queryKey: ["/api/bookkeeping/vat", clientId] });
+      qc.invalidateQueries({ queryKey: [`/api/bookkeeping/client/${clientId}/dashboard-analytics`] });
+      setSelectedPeriodId(data.id);
       setShowWizard(false);
       setStep(0);
     },
-    onError: (e: any) => toast({ title: "Failed", description: e.message, type: "error" }),
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
+
+  const markFiledMutation = useMutation({
+    mutationFn: async (periodId: number) => {
+      const r = await apiRequest("POST", `/api/bookkeeping/vat-period/${periodId}/mark-filed`, {});
+      if (!r.ok) throw new Error(await r.text());
+      return r.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Filed with HMRC", description: "VAT return period has been locked and marked as filed." });
+      qc.invalidateQueries({ queryKey: ["/api/bookkeeping/vat", clientId] });
+      if (viewPeriodDetails) {
+        setViewPeriodDetails((prev: any) => prev ? { ...prev, vatStatus: "Filed" } : null);
+      }
+    },
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+  });
+
+  const handleOpenEsign = (p: any) => {
+    setEsignPeriod(p);
+    setShowEsignModal(true);
+  };
 
   const resetWizard = () => { setShowWizard(false); setStep(0); };
 
@@ -100,15 +169,33 @@ export default function VatPage() {
             <p className="text-xs text-gray-400">Bookkeeping / VAT / Making Tax Digital</p>
             <h1 className="text-xl font-bold text-gray-800">VAT Returns (HMRC MTD)</h1>
           </div>
-          <button 
-            onClick={() => {
-              setVatForm(f => ({ ...f, clientId: clientId || "" }));
-              setShowWizard(true);
-            }} 
-            className="btn-SanSuite flex items-center gap-2"
-          >
-            <Plus size={14} /> New VAT Period
-          </button>
+          <div className="flex items-center gap-3">
+            {periods.length > 0 && (
+              <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-purple-100 shadow-sm">
+                <span className="text-xs text-gray-500 font-medium">Viewing Period:</span>
+                <select 
+                  value={activePeriod?.id || ""} 
+                  onChange={(e) => setSelectedPeriodId(Number(e.target.value))}
+                  className="text-xs font-semibold bg-transparent text-purple-800 outline-none cursor-pointer"
+                >
+                  {periods.map((p: any) => (
+                    <option key={p.id} value={p.id}>
+                      {p.description || `Quarter (${new Date(p.fromDate).toLocaleDateString("en-GB")} - ${new Date(p.toDate).toLocaleDateString("en-GB")})`} [{p.vatStatus}]
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <button 
+              onClick={() => {
+                setVatForm(f => ({ ...f, clientId: clientId || "" }));
+                setShowWizard(true);
+              }} 
+              className="btn-SanSuite flex items-center gap-2"
+            >
+              <Plus size={14} /> New VAT Period
+            </button>
+          </div>
         </div>
 
         {/* Summary Cards */}
@@ -116,13 +203,17 @@ export default function VatPage() {
           <div className="SanSuite-card p-5 border-l-4 border-l-red-500">
             <p className="text-xs font-semibold text-gray-500 uppercase">VAT Due on Sales (Box 1)</p>
             <p className="text-2xl font-bold mt-2 text-red-600">£{vatOnSales.toLocaleString("en-GB", { minimumFractionDigits: 2 })}</p>
-            <p className="text-xs text-gray-400 mt-1">Total output VAT on all client sales</p>
+            <p className="text-xs text-gray-400 mt-1">
+              {activePeriod ? `Output VAT for period ending ${new Date(activePeriod.toDate).toLocaleDateString("en-GB")}` : "Calculated output VAT on sales"}
+            </p>
           </div>
 
           <div className="SanSuite-card p-5 border-l-4 border-l-emerald-500">
             <p className="text-xs font-semibold text-gray-500 uppercase">VAT Reclaimed on Purchases (Box 4)</p>
             <p className="text-2xl font-bold mt-2 text-emerald-600">£{vatOnPurchases.toLocaleString("en-GB", { minimumFractionDigits: 2 })}</p>
-            <p className="text-xs text-gray-400 mt-1">Total deductible input VAT on expenses</p>
+            <p className="text-xs text-gray-400 mt-1">
+              {activePeriod ? `Input VAT for period ending ${new Date(activePeriod.toDate).toLocaleDateString("en-GB")}` : "Calculated deductible input VAT"}
+            </p>
           </div>
 
           <div className={`SanSuite-card p-5 border-l-4 ${isRefund ? "border-l-emerald-600 bg-emerald-50/20" : "border-l-purple-600 bg-purple-50/20"}`}>
@@ -164,7 +255,7 @@ export default function VatPage() {
                 <th className="text-right">Box 5 (Net Due / Reclaim)</th>
                 <th>Status</th>
                 <th>Late Claims</th>
-                <th>Action</th>
+                <th className="text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -205,13 +296,32 @@ export default function VatPage() {
                         <span className="text-xs text-gray-400">No</span>
                       )}
                     </td>
-                    <td>
-                      <button 
-                        onClick={() => setViewPeriodDetails(p)} 
-                        className="text-xs text-purple-600 hover:text-purple-800 font-medium flex items-center gap-1"
-                      >
-                        <FileText size={12} /> View 9-Box
-                      </button>
+                    <td className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button 
+                          onClick={() => handleOpenEsign(p)} 
+                          className="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded"
+                          title="Dispatch to Capisign eSign for client electronic signature"
+                        >
+                          <FileSignature size={12} /> eSign
+                        </button>
+                        <button 
+                          onClick={() => setViewPeriodDetails(p)} 
+                          className="text-xs text-purple-600 hover:text-purple-800 font-medium flex items-center gap-1 bg-purple-50 hover:bg-purple-100 px-2.5 py-1 rounded"
+                        >
+                          <FileText size={12} /> 9-Box
+                        </button>
+                        {p.vatStatus !== "Filed" && (
+                          <button 
+                            onClick={() => markFiledMutation.mutate(p.id)}
+                            disabled={markFiledMutation.isPending}
+                            className="text-xs text-emerald-600 hover:text-emerald-800 font-medium flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded"
+                            title="Mark as Filed with HMRC"
+                          >
+                            <ShieldCheck size={12} /> Mark Filed
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -318,14 +428,14 @@ export default function VatPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="SanSuite-card p-4">
                       <h4 className="text-xs font-bold text-gray-600 mb-3">Sales Invoices (Outputs)</h4>
-                      <p className="text-lg font-bold text-gray-800">{invoices.length} invoices</p>
-                      <p className="text-xs text-gray-500 mt-1">Output VAT: <span className="font-semibold text-red-600">£{vatOnSales.toFixed(2)}</span></p>
+                      <p className="text-lg font-bold text-gray-800">{wizardInvoices.length} invoices</p>
+                      <p className="text-xs text-gray-500 mt-1">Output VAT: <span className="font-semibold text-red-600">£{wizardVatOnSales.toFixed(2)}</span></p>
                       <p className="text-xs text-gray-500">Net Sales (Excl. VAT): £{totalValueSales.toFixed(2)}</p>
                     </div>
                     <div className="SanSuite-card p-4">
                       <h4 className="text-xs font-bold text-gray-600 mb-3">Purchases & Expenses (Inputs)</h4>
-                      <p className="text-lg font-bold text-gray-800">{purchases.length} bills</p>
-                      <p className="text-xs text-gray-500 mt-1">Input VAT: <span className="font-semibold text-emerald-600">£{vatOnPurchases.toFixed(2)}</span></p>
+                      <p className="text-lg font-bold text-gray-800">{wizardPurchases.length} bills</p>
+                      <p className="text-xs text-gray-500 mt-1">Input VAT: <span className="font-semibold text-emerald-600">£{wizardVatOnPurchases.toFixed(2)}</span></p>
                       <p className="text-xs text-gray-500">Net Purchases (Excl. VAT): £{totalValuePurchases.toFixed(2)}</p>
                     </div>
                   </div>
@@ -347,15 +457,15 @@ export default function VatPage() {
                     </thead>
                     <tbody className="divide-y">
                       {[
-                        { box: "Box 1", desc: "VAT due on sales and other outputs", val: vatOnSales, cls: "text-red-600 font-medium" },
+                        { box: "Box 1", desc: "VAT due on sales and other outputs", val: wizardVatOnSales, cls: "text-red-600 font-medium" },
                         { box: "Box 2", desc: "VAT due on acquisitions from other EU member states", val: 0, cls: "" },
-                        { box: "Box 3", desc: "Total VAT due (Box 1 + Box 2)", val: vatOnSales, cls: "font-semibold" },
-                        { box: "Box 4", desc: "VAT reclaimed on purchases and all other inputs", val: vatOnPurchases, cls: "text-emerald-600 font-medium" },
+                        { box: "Box 3", desc: "Total VAT due (Box 1 + Box 2)", val: wizardVatOnSales, cls: "font-semibold" },
+                        { box: "Box 4", desc: "VAT reclaimed on purchases and all other inputs", val: wizardVatOnPurchases, cls: "text-emerald-600 font-medium" },
                         { 
                           box: "Box 5", 
-                          desc: isRefund ? "Net VAT to reclaim from HMRC (Box 4 - Box 3 Refund)" : "Net VAT to pay to HMRC (Box 3 - Box 4)", 
-                          val: isRefund ? -Math.abs(netVatDue) : netVatDue, 
-                          cls: isRefund ? "font-bold text-emerald-700 bg-emerald-50/50" : "font-bold text-purple-700 bg-purple-50/50" 
+                          desc: (wizardVatOnSales - wizardVatOnPurchases) < 0 ? "Net VAT to reclaim from HMRC (Box 4 - Box 3 Refund)" : "Net VAT to pay to HMRC (Box 3 - Box 4)", 
+                          val: wizardVatOnSales - wizardVatOnPurchases, 
+                          cls: (wizardVatOnSales - wizardVatOnPurchases) < 0 ? "font-bold text-emerald-700 bg-emerald-50/50" : "font-bold text-purple-700 bg-purple-50/50" 
                         },
                         { box: "Box 6", desc: "Total value of sales and all other outputs (excl. VAT)", val: totalValueSales, cls: "" },
                         { box: "Box 7", desc: "Total value of purchases and all other inputs (excl. VAT)", val: totalValuePurchases, cls: "" },
@@ -481,13 +591,50 @@ export default function VatPage() {
               </table>
             </div>
 
-            <div className="px-6 py-3 border-t bg-gray-50 rounded-b-xl flex justify-end">
+            <div className="px-6 py-3 border-t bg-gray-50 rounded-b-xl flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    const p = viewPeriodDetails;
+                    setViewPeriodDetails(null);
+                    handleOpenEsign(p);
+                  }}
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 shadow-sm transition-colors"
+                >
+                  <FileSignature size={13} /> Dispatch to eSign
+                </button>
+                {viewPeriodDetails.vatStatus !== "Filed" && (
+                  <button
+                    onClick={() => markFiledMutation.mutate(viewPeriodDetails.id)}
+                    disabled={markFiledMutation.isPending}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 shadow-sm transition-colors"
+                  >
+                    <ShieldCheck size={13} /> Mark as Filed
+                  </button>
+                )}
+              </div>
               <button onClick={() => setViewPeriodDetails(null)} className="btn-SanSuite">
                 Close
               </button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Central eSign Modal Integration */}
+      {esignPeriod && (
+        <SendToeSignModal
+          open={showEsignModal}
+          onOpenChange={(open) => {
+            setShowEsignModal(open);
+            if (!open) setEsignPeriod(null);
+          }}
+          defaultTitle={`HMRC VAT Return (${new Date(esignPeriod.fromDate).toLocaleDateString("en-GB")} to ${new Date(esignPeriod.toDate).toLocaleDateString("en-GB")}) - ${client?.clientName || "Client"}`}
+          sourceModule="Bookkeeping"
+          clientId={parseInt(clientId)}
+          clientName={client?.clientName || ""}
+          clientEmail={client?.email || ""}
+        />
       )}
     </AppLayout>
   );

@@ -5,7 +5,7 @@ import { apiRequest } from "../../../lib/queryClient";
 import { useToast } from "../../../hooks/useToast";
 import {
   Calculator, RefreshCw, Save, CheckCircle2, AlertCircle,
-  HelpCircle, Download, ArrowRight, Layers, ExternalLink
+  HelpCircle, Download, ArrowRight, Layers, ExternalLink, BookOpen
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -18,7 +18,7 @@ export default function CTComputationPage() {
 }
 
 function CTComputationContent() {
-  const { clientId, client, currentReturn, refetchReturns } = useCTWorkspace();
+  const { clientId, client, currentReturn, periods, refetchReturns } = useCTWorkspace();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -57,7 +57,10 @@ function CTComputationContent() {
     if (!currentReturn) return;
     setIsSyncingAp(true);
     try {
-      const periodId = currentReturn.periodId || 1;
+      const periodId = currentReturn.periodId || (periods && periods.length > 0 ? periods[0].id : null);
+      if (!periodId) {
+        throw new Error("No accounting period found in Accounts Production.");
+      }
       const res = await apiRequest("GET", `/api/corporation-tax/${clientId}/ap-bridge/${periodId}`);
       if (!res.ok) {
         throw new Error("Unable to fetch data from Accounts Production.");
@@ -152,6 +155,34 @@ function CTComputationContent() {
       toast({
         title: "Save Failed",
         description: err.message || "Failed to update computation.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const [postedJournal, setPostedJournal] = useState<string | null>(null);
+
+  const postJournalMutation = useMutation({
+    mutationFn: async () => {
+      if (!currentReturn) return;
+      const res = await apiRequest("POST", `/api/corporation-tax/${clientId}/returns/${currentReturn.id}/post-bookkeeping-journal`, {});
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to post provision journal");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setPostedJournal(data.journalNumber);
+      toast({
+        title: "Posted to Bookkeeping",
+        description: data.message || `Journal ${data.journalNumber} created in Bookkeeping.`,
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Posting Failed",
+        description: err.message,
         variant: "destructive",
       });
     },
@@ -470,7 +501,7 @@ function CTComputationContent() {
               </div>
             </div>
 
-            <div className="pt-2">
+            <div className="pt-2 space-y-2">
               <button
                 type="button"
                 onClick={() => saveComputationMutation.mutate()}
@@ -480,6 +511,36 @@ function CTComputationContent() {
                 <Save size={13} />
                 <span>{saveComputationMutation.isPending ? "Updating CT600..." : "Save & Update CT600"}</span>
               </button>
+
+              {netTaxDue > 0 && (
+                <button
+                  type="button"
+                  onClick={() => postJournalMutation.mutate()}
+                  disabled={postJournalMutation.isPending || !!postedJournal}
+                  className={`w-full py-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 shadow-xs cursor-pointer transition-colors ${
+                    postedJournal
+                      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                      : "bg-purple-600 hover:bg-purple-700 text-white"
+                  }`}
+                >
+                  <BookOpen size={13} />
+                  <span>
+                    {postedJournal 
+                      ? `Provision Posted (${postedJournal})` 
+                      : postJournalMutation.isPending 
+                      ? "Posting to Ledger..." 
+                      : "Post Tax Provision to Bookkeeping"}
+                  </span>
+                </button>
+              )}
+
+              <Link
+                href={`/corporation-tax/${clientId}/calculators`}
+                className="w-full py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <span>Proceed to Calculators Hub</span>
+                <ArrowRight size={13} />
+              </Link>
             </div>
           </div>
         </div>

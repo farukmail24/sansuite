@@ -140,6 +140,8 @@ export const clients = mysqlTable("clients", {
   email: varchar("email", { length: 255 }),
   phone: varchar("phone", { length: 50 }),
   address: text("address"),
+  addressLine1: varchar("address_line1", { length: 255 }),
+  addressLine2: varchar("address_line2", { length: 255 }),
   postcode: varchar("postcode", { length: 20 }),
   country: varchar("country", { length: 100 }).default("United Kingdom"),
   tradingStatus: varchar("trading_status", { length: 30 }).default("Trading"), // Trading, Dormant, Ceased
@@ -1144,10 +1146,16 @@ export const sa100Returns = mysqlTable("sa100_returns", {
 export const sa800Returns = mysqlTable("sa800_returns", {
   id: int("id").primaryKey().autoincrement(),
   saClientId: int("sa_client_id").notNull().references(() => selfAssessmentClients.id),
-  taxYear: varchar("tax_year", { length: 10 }),
+  taxYear: varchar("tax_year", { length: 20 }),
   grossReceipts: decimal("gross_receipts", { precision: 15, scale: 2 }).default("0.00"),
   netProfit: decimal("net_profit", { precision: 15, scale: 2 }).default("0.00"),
-  status: varchar("status", { length: 20 }).default("Draft"),
+  tradingProfit: decimal("trading_profit", { precision: 15, scale: 2 }).default("0.00"),
+  propertyIncome: decimal("property_income", { precision: 15, scale: 2 }).default("0.00"),
+  untaxedInterest: decimal("untaxed_interest", { precision: 15, scale: 2 }).default("0.00"),
+  partnershipNetProfit: decimal("partnership_net_profit", { precision: 15, scale: 2 }).default("0.00"),
+  nominatedPartner: varchar("nominated_partner", { length: 255 }),
+  partnershipStatement: longtext("partnership_statement"),
+  status: varchar("status", { length: 30 }).default("Draft"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -3022,7 +3030,7 @@ export const practiceServices = mysqlTable("practice_services", {
   billable: boolean("billable").default(true),
   fee: decimal("fee", { precision: 10, scale: 2 }).default("35.00"),
   estimatedHours: decimal("estimated_hours", { precision: 6, scale: 2 }).default("4.00"),
-  serviceManager: varchar("service_manager", { length: 100 }).default("Suleman Shah"),
+  serviceManager: varchar("service_manager", { length: 100 }),
   serviceType: varchar("service_type", { length: 50 }).default("Default"), // Default, Custom
   isActive: boolean("is_active").default(true),
   addToCalendar: boolean("add_to_calendar").default(true),

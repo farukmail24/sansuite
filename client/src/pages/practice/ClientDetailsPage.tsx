@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRoute, Link, useLocation } from "wouter";
 import AppLayout from "../../components/layout/AppLayout";
@@ -9,14 +9,15 @@ import {
   Calendar, CheckCircle2, AlertCircle, Clock,
   FileText, Plus, Edit2, Shield, FileSignature,
   DollarSign, CheckSquare, MessageSquare, Send,
-  Globe, MapPin, Tag, Filter, Search, X, ChevronDown,
+  Globe, MapPin, Tag, Filter, Search, X, ChevronDown, ChevronLeft, ChevronRight,
   Layers, ExternalLink, RefreshCw, Paperclip, Upload,
   Bold, Italic, Underline, List, ListOrdered, Code,
   Info, Smartphone, TicketCheck, Eye, ShieldCheck, SlidersHorizontal,
   Trash2, ShieldAlert, Copy, Download, AlertTriangle, Landmark, FileCheck,
-  FolderOpen, Folder, GraduationCap, Award
+  FolderOpen, Folder, GraduationCap, Award, Check
 } from "lucide-react";
 import GlobalMediaLibraryModal, { MediaFile } from "../../components/common/GlobalMediaLibraryModal";
+import Hmrc648Modal from "../../components/practice/Hmrc648Modal";
 import { apiRequest } from "../../lib/queryClient";
 import { useAuth } from "../../hooks/useAuth";
 import {
@@ -46,6 +47,39 @@ export default function ClientDetailsPage() {
 
   // Active Main Tab: "timeline" | "onboarding" | "workspace" | "schedule" | "details" | "settings"
   const [activeTab, setActiveTab] = useState<string>("timeline");
+
+  // Sub-tabs Horizontal Scrolling without Scrollbar
+  const clientDetailsTabsRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const checkTabScroll = () => {
+    const el = clientDetailsTabsRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 2);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
+  };
+
+  useEffect(() => {
+    const el = clientDetailsTabsRef.current;
+    if (!el) return;
+    checkTabScroll();
+    el.addEventListener("scroll", checkTabScroll, { passive: true });
+    window.addEventListener("resize", checkTabScroll);
+    return () => {
+      el.removeEventListener("scroll", checkTabScroll);
+      window.removeEventListener("resize", checkTabScroll);
+    };
+  }, [clientDetailsTabsRef, activeTab]);
+
+  const scrollTabs = (direction: "left" | "right") => {
+    if (clientDetailsTabsRef.current) {
+      clientDetailsTabsRef.current.scrollBy({
+        left: direction === "left" ? -180 : 180,
+        behavior: "smooth"
+      });
+    }
+  };
 
   // Timeline Sub-Tab: "all" (Activity) | "notes" | "email" | "sms" | "requests"
   const [timelineSubTab, setTimelineSubTab] = useState<string>("all");
@@ -128,6 +162,64 @@ export default function ClientDetailsPage() {
     apiKey: "",
     accountId: "",
     isConfigured: false,
+  });
+
+  // HMRC 64-8 Agent Authorisations State & Queries
+  const [is648ModalOpen, setIs648ModalOpen] = useState(false);
+  const [isAddAuthModalOpen, setIsAddAuthModalOpen] = useState(false);
+  const [authForm, setAuthForm] = useState({
+    serviceType: "Corporation Tax",
+    status: "Authorized",
+    codeStatus: "Code Verified",
+    agentReference: "",
+    notes: "",
+  });
+
+  const { data: agentAuthorizations = [], refetch: refetchAuthorizations } = useQuery<any[]>({
+    queryKey: [`/api/pm/clients/${clientId}/authorizations`],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/pm/clients/${clientId}/authorizations`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!clientId,
+  });
+
+  const createAuthMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const res = await apiRequest("POST", `/api/pm/clients/${clientId}/authorizations`, payload);
+      if (!res.ok) throw new Error("Failed to add authorisation");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/pm/clients/${clientId}/authorizations`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/pm/clients/${clientId}/64-8-data`] });
+      setIsAddAuthModalOpen(false);
+      setAuthForm({
+        serviceType: "Corporation Tax",
+        status: "Authorized",
+        codeStatus: "Code Verified",
+        agentReference: "",
+        notes: "",
+      });
+      toast({ title: "Authorisation Saved", description: "HMRC 64-8 regime registered." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to Save", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteAuthMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("DELETE", `/api/pm/clients/${clientId}/authorizations/${id}`);
+      if (!res.ok) throw new Error("Failed to delete");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/pm/clients/${clientId}/authorizations`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/pm/clients/${clientId}/64-8-data`] });
+      toast({ title: "Authorisation Removed" });
+    },
   });
 
   // Fetch saved AML settings from DB to pre-populate the modal
@@ -329,9 +421,9 @@ export default function ClientDetailsPage() {
       email: client.email || "",
       phone: client.phone || "",
       clientType: client.clientType || "Limited",
-      addressLine1: client.addressLine1 || "",
+      addressLine1: client.addressLine1 || client.address || "",
       addressLine2: client.addressLine2 || "",
-      townCity: client.townCity || "",
+      townCity: client.city || client.townCity || "",
       postcode: client.postcode || "",
       country: client.country || "United Kingdom",
       website: client.website || "",
@@ -749,8 +841,12 @@ export default function ClientDetailsPage() {
       const mappedType = cType.includes("llp") ? "Partnership" : cType.includes("sole") ? "SoleTrader" : "Limited";
 
       const roa = fullProfile.registered_office_address || {};
-      const addressLines = [roa.address_line_1, roa.address_line_2, roa.locality].filter(Boolean).join(", ");
+      const addressLine1 = roa.address_line_1 || "";
+      const addressLine2 = roa.address_line_2 || "";
+      const city = roa.locality || "";
+      const fullAddress = [addressLine1, addressLine2, city].filter(Boolean).join(", ");
       const postcode = roa.postal_code || "";
+      const country = roa.country || "United Kingdom";
       const nextCsDue = fullProfile.confirmation_statement?.next_due || undefined;
       const nextAccountsDue = fullProfile.accounts?.next_accounts?.due_on || undefined;
 
@@ -789,8 +885,13 @@ export default function ClientDetailsPage() {
       const updateRes = await apiRequest("PATCH", `/api/pm/clients/${clientId}`, {
         clientName: fullProfile.company_name || fullProfile.title || undefined,
         clientType: mappedType,
-        address: addressLines || undefined,
+        address: fullAddress || undefined,
+        addressLine1: addressLine1 || undefined,
+        addressLine2: addressLine2 || undefined,
+        city: city || undefined,
+        townCity: city || undefined,
         postcode: postcode || undefined,
+        country: country || undefined,
         nextCsDue,
         nextAccountsDue,
         yearEnd,
@@ -811,6 +912,7 @@ export default function ClientDetailsPage() {
       queryClient.invalidateQueries({ queryKey: [`/api/pm/clients/${clientId}/contacts`] });
       queryClient.invalidateQueries({ queryKey: [`/api/pm/clients/${clientId}/contacts`, "director"] });
       queryClient.invalidateQueries({ queryKey: [`/api/pm/clients/${clientId}/contacts`, "shareholder"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies-house/company", client?.registrationNumber, "all"] });
       toast({ title: "Client Sync Complete", description: "Successfully updated details from Companies House." });
     },
     onError: (error: any) => {
@@ -2284,22 +2386,22 @@ export default function ClientDetailsPage() {
                 <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/40">
                   <span className="text-slate-500 font-medium">UTR Number</span>
                   <span className="font-mono text-slate-600">
-                    {client.utrNumber || "8472910394"}
+                    {client.utrNumber || "—"}
                   </span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/40">
                   <span className="text-slate-500 font-medium">Registered Address</span>
                   <span className="text-right text-slate-700 dark:text-slate-300 max-w-[200px]">
-                    {client.addressLine1 || "244-248 HIGH ROAD, ILFORD"}
+                    {client.addressLine1 || client.address || "—"}
                   </span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/40">
                   <span className="text-slate-500 font-medium">City / Town</span>
-                  <span className="text-slate-700 dark:text-slate-300">{client.townCity || "ILFORD ENGLAND"}</span>
+                  <span className="text-slate-700 dark:text-slate-300">{client.city || client.townCity || "—"}</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/40">
                   <span className="text-slate-500 font-medium">Postcode</span>
-                  <span className="font-mono font-semibold">{client.postcode || "IG1 1QP"}</span>
+                  <span className="font-mono font-semibold">{client.postcode || "—"}</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/40">
                   <span className="text-slate-500 font-medium">Country</span>
@@ -3816,6 +3918,212 @@ export default function ClientDetailsPage() {
                   )}
                 </div>
 
+                {/* 7. HMRC 64-8 Agent Authorisations Section */}
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden shadow-2xs">
+                  <div
+                    onClick={() => setOpenAccordion(openAccordion === "hmrc-648" ? null : "hmrc-648")}
+                    className="bg-[#f0edf9] dark:bg-purple-950/40 px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-[#e7e1f5] transition"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Landmark size={15} className="text-purple-700 dark:text-purple-300" />
+                      <span className="font-bold text-xs text-slate-800 dark:text-slate-200">
+                        HMRC 64-8 Agent Authorisation (Authorising your Agent)
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                        {agentAuthorizations.length} Regimes Registered
+                      </span>
+                    </div>
+                    <ChevronDown size={15} className={`text-slate-600 transition-transform ${openAccordion === "hmrc-648" ? "rotate-180" : ""}`} />
+                  </div>
+
+                  {openAccordion === "hmrc-648" && (
+                    <div className="p-5 space-y-4 text-xs">
+                      
+                      {/* Action Bar */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+                        <div>
+                          <span className="font-bold text-slate-800 dark:text-slate-200 block text-xs">
+                            HMRC Digital & Physical Agent Authority
+                          </span>
+                          <span className="text-[11px] text-slate-500">
+                            Empowers the practice to deal directly with HM Revenue & Customs for Corporation Tax, VAT, PAYE & Self Assessment.
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setIsAddAuthModalOpen(true)}
+                            className="px-3 py-1.5 border border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/40 rounded font-semibold transition cursor-pointer flex items-center gap-1.5"
+                          >
+                            <Plus size={13} /> + Add Authorisation
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setIs648ModalOpen(true)}
+                            className="bg-[#5c469c] hover:bg-[#4b3882] text-white font-semibold px-4 py-1.5 rounded shadow-2xs flex items-center gap-1.5 transition cursor-pointer"
+                          >
+                            <FileText size={13} /> Generate Official Form 64-8
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* 4 Tax Regimes Overview Grid */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        {[
+                          {
+                            title: "Corporation Tax (CT)",
+                            regime: "Corporation Tax",
+                            desc: client.registrationNumber ? `CRN: ${client.registrationNumber}` : "Company Tax",
+                          },
+                          {
+                            title: "Self Assessment (SA)",
+                            regime: "Self Assessment",
+                            desc: client.utrNumber ? `UTR: ${client.utrNumber}` : "Personal / Partner Tax",
+                          },
+                          {
+                            title: "VAT (Value Added Tax)",
+                            regime: "VAT",
+                            desc: client.vatNumber ? `VAT: GB ${client.vatNumber}` : "MTD VAT Reporting",
+                          },
+                          {
+                            title: "PAYE for Employers",
+                            regime: "PAYE",
+                            desc: "RTI Payroll & FPS/EPS",
+                          },
+                        ].map((reg) => {
+                          const auth = agentAuthorizations.find((a: any) =>
+                            (a.serviceType || "").toLowerCase().includes(reg.regime.toLowerCase())
+                          );
+                          const isAuthorized = auth && auth.status === "Authorized";
+                          const isPending = auth && auth.status === "Pending";
+                          return (
+                            <div
+                              key={reg.title}
+                              className={`p-3.5 rounded-lg border space-y-1.5 ${
+                                isAuthorized
+                                  ? "bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800"
+                                  : isPending
+                                  ? "bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800"
+                                  : "bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-xs text-slate-800 dark:text-slate-200">
+                                  {reg.title}
+                                </span>
+                                {isAuthorized ? (
+                                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                                    Authorized
+                                  </span>
+                                ) : isPending ? (
+                                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                                    Pending
+                                  </span>
+                                ) : (
+                                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-semibold bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                                    Not Set
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-slate-500 block">
+                                {reg.desc}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono block">
+                                {auth?.agentReference ? `Ref: ${auth.agentReference}` : auth?.codeStatus || "Ready to authorize"}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Authorisations Table */}
+                      <div className="border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 text-[11px] font-semibold border-b border-slate-200 dark:border-slate-800">
+                            <tr>
+                              <th className="py-2.5 px-3">Service Regime</th>
+                              <th className="py-2.5 px-3">Status</th>
+                              <th className="py-2.5 px-3">Auth Code / Step</th>
+                              <th className="py-2.5 px-3">Agent Reference</th>
+                              <th className="py-2.5 px-3">Submission Date</th>
+                              <th className="py-2.5 px-3">Notes</th>
+                              <th className="py-2.5 px-3 text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                            {agentAuthorizations.length === 0 ? (
+                              <tr>
+                                <td colSpan={7} className="py-8 text-center text-slate-400">
+                                  No HMRC agent authorizations registered yet. Click &quot;Generate Official Form 64-8&quot; to authorize this client.
+                                </td>
+                              </tr>
+                            ) : (
+                              agentAuthorizations.map((auth: any) => (
+                                <tr key={auth.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition">
+                                  <td className="py-2.5 px-3 font-semibold text-slate-800 dark:text-slate-200">
+                                    {auth.serviceType}
+                                  </td>
+                                  <td className="py-2.5 px-3">
+                                    <span
+                                      className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                        auth.status === "Authorized"
+                                          ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300"
+                                          : "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300"
+                                      }`}
+                                    >
+                                      {auth.status || "Pending"}
+                                    </span>
+                                  </td>
+                                  <td className="py-2.5 px-3 font-mono text-[11px] text-slate-600 dark:text-slate-400">
+                                    {auth.codeStatus || "Auth Code Sent"}
+                                  </td>
+                                  <td className="py-2.5 px-3 font-mono text-[11px] text-slate-700 dark:text-slate-300">
+                                    {auth.agentReference || "—"}
+                                  </td>
+                                  <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500">
+                                    {auth.submissionDate
+                                      ? new Date(auth.submissionDate).toLocaleDateString("en-GB")
+                                      : "—"}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-slate-500 max-w-xs truncate">
+                                    {auth.notes || "Official 64-8 mandate recorded."}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (window.confirm(`Delete ${auth.serviceType} authorization record?`)) {
+                                          deleteAuthMutation.mutate(auth.id);
+                                        }
+                                      }}
+                                      className="p-1 rounded text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+                                      title="Remove authorization"
+                                    >
+                                      <Trash2 size={12} />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Statutory Advisory */}
+                      <div className="p-3 rounded-lg border border-purple-200 bg-purple-50/70 dark:bg-purple-950/30 dark:border-purple-900/40 flex items-start gap-2.5 text-[11px] text-purple-900 dark:text-purple-300">
+                        <Info size={15} className="text-purple-600 shrink-0 mt-0.5" />
+                        <div>
+                          <strong>UK Statutory Compliance Notice: </strong>
+                          HMRC Form 64-8 establishes direct statutory authority between your accounting practice and HM Revenue & Customs under Section 113 of the Taxes Management Act 1970. Authorisations remain in effect until formally revoked by the client or replaced by a new agent authority notice.
+                        </div>
+                      </div>
+
+                    </div>
+                  )}
+                </div>
+
               </div>
             )}
 
@@ -4046,8 +4354,30 @@ export default function ClientDetailsPage() {
                   </div>
 
                   {/* Sub-tab Navigation Bar */}
-                  <div className="border-b border-slate-200/90 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850 px-2.5 pt-1.5">
-                    <div className="flex items-center gap-1 overflow-x-auto no-scrollbar scroll-smooth">
+                  <div className="border-b border-slate-200/90 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850 px-2.5 pt-1.5 relative group/subtabs">
+                    {canScrollLeft && (
+                      <button
+                        type="button"
+                        onClick={() => scrollTabs("left")}
+                        className="absolute left-1 top-1/2 -translate-y-1/2 z-20 w-6 h-6 rounded-full bg-white dark:bg-slate-800 shadow-md border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-600 hover:text-purple-600 hover:scale-105 transition cursor-pointer"
+                        title="Scroll Left"
+                      >
+                        <ChevronLeft size={13} />
+                      </button>
+                    )}
+                    <div
+                      ref={clientDetailsTabsRef}
+                      onWheel={(e) => {
+                        if (e.deltaY !== 0) {
+                          e.currentTarget.scrollLeft += e.deltaY;
+                        }
+                      }}
+                      style={{
+                        scrollbarWidth: "none",
+                        msOverflowStyle: "none",
+                      }}
+                      className="flex items-center gap-1 overflow-x-auto no-scrollbar scroll-smooth"
+                    >
                       {[
                         { id: "overview", label: "Overview & Address", icon: MapPin },
                         { id: "statutory", label: "Statutory Deadlines", icon: Calendar },
@@ -4095,6 +4425,16 @@ export default function ClientDetailsPage() {
                         );
                       })}
                     </div>
+                    {canScrollRight && (
+                      <button
+                        type="button"
+                        onClick={() => scrollTabs("right")}
+                        className="absolute right-1 top-1/2 -translate-y-1/2 z-20 w-6 h-6 rounded-full bg-white dark:bg-slate-800 shadow-md border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-600 hover:text-purple-600 hover:scale-105 transition cursor-pointer"
+                        title="Scroll Right"
+                      >
+                        <ChevronRight size={13} />
+                      </button>
+                    )}
                   </div>
 
                   {/* ── Sub-tab: OVERVIEW & ADDRESS ── */}
@@ -4117,9 +4457,9 @@ export default function ClientDetailsPage() {
                           { label: "Phone", value: client.phone || "—" },
                           { label: "Client Type", value: client.clientType || "Limited" },
                           { label: "Website", value: client.website || "—", mono: true },
-                          { label: "Address Line 1", value: client.addressLine1 || "—" },
+                          { label: "Address Line 1", value: client.addressLine1 || client.address || "—" },
                           { label: "Address Line 2", value: client.addressLine2 || "—" },
-                          { label: "City / Town", value: client.townCity || "—" },
+                          { label: "City / Town", value: client.city || client.townCity || "—" },
                           { label: "Country", value: client.country || "United Kingdom" },
                           { label: "Postcode", value: client.postcode || "—", mono: true },
                         ].map((row, i) => (
@@ -8105,6 +8445,133 @@ export default function ClientDetailsPage() {
           title="Practice Media Library — Select Ticket Attachment"
           allowedTypes="All Supported Files"
         />
+
+        {/* HMRC 64-8 Agent Authorisation Official Form Modal */}
+        <Hmrc648Modal
+          isOpen={is648ModalOpen}
+          onClose={() => setIs648ModalOpen(false)}
+          clientId={clientId}
+          clientName={client.clientName}
+        />
+
+        {/* Add HMRC Agent Authorisation Modal */}
+        {isAddAuthModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl max-w-md w-full p-5 space-y-4 text-xs">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                <h3 className="font-bold text-sm text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                  <Landmark size={15} className="text-purple-600" />
+                  Add HMRC Agent Authorisation
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setIsAddAuthModalOpen(false)}
+                  className="p-1 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                    Service Regime *
+                  </label>
+                  <select
+                    value={authForm.serviceType}
+                    onChange={(e) => setAuthForm({ ...authForm, serviceType: e.target.value })}
+                    className="w-full border border-slate-300 dark:border-slate-700 rounded px-2.5 py-1.5 bg-white dark:bg-slate-800 text-xs"
+                  >
+                    <option value="Corporation Tax">Corporation Tax (CT600)</option>
+                    <option value="Self Assessment">Self Assessment (SA100 / SA800)</option>
+                    <option value="PAYE for Employers">PAYE for Employers (RTI)</option>
+                    <option value="VAT (Value Added Tax)">VAT (Value Added Tax MTD)</option>
+                    <option value="Construction Industry Scheme (CIS)">Construction Industry Scheme (CIS)</option>
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                      Status
+                    </label>
+                    <select
+                      value={authForm.status}
+                      onChange={(e) => setAuthForm({ ...authForm, status: e.target.value })}
+                      className="w-full border border-slate-300 dark:border-slate-700 rounded px-2.5 py-1.5 bg-white dark:bg-slate-800 text-xs"
+                    >
+                      <option value="Authorized">Authorized</option>
+                      <option value="Pending">Pending</option>
+                      <option value="Rejected">Rejected</option>
+                      <option value="Expired">Expired</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                      Auth Code Step
+                    </label>
+                    <select
+                      value={authForm.codeStatus}
+                      onChange={(e) => setAuthForm({ ...authForm, codeStatus: e.target.value })}
+                      className="w-full border border-slate-300 dark:border-slate-700 rounded px-2.5 py-1.5 bg-white dark:bg-slate-800 text-xs"
+                    >
+                      <option value="Code Verified">Code Verified</option>
+                      <option value="Auth Code Sent">Auth Code Sent</option>
+                      <option value="Not Generated">Not Generated</option>
+                      <option value="Code Requested">Code Requested</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                    Agent Reference (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. AGNT-UK-001 or SA-99482"
+                    value={authForm.agentReference}
+                    onChange={(e) => setAuthForm({ ...authForm, agentReference: e.target.value })}
+                    className="w-full border border-slate-300 dark:border-slate-700 rounded px-2.5 py-1.5 bg-white dark:bg-slate-800 text-xs font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                    Notes
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="e.g. Authorised via online agent services portal"
+                    value={authForm.notes}
+                    onChange={(e) => setAuthForm({ ...authForm, notes: e.target.value })}
+                    className="w-full border border-slate-300 dark:border-slate-700 rounded px-2.5 py-1.5 bg-white dark:bg-slate-800 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsAddAuthModalOpen(false)}
+                  className="px-3.5 py-1.5 rounded border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={createAuthMutation.isPending}
+                  onClick={() => createAuthMutation.mutate(authForm)}
+                  className="px-4 py-1.5 rounded bg-purple-700 hover:bg-purple-800 text-white font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Check size={13} />
+                  {createAuthMutation.isPending ? "Saving..." : "Save Authorisation"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
 

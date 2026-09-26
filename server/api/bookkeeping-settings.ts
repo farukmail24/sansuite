@@ -304,7 +304,13 @@ router.get("/:clientId/periods", async (req: any, res) => {
   try {
     const clientId = parseInt(req.params.clientId);
     const [rows]: any = await pool.query(
-      "SELECT * FROM accounting_periods WHERE client_id = ? ORDER BY start_date DESC",
+      `SELECT id, client_id, 
+              DATE_FORMAT(start_date, '%Y-%m-%d') as start_date, 
+              DATE_FORMAT(end_date, '%Y-%m-%d') as end_date, 
+              is_locked, status, period_type 
+       FROM accounting_periods 
+       WHERE client_id = ? 
+       ORDER BY start_date DESC`,
       [clientId]
     );
 
@@ -460,16 +466,52 @@ router.delete("/:clientId/accounts/:id", async (req: any, res) => {
 router.post("/:clientId/logo", upload.single("logo"), async (req: any, res) => {
   try {
     const clientId = parseInt(req.params.clientId);
-    if (!req.file) {
-      return res.status(400).json({ message: "No logo file provided." });
+    const logoUrl = req.file ? `/uploads/company-logos/${req.file.filename}` : req.body?.logoUrl;
+    if (!logoUrl) {
+      return res.status(400).json({ message: "No logo file or URL provided." });
     }
 
-    const logoUrl = `/uploads/company-logos/${req.file.filename}`;
     await pool.query("UPDATE clients SET logo_url = ? WHERE id = ?", [logoUrl, clientId]);
+
+    // Also register in practice_media_files if uploaded locally
+    if (req.file) {
+      try {
+        await pool.query(
+          `INSERT INTO practice_media_files (practice_id, name, type, size, url, category, storage_driver, storage_location) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            1,
+            req.file.originalname || req.file.filename,
+            req.file.mimetype || "image/png",
+            `${(req.file.size / 1024).toFixed(1)} KB`,
+            logoUrl,
+            "Images",
+            "local",
+            "Company Logo Vault",
+          ]
+        );
+      } catch (e) {}
+    }
 
     res.json({ message: "Company logo uploaded successfully.", logoUrl });
   } catch (error: any) {
     res.status(500).json({ message: "Failed to upload logo", error: error.message });
+  }
+});
+
+// POST /api/bookkeeping/settings/:clientId/select-logo
+router.post("/:clientId/select-logo", async (req: any, res) => {
+  try {
+    const clientId = parseInt(req.params.clientId);
+    const { logoUrl } = req.body || {};
+    if (!logoUrl) {
+      return res.status(400).json({ message: "No logo URL provided." });
+    }
+
+    await pool.query("UPDATE clients SET logo_url = ? WHERE id = ?", [logoUrl, clientId]);
+    res.json({ message: "Company logo updated from media library successfully.", logoUrl });
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to update logo", error: error.message });
   }
 });
 

@@ -8,7 +8,7 @@ import {
   creditNotes, creditNoteItems, creditNoteAllocations,
   bankRules
 } from "@shared/schema";
-import { eq, inArray, and, gte, lte, desc } from "drizzle-orm";
+import { eq, inArray, and, gte, lte, desc, lt, or, like } from "drizzle-orm";
 import { authMiddleware } from "../lib/authUtils";
 import { generateMergedDocx } from "../lib/docxTemplateEngine";
 
@@ -70,6 +70,342 @@ router.get("/dashboard-stats", async (req: any, res) => {
     res.json({ vatStatusData, monthlyData });
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch dashboard stats" });
+  }
+});
+
+// GET /api/bookkeeping/client/:clientId/dashboard-analytics
+router.get("/client/:clientId/dashboard-analytics", async (req: any, res) => {
+  try {
+    const clientId = parseInt(req.params.clientId);
+    if (!clientId) return res.status(400).json({ message: "Invalid client ID" });
+
+    const [client] = await db.select().from(clients).where(eq(clients.id, clientId));
+    if (!client) return res.status(404).json({ message: "Client not found" });
+
+    // Fetch all sales invoices for this client
+    const allInvoices = await db
+      .select()
+      .from(salesInvoices)
+      .where(and(eq(salesInvoices.clientId, clientId), eq(salesInvoices.invoiceType, "Invoice")));
+
+    // Fetch all purchases for this client
+    const allPurchases = await db
+      .select()
+      .from(purchases)
+      .where(and(eq(purchases.clientId, clientId), eq(purchases.purchaseType, "Invoice")));
+
+    // Fetch active bank accounts
+    const activeBankAccounts = await db
+      .select()
+      .from(bankAccounts)
+      .where(and(eq(bankAccounts.clientId, clientId), eq(bankAccounts.isActive, true)));
+
+    // Fetch all bank transactions
+    const allBankTx = await db
+      .select()
+      .from(bankTransactions)
+      .where(eq(bankTransactions.clientId, clientId));
+
+    // Fetch active VAT periods
+    const clientVatPeriods = await db
+      .select()
+      .from(vatPeriods)
+      .where(eq(vatPeriods.clientId, clientId))
+      .orderBy(desc(vatPeriods.toDate));
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth(); // 0-indexed
+
+    // 1. Turnover Summary: Current Month vs Previous Month
+    const currentMonthStart = new Date(currentYear, currentMonth, 1);
+    const currentMonthEnd = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59);
+
+    const prevMonthStart = new Date(currentYear, currentMonth - 1, 1);
+    const prevMonthEnd = new Date(currentYear, currentMonth, 0, 23, 59, 59);
+
+    let salesCurrentMonth = 0;
+    let salesCurrentMonthCount = 0;
+    let salesPrevMonth = 0;
+    let salesPrevMonthCount = 0;
+
+    for (const inv of allInvoices) {
+      if (!inv.invoiceDate || inv.status === "Void") continue;
+      const d = new Date(inv.invoiceDate);
+      const total = parseFloat(inv.grandTotal || "0");
+      if (d >= currentMonthStart && d <= currentMonthEnd) {
+        salesCurrentMonth += total;
+        salesCurrentMonthCount++;
+      } else if (d >= prevMonthStart && d <= prevMonthEnd) {
+        salesPrevMonth += total;
+        salesPrevMonthCount++;
+      }
+    }
+
+    let purchasesCurrentMonth = 0;
+    let purchasesCurrentMonthCount = 0;
+    let purchasesPrevMonth = 0;
+    let purchasesPrevMonthCount = 0;
+
+    for (const pur of allPurchases) {
+      if (!pur.billDate || pur.status === "Void") continue;
+      const d = new Date(pur.billDate);
+      const total = parseFloat(pur.grandTotal || "0");
+      if (d >= currentMonthStart && d <= currentMonthEnd) {
+        purchasesCurrentMonth += total;
+        purchasesCurrentMonthCount++;
+      } else if (d >= prevMonthStart && d <= prevMonthEnd) {
+        purchasesPrevMonth += total;
+        purchasesPrevMonthCount++;
+      }
+    }
+
+    const salesVariancePct = salesPrevMonth > 0
+      ? (((salesCurrentMonth - salesPrevMonth) / salesPrevMonth) * 100)
+      : (salesCurrentMonth > 0 ? 100 : 0);
+
+    const purchasesVariancePct = purchasesPrevMonth > 0
+      ? (((purchasesCurrentMonth - purchasesPrevMonth) / purchasesPrevMonth) * 100)
+      : (purchasesCurrentMonth > 0 ? 100 : 0);
+
+    // 2. Trailing 6 Months History (Debtors, Creditors, Sales, Purchases)
+    const trailing6Months: Array<{
+      monthKey: string;
+      label: string;
+      sales: number;
+      purchases: number;
+      debtors: number;
+      creditors: number;
+    }> = [];
+
+    const monthNamesShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+    for (let i = 5; i >= 0; i--) {
+      const targetDate = new Date(currentYear, currentMonth - i, 1);
+      const mYear = targetDate.getFullYear();
+      const mMonth = targetDate.getMonth();
+      const mStart = new Date(mYear, mMonth, 1);
+      const mEnd = new Date(mYear, mMonth + 1, 0, 23, 59, 59);
+      const label = `${monthNamesShort[mMonth]} '${String(mYear).slice(-2)}`;
+      const monthKey = `${mYear}-${String(mMonth + 1).padStart(2, "0")}`;
+
+      let mSales = 0;
+      let mPurchases = 0;
+      let mDebtors = 0;
+      let mCreditors = 0;
+
+      for (const inv of allInvoices) {
+        if (!inv.invoiceDate || inv.status === "Void") continue;
+        const d = new Date(inv.invoiceDate);
+        if (d >= mStart && d <= mEnd) {
+          const grand = parseFloat(inv.grandTotal || "0");
+          mSales += grand;
+          const paid = parseFloat(inv.paidAmount || "0");
+          const remaining = Math.max(0, grand - paid);
+          if (remaining > 0 && inv.status !== "Paid") {
+            mDebtors += remaining;
+          }
+        }
+      }
+
+      for (const pur of allPurchases) {
+        if (!pur.billDate || pur.status === "Void") continue;
+        const d = new Date(pur.billDate);
+        if (d >= mStart && d <= mEnd) {
+          const grand = parseFloat(pur.grandTotal || "0");
+          mPurchases += grand;
+          const paid = parseFloat(pur.paidAmount || "0");
+          const remaining = Math.max(0, grand - paid);
+          if (remaining > 0 && pur.status !== "Paid") {
+            mCreditors += remaining;
+          }
+        }
+      }
+
+      trailing6Months.push({
+        monthKey,
+        label,
+        sales: parseFloat(mSales.toFixed(2)),
+        purchases: parseFloat(mPurchases.toFixed(2)),
+        debtors: parseFloat(mDebtors.toFixed(2)),
+        creditors: parseFloat(mCreditors.toFixed(2)),
+      });
+    }
+
+    // 3. UK Standard 5-Bucket Invoice Ageing Summary
+    // Debtors (Unpaid Sales Invoices)
+    const debtorsAgeing = {
+      current: 0,       // Not yet overdue
+      bucket1_30: 0,    // 1-30 days overdue
+      bucket31_60: 0,   // 31-60 days overdue
+      bucket61_90: 0,   // 61-90 days overdue
+      bucket91_120: 0,  // 91-120 days overdue
+      bucketOver120: 0, // > 120 days overdue
+      totalOverdue: 0,
+      totalOutstanding: 0,
+      count: 0,
+    };
+
+    const todayMs = now.getTime();
+
+    for (const inv of allInvoices) {
+      if (inv.status === "Paid" || inv.status === "Void") continue;
+      const grand = parseFloat(inv.grandTotal || "0");
+      const paid = parseFloat(inv.paidAmount || "0");
+      const remaining = Math.max(0, grand - paid);
+      if (remaining <= 0) continue;
+
+      debtorsAgeing.totalOutstanding += remaining;
+      debtorsAgeing.count++;
+
+      const due = inv.dueDate ? new Date(inv.dueDate) : (inv.invoiceDate ? new Date(inv.invoiceDate) : now);
+      const diffDays = Math.floor((todayMs - due.getTime()) / (1000 * 60 * 60 * 24));
+
+      if (diffDays <= 0) {
+        debtorsAgeing.current += remaining;
+      } else {
+        debtorsAgeing.totalOverdue += remaining;
+        if (diffDays <= 30) {
+          debtorsAgeing.bucket1_30 += remaining;
+        } else if (diffDays <= 60) {
+          debtorsAgeing.bucket31_60 += remaining;
+        } else if (diffDays <= 90) {
+          debtorsAgeing.bucket61_90 += remaining;
+        } else if (diffDays <= 120) {
+          debtorsAgeing.bucket91_120 += remaining;
+        } else {
+          debtorsAgeing.bucketOver120 += remaining;
+        }
+      }
+    }
+
+    // Creditors (Unpaid Purchase Bills)
+    const creditorsAgeing = {
+      current: 0,
+      bucket1_30: 0,
+      bucket31_60: 0,
+      bucket61_90: 0,
+      bucket91_120: 0,
+      bucketOver120: 0,
+      totalOverdue: 0,
+      totalOutstanding: 0,
+      count: 0,
+    };
+
+    for (const pur of allPurchases) {
+      if (pur.status === "Paid" || pur.status === "Void") continue;
+      const grand = parseFloat(pur.grandTotal || "0");
+      const paid = parseFloat(pur.paidAmount || "0");
+      const remaining = Math.max(0, grand - paid);
+      if (remaining <= 0) continue;
+
+      creditorsAgeing.totalOutstanding += remaining;
+      creditorsAgeing.count++;
+
+      const due = pur.dueDate ? new Date(pur.dueDate) : (pur.billDate ? new Date(pur.billDate) : now);
+      const diffDays = Math.floor((todayMs - due.getTime()) / (1000 * 60 * 60 * 24));
+
+      if (diffDays <= 0) {
+        creditorsAgeing.current += remaining;
+      } else {
+        creditorsAgeing.totalOverdue += remaining;
+        if (diffDays <= 30) {
+          creditorsAgeing.bucket1_30 += remaining;
+        } else if (diffDays <= 60) {
+          creditorsAgeing.bucket31_60 += remaining;
+        } else if (diffDays <= 90) {
+          creditorsAgeing.bucket61_90 += remaining;
+        } else if (diffDays <= 120) {
+          creditorsAgeing.bucket91_120 += remaining;
+        } else {
+          creditorsAgeing.bucketOver120 += remaining;
+        }
+      }
+    }
+
+    // Round Ageing numbers
+    for (const key of Object.keys(debtorsAgeing) as Array<keyof typeof debtorsAgeing>) {
+      if (key !== "count") debtorsAgeing[key] = parseFloat(debtorsAgeing[key].toFixed(2));
+    }
+    for (const key of Object.keys(creditorsAgeing) as Array<keyof typeof creditorsAgeing>) {
+      if (key !== "count") creditorsAgeing[key] = parseFloat(creditorsAgeing[key].toFixed(2));
+    }
+
+    // 4. Bank Accounts Summary with Live Transactions & Reconciliation Count
+    const bankSummary = activeBankAccounts.map((acc) => {
+      const accTx = allBankTx.filter((t) => t.bankAccountId === acc.id);
+      const unreconciledCount = accTx.filter((t) => !t.isReconciled).length;
+      const totalDebit = accTx.reduce((sum, t) => sum + parseFloat(t.debit || "0"), 0);
+      const totalCredit = accTx.reduce((sum, t) => sum + parseFloat(t.credit || "0"), 0);
+      const computedBalance = parseFloat(acc.currentBalance || "0") + totalDebit - totalCredit;
+
+      return {
+        id: acc.id,
+        bankName: acc.bankName,
+        accountType: acc.accountType || "Current",
+        accountNumber: acc.accountNumber || "—",
+        sortCode: acc.sortCode || "—",
+        currency: acc.currency || "GBP",
+        statementBalance: parseFloat(acc.currentBalance || "0"),
+        computedBookBalance: parseFloat(computedBalance.toFixed(2)),
+        totalTransactions: accTx.length,
+        unreconciledCount,
+      };
+    });
+
+    const totalCashPosition = bankSummary.reduce((sum, b) => sum + b.computedBookBalance, 0);
+
+    // 5. VAT Summary for current period
+    const activeVatPeriod = clientVatPeriods[0] || null;
+    let estimatedVatOutput = 0;
+    let estimatedVatInput = 0;
+
+    for (const inv of allInvoices) {
+      if (inv.status !== "Void") estimatedVatOutput += parseFloat(inv.vatTotal || "0");
+    }
+    for (const pur of allPurchases) {
+      if (pur.status !== "Void") estimatedVatInput += parseFloat(pur.vatTotal || "0");
+    }
+    const estimatedNetVat = estimatedVatOutput - estimatedVatInput;
+
+    const vatSummary = {
+      periodId: activeVatPeriod?.id || null,
+      periodName: activeVatPeriod?.description || "Current Quarter",
+      fromDate: activeVatPeriod?.fromDate || null,
+      toDate: activeVatPeriod?.toDate || null,
+      dueDate: activeVatPeriod?.toDate ? new Date(new Date(activeVatPeriod.toDate).getTime() + 37 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : null,
+      status: activeVatPeriod?.vatStatus || "Draft",
+      netVatLiability: activeVatPeriod?.netVatDue ? parseFloat(activeVatPeriod.netVatDue) : parseFloat(estimatedNetVat.toFixed(2)),
+      outputVat: activeVatPeriod?.vatDueOnSales ? parseFloat(activeVatPeriod.vatDueOnSales) : parseFloat(estimatedVatOutput.toFixed(2)),
+      inputVat: activeVatPeriod?.vatReclaimedOnPurchases ? parseFloat(activeVatPeriod.vatReclaimedOnPurchases) : parseFloat(estimatedVatInput.toFixed(2)),
+    };
+
+    res.json({
+      clientId,
+      clientName: client.clientName,
+      currency: client.currency || "GBP",
+      turnover: {
+        salesCurrentMonth: parseFloat(salesCurrentMonth.toFixed(2)),
+        salesCurrentMonthCount,
+        salesPrevMonth: parseFloat(salesPrevMonth.toFixed(2)),
+        salesPrevMonthCount,
+        salesVariancePct: parseFloat(salesVariancePct.toFixed(1)),
+        purchasesCurrentMonth: parseFloat(purchasesCurrentMonth.toFixed(2)),
+        purchasesCurrentMonthCount,
+        purchasesPrevMonth: parseFloat(purchasesPrevMonth.toFixed(2)),
+        purchasesPrevMonthCount,
+        purchasesVariancePct: parseFloat(purchasesVariancePct.toFixed(1)),
+      },
+      trailing6Months,
+      debtorsAgeing,
+      creditorsAgeing,
+      bankSummary,
+      totalCashPosition: parseFloat(totalCashPosition.toFixed(2)),
+      vatSummary,
+    });
+  } catch (error: any) {
+    console.error("Failed to compile dashboard-analytics:", error);
+    res.status(500).json({ message: "Failed to fetch client dashboard analytics", error: error.message });
   }
 });
 
@@ -1002,7 +1338,7 @@ router.get("/vat/client/:clientId", async (req: any, res) => {
 
 router.post("/vat-period", async (req: any, res) => {
   try {
-    const { clientId, description, fromDate, toDate, vatStatus } = req.body;
+    const { clientId, description, fromDate, toDate, vatStatus, lateClaimsIncluded } = req.body;
     if (!clientId || !fromDate || !toDate) {
       return res.status(400).json({ message: "clientId, fromDate and toDate are required" });
     }
@@ -1010,42 +1346,91 @@ router.post("/vat-period", async (req: any, res) => {
     const from = new Date(fromDate);
     const to = new Date(toDate);
 
-    // Compute initial statutory 9-box values directly from authentic invoices and bills
-    const sales = await db.select().from(salesInvoices).where(
+    // Compute statutory 9-box values directly from authentic invoices and bills
+    const salesCondition = lateClaimsIncluded
+      ? and(
+          eq(salesInvoices.clientId, cId),
+          lte(salesInvoices.invoiceDate, to),
+          inArray(salesInvoices.status, ["Unpaid", "PartiallyPaid", "Paid"])
+        )
+      : and(
+          eq(salesInvoices.clientId, cId),
+          gte(salesInvoices.invoiceDate, from),
+          lte(salesInvoices.invoiceDate, to),
+          inArray(salesInvoices.status, ["Unpaid", "PartiallyPaid", "Paid"])
+        );
+
+    const sales = await db.select().from(salesInvoices).where(salesCondition);
+
+    const billsCondition = lateClaimsIncluded
+      ? and(
+          eq(purchases.clientId, cId),
+          lte(purchases.billDate, to),
+          inArray(purchases.status, ["Unpaid", "PartiallyPaid", "Paid"])
+        )
+      : and(
+          eq(purchases.clientId, cId),
+          gte(purchases.billDate, from),
+          lte(purchases.billDate, to),
+          inArray(purchases.status, ["Unpaid", "PartiallyPaid", "Paid"])
+        );
+
+    const bills = await db.select().from(purchases).where(billsCondition);
+
+    // Fetch credit notes in period
+    const salesCn = await db.select().from(creditNotes).where(
       and(
-        eq(salesInvoices.clientId, cId),
-        gte(salesInvoices.invoiceDate, from),
-        lte(salesInvoices.invoiceDate, to),
-        inArray(salesInvoices.status, ["Unpaid", "PartiallyPaid", "Paid"])
+        eq(creditNotes.clientId, cId),
+        eq(creditNotes.type, "Sales"),
+        gte(creditNotes.creditNoteDate, from),
+        lte(creditNotes.creditNoteDate, to)
       )
     );
 
-    const bills = await db.select().from(purchases).where(
+    const purchaseCn = await db.select().from(creditNotes).where(
       and(
-        eq(purchases.clientId, cId),
-        gte(purchases.billDate, from),
-        lte(purchases.billDate, to),
-        inArray(purchases.status, ["Unpaid", "PartiallyPaid", "Paid"])
+        eq(creditNotes.clientId, cId),
+        eq(creditNotes.type, "Purchase"),
+        gte(creditNotes.creditNoteDate, from),
+        lte(creditNotes.creditNoteDate, to)
       )
     );
 
-    let box1 = 0;
-    let box6 = 0;
+    let grossBox1 = 0;
+    let grossBox6 = 0;
     sales.forEach(s => {
-      box1 += parseFloat(s.vatTotal || "0");
-      box6 += parseFloat(s.subTotal || "0");
+      grossBox1 += parseFloat(s.vatTotal || "0");
+      grossBox6 += parseFloat(s.subTotal || "0");
     });
 
-    let box4 = 0;
-    let box7 = 0;
+    let salesCnVat = 0;
+    let salesCnNet = 0;
+    salesCn.forEach(cn => {
+      salesCnVat += parseFloat(cn.vatTotal || "0");
+      salesCnNet += parseFloat(cn.subTotal || "0");
+    });
+
+    let grossBox4 = 0;
+    let grossBox7 = 0;
     bills.forEach(b => {
-      box4 += parseFloat(b.vatTotal || "0");
-      box7 += parseFloat(b.subTotal || "0");
+      grossBox4 += parseFloat(b.vatTotal || "0");
+      grossBox7 += parseFloat(b.subTotal || "0");
     });
 
+    let purCnVat = 0;
+    let purCnNet = 0;
+    purchaseCn.forEach(cn => {
+      purCnVat += parseFloat(cn.vatTotal || "0");
+      purCnNet += parseFloat(cn.subTotal || "0");
+    });
+
+    const box1 = Math.max(0, grossBox1 - salesCnVat);
     const box2 = 0;
     const box3 = box1 + box2;
+    const box4 = Math.max(0, grossBox4 - purCnVat);
     const box5 = box3 - box4; // Signed Net VAT: positive = pay HMRC, negative = reclaim from HMRC
+    const box6 = Math.max(0, grossBox6 - salesCnNet);
+    const box7 = Math.max(0, grossBox7 - purCnNet);
     const box8 = 0;
     const box9 = 0;
 
@@ -1066,7 +1451,7 @@ router.post("/vat-period", async (req: any, res) => {
       box7TotalPurchasesExVat: box7.toFixed(2),
       box8TotalEuSupplies: box8.toFixed(2),
       box9TotalEuAcquisitions: box9.toFixed(2),
-      lateClaimsIncluded: false,
+      lateClaimsIncluded: !!lateClaimsIncluded,
       vatStatus: vatStatus || "Calculated",
       paymentStatus: "Unpaid",
     } as any);
@@ -1101,6 +1486,19 @@ router.get("/vat-period/:id/calculate", async (req: any, res) => {
     if (!period) return res.status(404).json({ message: "VAT period not found" });
     
     // 1. Fetch Sales Invoices in period (Box 1 & 6)
+    const salesCondition = period.lateClaimsIncluded
+      ? and(
+          eq(salesInvoices.clientId, period.clientId),
+          lte(salesInvoices.invoiceDate, period.toDate),
+          inArray(salesInvoices.status, ["Unpaid", "PartiallyPaid", "Paid"])
+        )
+      : and(
+          eq(salesInvoices.clientId, period.clientId),
+          gte(salesInvoices.invoiceDate, period.fromDate),
+          lte(salesInvoices.invoiceDate, period.toDate),
+          inArray(salesInvoices.status, ["Unpaid", "PartiallyPaid", "Paid"])
+        );
+
     const sales = await db.select({
       id: salesInvoices.id,
       invoiceNumber: salesInvoices.invoiceNumber,
@@ -1113,16 +1511,22 @@ router.get("/vat-period/:id/calculate", async (req: any, res) => {
     })
     .from(salesInvoices)
     .leftJoin(contacts, eq(salesInvoices.customerId, contacts.id))
-    .where(
-      and(
-        eq(salesInvoices.clientId, period.clientId),
-        gte(salesInvoices.invoiceDate, period.fromDate),
-        lte(salesInvoices.invoiceDate, period.toDate),
-        inArray(salesInvoices.status, ["Unpaid", "PartiallyPaid", "Paid"])
-      )
-    );
+    .where(salesCondition);
     
     // 2. Fetch Purchases in period (Box 4 & 7)
+    const billsCondition = period.lateClaimsIncluded
+      ? and(
+          eq(purchases.clientId, period.clientId),
+          lte(purchases.billDate, period.toDate),
+          inArray(purchases.status, ["Unpaid", "PartiallyPaid", "Paid"])
+        )
+      : and(
+          eq(purchases.clientId, period.clientId),
+          gte(purchases.billDate, period.fromDate),
+          lte(purchases.billDate, period.toDate),
+          inArray(purchases.status, ["Unpaid", "PartiallyPaid", "Paid"])
+        );
+
     const bills = await db.select({
       id: purchases.id,
       billNumber: purchases.billNumber,
@@ -1135,32 +1539,62 @@ router.get("/vat-period/:id/calculate", async (req: any, res) => {
     })
     .from(purchases)
     .leftJoin(contacts, eq(purchases.supplierId, contacts.id))
-    .where(
+    .where(billsCondition);
+    
+    // 3. Fetch Credit Notes in period
+    const salesCn = await db.select().from(creditNotes).where(
       and(
-        eq(purchases.clientId, period.clientId),
-        gte(purchases.billDate, period.fromDate),
-        lte(purchases.billDate, period.toDate),
-        inArray(purchases.status, ["Unpaid", "PartiallyPaid", "Paid"])
+        eq(creditNotes.clientId, period.clientId),
+        eq(creditNotes.type, "Sales"),
+        gte(creditNotes.creditNoteDate, period.fromDate),
+        lte(creditNotes.creditNoteDate, period.toDate)
       )
     );
-    
-    let box1 = 0;
-    let box6 = 0;
+
+    const purchaseCn = await db.select().from(creditNotes).where(
+      and(
+        eq(creditNotes.clientId, period.clientId),
+        eq(creditNotes.type, "Purchase"),
+        gte(creditNotes.creditNoteDate, period.fromDate),
+        lte(creditNotes.creditNoteDate, period.toDate)
+      )
+    );
+
+    let grossBox1 = 0;
+    let grossBox6 = 0;
     sales.forEach(s => {
-      box1 += parseFloat(s.vatTotal || "0");
-      box6 += parseFloat(s.subTotal || "0");
+      grossBox1 += parseFloat(s.vatTotal || "0");
+      grossBox6 += parseFloat(s.subTotal || "0");
     });
-    
-    let box4 = 0;
-    let box7 = 0;
+
+    let salesCnVat = 0;
+    let salesCnNet = 0;
+    salesCn.forEach(cn => {
+      salesCnVat += parseFloat(cn.vatTotal || "0");
+      salesCnNet += parseFloat(cn.subTotal || "0");
+    });
+
+    let grossBox4 = 0;
+    let grossBox7 = 0;
     bills.forEach(b => {
-      box4 += parseFloat(b.vatTotal || "0");
-      box7 += parseFloat(b.subTotal || "0");
+      grossBox4 += parseFloat(b.vatTotal || "0");
+      grossBox7 += parseFloat(b.subTotal || "0");
     });
-    
+
+    let purCnVat = 0;
+    let purCnNet = 0;
+    purchaseCn.forEach(cn => {
+      purCnVat += parseFloat(cn.vatTotal || "0");
+      purCnNet += parseFloat(cn.subTotal || "0");
+    });
+
+    const box1 = Math.max(0, grossBox1 - salesCnVat);
     const box2 = 0;
     const box3 = box1 + box2;
+    const box4 = Math.max(0, grossBox4 - purCnVat);
     const box5 = box3 - box4; // Signed Net VAT: positive = pay HMRC, negative = reclaim from HMRC
+    const box6 = Math.max(0, grossBox6 - salesCnNet);
+    const box7 = Math.max(0, grossBox7 - purCnNet);
     const box8 = 0;
     const box9 = 0;
     
@@ -1196,12 +1630,31 @@ router.get("/vat-period/:id/calculate", async (req: any, res) => {
       isRefund: box4 > box3,
       salesCount: sales.length,
       billsCount: bills.length,
+      salesCreditNotesCount: salesCn.length,
+      purchaseCreditNotesCount: purchaseCn.length,
       salesTransactions: sales,
       purchaseTransactions: bills,
     });
   } catch (error: any) {
     console.error("VAT Calc Error:", error);
     res.status(500).json({ message: "Failed to calculate VAT", error: error.message });
+  }
+});
+
+router.post("/vat-period/:id/mark-filed", async (req: any, res) => {
+  try {
+    const periodId = parseInt(req.params.id);
+    const [period] = await db.select().from(vatPeriods).where(eq(vatPeriods.id, periodId));
+    if (!period) return res.status(404).json({ message: "VAT period not found" });
+
+    await db.update(vatPeriods).set({
+      vatStatus: "Filed",
+      paymentStatus: "Unpaid",
+    }).where(eq(vatPeriods.id, periodId));
+
+    res.json({ success: true, message: "VAT return marked as filed with HMRC." });
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to mark VAT period as filed", error: error.message });
   }
 });
 
@@ -1971,6 +2424,260 @@ router.post("/items/import/:clientId", async (req: any, res) => {
     });
   } catch (error: any) {
     res.status(500).json({ message: error.message || "Failed to import items" });
+  }
+});
+
+// --- STOCK VALUATION & ADJUSTMENTS (PHASE 3) ---
+router.post("/stock-adjustment", async (req: any, res) => {
+  try {
+    const { clientId, adjustmentDate, valuationBasis, closingStockValue, openingStockValue, description } = req.body;
+    if (!clientId || !adjustmentDate) {
+      return res.status(400).json({ message: "Client ID and adjustment date are required" });
+    }
+
+    const cId = parseInt(clientId);
+    const closeVal = parseFloat(closingStockValue || "0");
+    const openVal = parseFloat(openingStockValue || "0");
+
+    if (closeVal <= 0 && openVal <= 0) {
+      return res.status(400).json({ message: "Closing stock or opening stock amount must be greater than zero." });
+    }
+
+    const jNum = `JRN-STK-${Date.now().toString().slice(-6)}`;
+    const jDate = new Date(adjustmentDate);
+    const totalJournalAmount = Math.max(closeVal, openVal);
+
+    const [j] = await db.insert(journalEntries).values({
+      clientId: cId,
+      journalNumber: jNum,
+      journalDate: jDate,
+      reference: `Stock Valuation (${valuationBasis || "Cost"})`,
+      description: description || `Period-end stock valuation adjustment (${valuationBasis || "Cost"})`,
+      totalAmount: totalJournalAmount.toFixed(2),
+    });
+
+    const journalId = j.insertId;
+
+    // 1. Post Closing Stock adjustment
+    if (closeVal > 0) {
+      // Debit: 1001 Stock on Hand (Asset)
+      await db.insert(journalLines).values({
+        journalId,
+        nominalCode: "1001",
+        description: `Closing Stock on Hand (${valuationBasis || "Cost"})`,
+        debit: closeVal.toFixed(2),
+        credit: "0.00",
+      });
+      // Credit: 5200 Closing Stock Adjustment (P&L Cost of Sales reduction)
+      await db.insert(journalLines).values({
+        journalId,
+        nominalCode: "5200",
+        description: "Closing Stock Adjustment to Cost of Sales",
+        debit: "0.00",
+        credit: closeVal.toFixed(2),
+      });
+    }
+
+    // 2. Post Opening Stock reversal
+    if (openVal > 0) {
+      // Debit: 5201 Opening Stock (P&L Cost of Sales increase)
+      await db.insert(journalLines).values({
+        journalId,
+        nominalCode: "5201",
+        description: "Opening Stock Reversal to Cost of Sales",
+        debit: openVal.toFixed(2),
+        credit: "0.00",
+      });
+      // Credit: 1001 Stock on Hand (Asset clearance)
+      await db.insert(journalLines).values({
+        journalId,
+        nominalCode: "1001",
+        description: "Opening Stock Cleared from Balance Sheet",
+        debit: "0.00",
+        credit: openVal.toFixed(2),
+      });
+    }
+
+    res.json({
+      success: true,
+      journalId,
+      journalNumber: jNum,
+      message: `Stock adjustment journal ${jNum} successfully posted to ledger.`,
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to record stock adjustment", error: error.message });
+  }
+});
+
+router.get("/stock-adjustments/client/:clientId", async (req: any, res) => {
+  try {
+    const clientId = parseInt(req.params.clientId);
+    const adjustments = await db
+      .select()
+      .from(journalEntries)
+      .where(
+        and(
+          eq(journalEntries.clientId, clientId),
+          or(
+            like(journalEntries.reference, "%Stock%"),
+            like(journalEntries.description, "%stock%")
+          )
+        )
+      )
+      .orderBy(desc(journalEntries.journalDate));
+
+    res.json(adjustments);
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to fetch stock adjustments", error: error.message });
+  }
+});
+
+// --- RECEIPT & PAYMENT DEALLOCATION (PHASE 4) ---
+router.post("/receipts/:id/deallocate", async (req: any, res) => {
+  try {
+    const invoiceId = parseInt(req.params.id);
+    const deallocAmount = parseFloat(req.body.amount || "0");
+
+    const [inv] = await db.select().from(salesInvoices).where(eq(salesInvoices.id, invoiceId));
+    if (!inv) return res.status(404).json({ message: "Invoice not found" });
+
+    const currentPaid = parseFloat(inv.paidAmount || "0");
+    const amountToReverse = deallocAmount > 0 ? Math.min(deallocAmount, currentPaid) : currentPaid;
+    const newPaid = Math.max(0, currentPaid - amountToReverse);
+    const newStatus = newPaid <= 0 ? "Unpaid" : "PartiallyPaid";
+
+    await db.update(salesInvoices).set({
+      paidAmount: newPaid.toFixed(2),
+      status: newStatus,
+    }).where(eq(salesInvoices.id, invoiceId));
+
+    res.json({
+      success: true,
+      newPaid: newPaid.toFixed(2),
+      status: newStatus,
+      reversedAmount: amountToReverse.toFixed(2),
+      message: `Reversed £${amountToReverse.toFixed(2)} payment on Invoice ${inv.invoiceNumber}. Status updated to ${newStatus}.`,
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to deallocate receipt", error: error.message });
+  }
+});
+
+router.post("/purchase-payments/:id/deallocate", async (req: any, res) => {
+  try {
+    const purchaseId = parseInt(req.params.id);
+    const deallocAmount = parseFloat(req.body.amount || "0");
+
+    const [pur] = await db.select().from(purchases).where(eq(purchases.id, purchaseId));
+    if (!pur) return res.status(404).json({ message: "Purchase bill not found" });
+
+    const currentPaid = parseFloat(pur.paidAmount || "0");
+    const amountToReverse = deallocAmount > 0 ? Math.min(deallocAmount, currentPaid) : currentPaid;
+    const newPaid = Math.max(0, currentPaid - amountToReverse);
+    const newStatus = newPaid <= 0 ? "Unpaid" : "PartiallyPaid";
+
+    await db.update(purchases).set({
+      paidAmount: newPaid.toFixed(2),
+      status: newStatus,
+    }).where(eq(purchases.id, purchaseId));
+
+    res.json({
+      success: true,
+      newPaid: newPaid.toFixed(2),
+      status: newStatus,
+      reversedAmount: amountToReverse.toFixed(2),
+      message: `Reversed £${amountToReverse.toFixed(2)} payment on Purchase Bill ${pur.billNumber || pur.id}. Status updated to ${newStatus}.`,
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to deallocate payment", error: error.message });
+  }
+});
+
+// --- 1-CLICK QUOTE TO SALES INVOICE CONVERSION (PHASE 4) ---
+router.post("/quotations/:id/convert-to-invoice", async (req: any, res) => {
+  try {
+    const quoteId = parseInt(req.params.id);
+    const [quote] = await db.select().from(quotations).where(eq(quotations.id, quoteId));
+    if (!quote) return res.status(404).json({ message: "Quotation not found" });
+
+    const nextInvNum = `INV-${Date.now().toString().slice(-6)}`;
+    const now = new Date();
+    const dueDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    const total = parseFloat(quote.totalAmount || "0");
+    const subTotal = (total / 1.2).toFixed(2);
+    const vatTotal = (total - parseFloat(subTotal)).toFixed(2);
+
+    const [invRes] = await db.insert(salesInvoices).values({
+      clientId: quote.clientId,
+      customerId: quote.customerId,
+      invoiceNumber: nextInvNum,
+      invoiceDate: now,
+      dueDate,
+      subTotal,
+      vatTotal,
+      grandTotal: quote.totalAmount || "0.00",
+      paidAmount: "0.00",
+      status: "Unpaid",
+      reference: quote.reference || quote.quoteNumber,
+      notes: `Converted from Quotation #${quote.quoteNumber}`,
+      invoiceType: "Invoice",
+    } as any);
+
+    await db.update(quotations).set({
+      status: "Accepted",
+    }).where(eq(quotations.id, quoteId));
+
+    res.json({
+      success: true,
+      invoiceId: invRes.insertId,
+      invoiceNumber: nextInvNum,
+      message: `Quotation ${quote.quoteNumber} successfully converted to Sales Invoice ${nextInvNum}.`,
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to convert quotation to invoice", error: error.message });
+  }
+});
+
+// --- BULK PURGE / DELETE UTILITY (PHASE 4) ---
+router.post("/bulk-delete", async (req: any, res) => {
+  try {
+    const { clientId, entityType, ids } = req.body;
+    if (!clientId || !entityType || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ message: "clientId, entityType, and ids array are required." });
+    }
+
+    const cId = parseInt(clientId);
+    const targetIds = ids.map((i: any) => parseInt(i)).filter((i: any) => !isNaN(i));
+
+    if (entityType === "Sales") {
+      await db.delete(salesInvoices).where(
+        and(eq(salesInvoices.clientId, cId), inArray(salesInvoices.id, targetIds))
+      );
+    } else if (entityType === "Purchases") {
+      await db.delete(purchases).where(
+        and(eq(purchases.clientId, cId), inArray(purchases.id, targetIds))
+      );
+    } else if (entityType === "BankTransactions") {
+      await db.delete(bankTransactions).where(
+        and(eq(bankTransactions.clientId, cId), inArray(bankTransactions.id, targetIds))
+      );
+    } else if (entityType === "Journals") {
+      await db.delete(journalLines).where(inArray(journalLines.journalId, targetIds));
+      await db.delete(journalEntries).where(
+        and(eq(journalEntries.clientId, cId), inArray(journalEntries.id, targetIds))
+      );
+    } else {
+      return res.status(400).json({ message: `Unsupported entity type: ${entityType}` });
+    }
+
+    res.json({
+      success: true,
+      deletedCount: targetIds.length,
+      message: `Successfully purged ${targetIds.length} ${entityType} records.`,
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to perform bulk delete", error: error.message });
   }
 });
 
@@ -2825,6 +3532,32 @@ router.delete("/recurring/:id", async (req: any, res) => {
   }
 });
 
+router.post("/recurring/:id/dispatch", async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const [existing] = await db.select().from(recurringProfiles).where(eq(recurringProfiles.id, id));
+    if (!existing) return res.status(404).json({ message: "Profile not found" });
+
+    // Calculate next scheduled run
+    const currentNext = existing.nextRun ? new Date(existing.nextRun) : new Date();
+    const nextDate = new Date(currentNext);
+    if (existing.frequency === "Weekly") nextDate.setDate(nextDate.getDate() + 7);
+    else if (existing.frequency === "Quarterly") nextDate.setMonth(nextDate.getMonth() + 3);
+    else if (existing.frequency === "Annually") nextDate.setFullYear(nextDate.getFullYear() + 1);
+    else nextDate.setMonth(nextDate.getMonth() + 1); // Monthly default
+
+    await db.update(recurringProfiles).set({ nextRun: nextDate }).where(eq(recurringProfiles.id, id));
+
+    res.json({
+      success: true,
+      message: `Recurring invoice for "${existing.profileName}" generated and dispatched. Next scheduled run: ${nextDate.toLocaleDateString("en-GB")}.`,
+      nextRun: nextDate
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to dispatch recurring profile", error: error.message });
+  }
+});
+
 // --- QUICK ENTRY BATCH INSERT ---
 router.post("/quick-entry/batch", async (req: any, res) => {
   try {
@@ -3600,6 +4333,373 @@ router.post("/bacs/client/:clientId/generate", async (req: any, res) => {
     });
   } catch (error: any) {
     res.status(500).json({ message: "Failed to generate BACS file", error: error.message });
+  }
+});
+
+// ====================================================
+// STOCK ADJUSTMENTS & PERIOD-END VALUATION JOURNALS
+// ====================================================
+
+// POST /api/bookkeeping/stock-adjustment
+router.post("/stock-adjustment", async (req: any, res) => {
+  try {
+    const { clientId, adjustmentDate, valuationBasis, closingStockValue, openingStockValue, description } = req.body;
+    if (!clientId) return res.status(400).json({ message: "clientId is required" });
+
+    const cId = parseInt(clientId);
+    const closeVal = parseFloat(closingStockValue || "0");
+    const openVal = parseFloat(openingStockValue || "0");
+
+    if (closeVal <= 0 && openVal <= 0) {
+      return res.status(400).json({ message: "Closing or opening stock valuation amount must be greater than zero." });
+    }
+
+    const journalNumber = `JRN-STK-${Date.now().toString().slice(-6)}`;
+    const jDate = adjustmentDate ? new Date(adjustmentDate) : new Date();
+    const totalAmount = Math.max(closeVal, openVal).toFixed(2);
+
+    const [jEntry] = await db.insert(journalEntries).values({
+      clientId: cId,
+      journalNumber,
+      journalDate: jDate,
+      reference: `Stock Adj - ${valuationBasis || "Cost/NRV"}`,
+      description: description || "Period-end closing/opening stock valuation adjustment",
+      totalAmount,
+    });
+
+    const journalId = jEntry.insertId;
+    const linesToInsert: any[] = [];
+
+    // Closing Stock: Debit 1001 Stock Asset, Credit 5200 Closing Stock Adj (reduces cost of sales)
+    if (closeVal > 0) {
+      linesToInsert.push({
+        journalId,
+        nominalCode: "1001",
+        description: `Closing Stock Asset (${valuationBasis || "Valuation"})`,
+        debit: closeVal.toFixed(2),
+        credit: "0.00",
+      });
+      linesToInsert.push({
+        journalId,
+        nominalCode: "5200",
+        description: `Closing Stock Adjustment (P&L Cost of Sales Credit)`,
+        debit: "0.00",
+        credit: closeVal.toFixed(2),
+      });
+    }
+
+    // Opening Stock reversal: Debit 5201 Opening Stock (P&L expense), Credit 1001 Stock Asset
+    if (openVal > 0) {
+      linesToInsert.push({
+        journalId,
+        nominalCode: "5201",
+        description: `Opening Stock Clearance (P&L Cost of Sales Debit)`,
+        debit: openVal.toFixed(2),
+        credit: "0.00",
+      });
+      linesToInsert.push({
+        journalId,
+        nominalCode: "1001",
+        description: `Prior Stock Clearance`,
+        debit: "0.00",
+        credit: openVal.toFixed(2),
+      });
+    }
+
+    if (linesToInsert.length > 0) {
+      await db.insert(journalLines).values(linesToInsert);
+    }
+
+    res.json({
+      success: true,
+      journalId,
+      journalNumber,
+      message: `Stock adjustment journal ${journalNumber} posted to ledger.`,
+    });
+  } catch (error: any) {
+    console.error("Failed to post stock adjustment:", error);
+    res.status(500).json({ message: "Failed to post stock adjustment", error: error.message });
+  }
+});
+
+// GET /api/bookkeeping/stock-adjustments/client/:clientId
+router.get("/stock-adjustments/client/:clientId", async (req: any, res) => {
+  try {
+    const clientId = parseInt(req.params.clientId);
+    const adjustments = await db
+      .select()
+      .from(journalEntries)
+      .where(
+        and(
+          eq(journalEntries.clientId, clientId),
+          or(
+            like(journalEntries.journalNumber, "JRN-STK-%"),
+            like(journalEntries.reference, "%Stock%"),
+            like(journalEntries.description, "%Stock%")
+          )
+        )
+      )
+      .orderBy(desc(journalEntries.journalDate));
+
+    res.json(adjustments);
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to fetch stock adjustments", error: error.message });
+  }
+});
+
+// ====================================================
+// PAYMENT & RECEIPT DEALLOCATION ENGINE
+// ====================================================
+
+// POST /api/bookkeeping/receipts/:id/deallocate
+router.post("/receipts/:id/deallocate", async (req: any, res) => {
+  try {
+    const invoiceId = parseInt(req.params.id);
+    const { amount } = req.body;
+
+    const [invoice] = await db
+      .select()
+      .from(salesInvoices)
+      .where(eq(salesInvoices.id, invoiceId));
+
+    if (!invoice) {
+      return res.status(404).json({ message: "Invoice not found" });
+    }
+
+    const currentPaid = parseFloat(invoice.paidAmount || "0");
+    const reverseAmount = amount ? Math.min(currentPaid, parseFloat(amount)) : currentPaid;
+    const newPaid = Math.max(0, currentPaid - reverseAmount);
+    const grandTotal = parseFloat(invoice.grandTotal || "0");
+
+    let newStatus = "Unpaid";
+    if (newPaid >= grandTotal && grandTotal > 0) {
+      newStatus = "Paid";
+    } else if (newPaid > 0) {
+      newStatus = "PartiallyPaid";
+    }
+
+    await db
+      .update(salesInvoices)
+      .set({
+        paidAmount: newPaid.toFixed(2),
+        status: newStatus,
+      })
+      .where(eq(salesInvoices.id, invoiceId));
+
+    res.json({
+      success: true,
+      invoiceId,
+      reversedAmount: reverseAmount.toFixed(2),
+      remainingPaid: newPaid.toFixed(2),
+      newStatus,
+      message: `Deallocated £${reverseAmount.toFixed(2)} from invoice ${invoice.invoiceNumber}. Status is now ${newStatus}.`,
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to deallocate receipt", error: error.message });
+  }
+});
+
+// POST /api/bookkeeping/purchase-payments/:id/deallocate
+router.post("/purchase-payments/:id/deallocate", async (req: any, res) => {
+  try {
+    const billId = parseInt(req.params.id);
+    const { amount } = req.body;
+
+    const [bill] = await db
+      .select()
+      .from(purchases)
+      .where(eq(purchases.id, billId));
+
+    if (!bill) {
+      return res.status(404).json({ message: "Purchase bill not found" });
+    }
+
+    const currentPaid = parseFloat(bill.paidAmount || "0");
+    const reverseAmount = amount ? Math.min(currentPaid, parseFloat(amount)) : currentPaid;
+    const newPaid = Math.max(0, currentPaid - reverseAmount);
+    const grandTotal = parseFloat(bill.grandTotal || "0");
+
+    let newStatus = "Unpaid";
+    if (newPaid >= grandTotal && grandTotal > 0) {
+      newStatus = "Paid";
+    } else if (newPaid > 0) {
+      newStatus = "PartiallyPaid";
+    }
+
+    await db
+      .update(purchases)
+      .set({
+        paidAmount: newPaid.toFixed(2),
+        status: newStatus,
+      })
+      .where(eq(purchases.id, billId));
+
+    res.json({
+      success: true,
+      billId,
+      reversedAmount: reverseAmount.toFixed(2),
+      remainingPaid: newPaid.toFixed(2),
+      newStatus,
+      message: `Deallocated £${reverseAmount.toFixed(2)} from bill ${bill.billNumber || billId}. Status is now ${newStatus}.`,
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to deallocate payment", error: error.message });
+  }
+});
+
+// ====================================================
+// 1-CLICK QUOTATION TO INVOICE CONVERSION
+// ====================================================
+
+// POST /api/bookkeeping/quotations/:id/convert-to-invoice
+router.post("/quotations/:id/convert-to-invoice", async (req: any, res) => {
+  try {
+    const quoteId = parseInt(req.params.id);
+
+    const [quote] = await db
+      .select()
+      .from(quotations)
+      .where(eq(quotations.id, quoteId));
+
+    if (!quote) {
+      return res.status(404).json({ message: "Quotation not found" });
+    }
+
+    // Generate unique sequential invoice number
+    const invoiceNumber = `INV-${quote.quoteNumber.replace(/[^0-9]/g, "") || Date.now().toString().slice(-6)}`;
+    const total = parseFloat(quote.totalAmount || "0");
+    const subTotal = (total / 1.2).toFixed(2);
+    const vatTotal = (total - parseFloat(subTotal)).toFixed(2);
+
+    const [newInv] = await db.insert(salesInvoices).values({
+      clientId: quote.clientId,
+      customerId: quote.customerId,
+      invoiceNumber,
+      invoiceType: "Invoice",
+      invoiceDate: new Date(),
+      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days credit terms
+      subTotal,
+      vatTotal,
+      grandTotal: total.toFixed(2),
+      paidAmount: "0.00",
+      status: "Unpaid",
+      notes: quote.notes ? `Converted from Quote ${quote.quoteNumber}. ${quote.notes}` : `Converted from Quote ${quote.quoteNumber}`,
+    });
+
+    const invoiceId = newInv.insertId;
+
+    // Check if quote had item breakdown
+    let hasLineItems = false;
+    if (quote.itemsJson) {
+      try {
+        const parsedItems = JSON.parse(quote.itemsJson);
+        if (Array.isArray(parsedItems) && parsedItems.length > 0) {
+          hasLineItems = true;
+          for (const item of parsedItems) {
+            const qty = parseFloat(item.quantity || "1");
+            const price = parseFloat(item.unitPrice || "0");
+            const net = qty * price;
+            const vat = net * 0.20;
+            await db.insert(invoiceItems).values({
+              invoiceId,
+              description: item.description || quote.reference || "Services Rendered",
+              quantity: qty.toFixed(2),
+              unitPrice: price.toFixed(2),
+              vatRate: "20.00",
+              vatAmount: vat.toFixed(2),
+              netAmount: net.toFixed(2),
+              nominalCode: item.nominalCode || "4000",
+            });
+          }
+        }
+      } catch (parseErr) {
+        console.warn("Failed to parse quote itemsJson:", parseErr);
+      }
+    }
+
+    if (!hasLineItems) {
+      await db.insert(invoiceItems).values({
+        invoiceId,
+        description: quote.reference || `Services as per quotation ${quote.quoteNumber}`,
+        quantity: "1.00",
+        unitPrice: subTotal,
+        vatRate: "20.00",
+        vatAmount: vatTotal,
+        netAmount: subTotal,
+        nominalCode: "4000",
+      });
+    }
+
+    // Update quotation status
+    await db
+      .update(quotations)
+      .set({ status: "Accepted" })
+      .where(eq(quotations.id, quoteId));
+
+    res.json({
+      success: true,
+      invoiceId,
+      invoiceNumber,
+      message: `Quotation ${quote.quoteNumber} converted to Invoice ${invoiceNumber}.`,
+    });
+  } catch (error: any) {
+    console.error("Failed to convert quote to invoice:", error);
+    res.status(500).json({ message: "Failed to convert quote to invoice", error: error.message });
+  }
+});
+
+// ====================================================
+// BULK DELETE TRANSACTIONS MAINTENANCE UTILITY
+// ====================================================
+
+// POST /api/bookkeeping/bulk-delete
+router.post("/bulk-delete", async (req: any, res) => {
+  try {
+    const { clientId, entityType, ids } = req.body;
+    if (!clientId || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ message: "clientId and array of ids are required." });
+    }
+
+    const cId = parseInt(clientId);
+    const cleanIds = ids.map((id: any) => parseInt(id)).filter((id: number) => !isNaN(id) && id > 0);
+
+    if (cleanIds.length === 0) {
+      return res.status(400).json({ message: "No valid IDs provided." });
+    }
+
+    let deletedCount = 0;
+
+    if (entityType === "Sales") {
+      await db.delete(invoiceItems).where(inArray(invoiceItems.invoiceId, cleanIds));
+      await db.delete(salesInvoices).where(
+        and(
+          eq(salesInvoices.clientId, cId),
+          inArray(salesInvoices.id, cleanIds)
+        )
+      );
+      deletedCount = cleanIds.length;
+    } else if (entityType === "Purchases") {
+      await db.delete(purchaseItems).where(inArray(purchaseItems.purchaseId, cleanIds));
+      await db.delete(purchases).where(
+        and(
+          eq(purchases.clientId, cId),
+          inArray(purchases.id, cleanIds)
+        )
+      );
+      deletedCount = cleanIds.length;
+    } else {
+      return res.status(400).json({ message: "Invalid entityType. Must be 'Sales' or 'Purchases'." });
+    }
+
+    res.json({
+      success: true,
+      entityType,
+      deletedCount,
+      message: `Successfully purged ${deletedCount} ${entityType} record(s) and associated line items from the general ledger.`,
+    });
+  } catch (error: any) {
+    console.error("Failed to bulk delete:", error);
+    res.status(500).json({ message: "Failed to execute bulk delete", error: error.message });
   }
 });
 

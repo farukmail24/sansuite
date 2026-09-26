@@ -38,10 +38,22 @@ function SACalculationContent() {
   const firstPaymentOnAccount = parseFloat(currentReturn.firstPaymentOnAccount || "0");
   const secondPaymentOnAccount = parseFloat(currentReturn.secondPaymentOnAccount || "0");
 
-  const schedules = currentReturn.schedulesData || {};
+  let schedules: any = {};
+  if (currentReturn.schedulesData) {
+    try {
+      schedules = typeof currentReturn.schedulesData === "string" ? JSON.parse(currentReturn.schedulesData) : currentReturn.schedulesData;
+    } catch {}
+  }
   const employments = schedules.employments || [];
   const soleTraders = schedules.soleTraders || [];
   const properties = schedules.properties || [];
+  const partnerships = schedules.partnerships || [];
+
+  const cgtBox51Adjustment = parseFloat(currentReturn.cgtBox51Adjustment || schedules.cgtBox51Adjustment || "0");
+  const seisTaxReducer = parseFloat(currentReturn.seisTaxReducer || schedules.seisTaxReducer || "0");
+  const eisTaxReducer = parseFloat(currentReturn.eisTaxReducer || schedules.eisTaxReducer || "0");
+  const vctTaxReducer = parseFloat(currentReturn.vctTaxReducer || schedules.vctTaxReducer || "0");
+  const totalInvestmentReliefs = parseFloat(currentReturn.totalInvestmentReliefs || schedules.totalInvestmentReliefs || "0") || (seisTaxReducer + eisTaxReducer + vctTaxReducer);
 
   const handlePrint = () => {
     window.print();
@@ -215,6 +227,17 @@ function SACalculationContent() {
                 </span>
                 <span className="font-mono font-medium text-slate-900 dark:text-slate-100">
                   £{parseFloat(prop.netProfit || "0").toLocaleString("en-GB", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            ))}
+
+            {partnerships.map((p: any, idx: number) => (
+              <div key={idx} className="py-2 flex justify-between bg-purple-50/40 dark:bg-purple-950/20 px-2 rounded">
+                <span className="text-slate-700 dark:text-slate-300 font-medium">
+                  Partnership profit (SA104): {p.partnershipName || `Partnership ${idx + 1}`}
+                </span>
+                <span className="font-mono font-bold text-slate-900 dark:text-slate-100">
+                  £{parseFloat(p.allocatedTradingProfit || p.allocatedTotalProfit || "0").toLocaleString("en-GB", { minimumFractionDigits: 2 })}
                 </span>
               </div>
             ))}
@@ -410,13 +433,43 @@ function SACalculationContent() {
 
             {/* Capital Gains Tax */}
             {cgtDue > 0 && (
-              <div className="py-2 flex justify-between">
-                <div>
-                  <span className="text-slate-700 dark:text-slate-300 font-medium block">Capital Gains Tax</span>
-                  <span className="text-[11px] text-slate-400">After £3,000 statutory annual exempt amount</span>
+              <>
+                <div className="py-2 flex justify-between">
+                  <div>
+                    <span className="text-slate-700 dark:text-slate-300 font-medium block">Capital Gains Tax</span>
+                    <span className="text-[11px] text-slate-400">After £3,000 statutory annual exempt amount</span>
+                  </div>
+                  <span className="font-mono font-medium text-slate-900 dark:text-slate-100">
+                    £{cgtDue.toLocaleString("en-GB", { minimumFractionDigits: 2 })}
+                  </span>
                 </div>
-                <span className="font-mono font-medium text-slate-900 dark:text-slate-100">
-                  £{cgtDue.toLocaleString("en-GB", { minimumFractionDigits: 2 })}
+                {cgtBox51Adjustment > 0 && (
+                  <div className="py-1.5 flex justify-between bg-amber-50/70 dark:bg-amber-950/40 px-2.5 rounded text-amber-900 dark:text-amber-200">
+                    <div>
+                      <span className="font-bold block text-[11px]">Box CGT51: Autumn Budget 2024 Rate Differential</span>
+                      <span className="text-[10px] text-amber-700 dark:text-amber-400">Rate increase adjustment on/after 30 Oct 2024 (18% / 24%)</span>
+                    </div>
+                    <span className="font-mono font-bold text-amber-900 dark:text-amber-100 text-xs">
+                      + £{cgtBox51Adjustment.toLocaleString("en-GB", { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Venture Investment Reliefs (SEIS / EIS / VCT) */}
+            {totalInvestmentReliefs > 0 && (
+              <div className="py-2 flex justify-between text-emerald-700 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/30 px-2.5 rounded">
+                <div>
+                  <span className="font-medium block">Less: SA101 Venture Investment Tax Reliefs</span>
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-500">
+                    {seisTaxReducer > 0 ? `SEIS (50%): -£${seisTaxReducer.toFixed(2)} ` : ""}
+                    {eisTaxReducer > 0 ? `EIS (30%): -£${eisTaxReducer.toFixed(2)} ` : ""}
+                    {vctTaxReducer > 0 ? `VCT (30%): -£${vctTaxReducer.toFixed(2)}` : ""}
+                  </span>
+                </div>
+                <span className="font-mono font-semibold">
+                  - £{totalInvestmentReliefs.toLocaleString("en-GB", { minimumFractionDigits: 2 })}
                 </span>
               </div>
             )}

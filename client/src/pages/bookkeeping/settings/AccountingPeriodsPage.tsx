@@ -54,6 +54,25 @@ export default function AccountingPeriodsPage() {
     status: "Open",
   });
 
+  const formatDateUk = (dateVal: any) => {
+    if (!dateVal) return "-";
+    const str = String(dateVal).trim();
+    const match = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) {
+      return `${match[3]}/${match[2]}/${match[1]}`;
+    }
+    try {
+      const d = new Date(dateVal);
+      if (!isNaN(d.getTime())) {
+        const day = String(d.getUTCDate()).padStart(2, "0");
+        const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+        const year = d.getUTCFullYear();
+        return `${day}/${month}/${year}`;
+      }
+    } catch (e) {}
+    return str;
+  };
+
   const { data: periods = [] } = useQuery<any[]>({
     queryKey: [`/api/bookkeeping/settings/${effectiveClientId}/periods`],
     queryFn: async () => {
@@ -236,8 +255,8 @@ export default function AccountingPeriodsPage() {
                             {p.periodType} Period
                           </span>
                         </td>
-                        <td className="py-3 px-4 font-medium text-slate-700">{p.from}</td>
-                        <td className="py-3 px-4 font-medium text-slate-700">{p.to}</td>
+                        <td className="py-3 px-4 font-medium text-slate-700">{formatDateUk(p.from)}</td>
+                        <td className="py-3 px-4 font-medium text-slate-700">{formatDateUk(p.to)}</td>
                         <td className="py-3 px-4">
                           <span
                             className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${p.status === "Open"

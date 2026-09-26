@@ -95,38 +95,80 @@ export default function GlobalMediaLibraryModal({
     }
   }, [isOpen]);
 
-  // Sync with localStorage (tenant_media_library used by /admin Media tab)
+  // Sync with backend API and localStorage (tenant_media_library used by /admin Media tab)
   useEffect(() => {
     if (isOpen) {
-      const saved = localStorage.getItem("tenant_media_library");
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          const mapped: MediaFile[] = parsed.map((item: any) => {
-            const isPdf = item.name?.toLowerCase().endsWith(".pdf") || item.type === "application/pdf";
-            return {
-              id: item.id || `m-${Date.now()}`,
-              name: item.name,
-              category: isPdf ? "PDF Documents" : item.type?.includes("image") ? "Images" : "Documents",
-              size: item.size || "100 KB",
-              bytes: item.bytes || 102400,
-              date: item.date || new Date().toISOString().split("T")[0],
-              mimeType: item.type || (isPdf ? "application/pdf" : "image/png"),
-              url: item.url,
-            };
-          });
-          setFiles(mapped);
-          if (mapped.length > 0) {
-            setSelectedFileId(mapped[0].id);
-          }
-        } catch (e) {
-          console.error("Failed to parse tenant_media_library", e);
-        }
-      } else {
-        setFiles([]);
+      if (allowedTypes === "Images") {
+        setActiveCategory("Images");
       }
+
+      const loadMedia = async () => {
+        let apiFiles: MediaFile[] = [];
+        try {
+          const res = await fetch("/api/admin/media");
+          if (res.ok) {
+            const list = await res.json();
+            if (Array.isArray(list) && list.length > 0) {
+              apiFiles = list.map((item: any) => ({
+                id: String(item.id || `api-${item.name}`),
+                name: item.name,
+                category: item.category || (item.name?.toLowerCase().endsWith(".pdf") ? "PDF Documents" : item.type?.includes("image") ? "Images" : "Documents"),
+                size: item.size || "100 KB",
+                bytes: 102400,
+                date: item.createdAt ? new Date(item.createdAt).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+                mimeType: item.type || (item.name?.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/png"),
+                url: item.url,
+                storageDriver: item.storageDriver,
+                storageLocation: item.storageLocation,
+              }));
+            }
+          }
+        } catch (e) {}
+
+        const saved = localStorage.getItem("tenant_media_library");
+        let localFiles: MediaFile[] = [];
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            localFiles = parsed.map((item: any) => {
+              const isPdf = item.name?.toLowerCase().endsWith(".pdf") || item.type === "application/pdf";
+              return {
+                id: item.id || `m-${Date.now()}`,
+                name: item.name,
+                category: isPdf ? "PDF Documents" : item.type?.includes("image") ? "Images" : "Documents",
+                size: item.size || "100 KB",
+                bytes: item.bytes || 102400,
+                date: item.date || new Date().toISOString().split("T")[0],
+                mimeType: item.type || (isPdf ? "application/pdf" : "image/png"),
+                url: item.url,
+                storageDriver: item.storageDriver,
+                storageLocation: item.storageLocation,
+              };
+            });
+          } catch (e) {
+            console.error("Failed to parse tenant_media_library", e);
+          }
+        }
+
+        // Merge: avoid duplicates by URL or name
+        const combined = [...apiFiles];
+        const seen = new Set(apiFiles.map((f) => f.url || f.name));
+        for (const lf of localFiles) {
+          if (!seen.has(lf.url || lf.name)) {
+            combined.push(lf);
+            seen.add(lf.url || lf.name);
+          }
+        }
+
+        setFiles(combined);
+        if (combined.length > 0) {
+          setSelectedFileId(combined[0].id);
+        }
+      };
+
+      loadMedia();
     }
-  }, [isOpen]);
+  }, [isOpen, allowedTypes]);
 
   const [uploadingFile, setUploadingFile] = useState<{ name: string; size: string; progress: number } | null>(null);
 
@@ -274,6 +316,21 @@ export default function GlobalMediaLibraryModal({
               } catch (err) {}
             }
 
+            // Also persist to MySQL practice_media_files
+            fetch("/api/admin/media", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: file.name,
+                type: file.type || (isPdf ? "application/pdf" : "image/png"),
+                size: sizeStr,
+                url: newRawItem.url,
+                category: categoryName,
+                storageDriver: activeDriver,
+                storageLocation: locationLabel,
+              }),
+            }).catch(() => {});
+
             // Sync state
             const mappedNew: MediaFile = {
               id: newRawItem.id,
@@ -320,6 +377,10 @@ export default function GlobalMediaLibraryModal({
       setSelectedFileId(updatedFiles.length > 0 ? updatedFiles[0].id : null);
     }
 
+    if (!isNaN(Number(fileId))) {
+      fetch(`/api/admin/media/${fileId}`, { method: "DELETE" }).catch(() => {});
+    }
+
     const existing = localStorage.getItem("tenant_media_library");
     if (existing) {
       try {
@@ -352,7 +413,7 @@ export default function GlobalMediaLibraryModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 !mt-0">
+    <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4 !mt-0">
       {/* Uploading Progress Modal Overlay */}
       {uploadingFile && (
         <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
@@ -479,6 +540,11 @@ export default function GlobalMediaLibraryModal({
                 <div
                   key={file.id}
                   onClick={() => setSelectedFileId(file.id)}
+                  onDoubleClick={() => {
+                    setSelectedFileId(file.id);
+                    onSelectFile(file);
+                    onClose();
+                  }}
                   className={`border rounded-xl p-4 bg-white cursor-pointer transition-all relative space-y-3 ${
                     isSelected
                       ? "border-purple-600 ring-2 ring-purple-500 shadow-md bg-purple-50/30"
@@ -487,9 +553,9 @@ export default function GlobalMediaLibraryModal({
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${isPdf ? "bg-red-50 text-red-600" : "bg-blue-50 text-blue-600"}`}>
-                        {file.mimeType?.includes("image") || file.url?.startsWith("data:image") ? (
-                          <ImageIcon size={20} />
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden ${isPdf ? "bg-red-50 text-red-600" : "bg-purple-50 text-purple-600"}`}>
+                        {file.mimeType?.includes("image") || file.url?.startsWith("data:image") || file.url?.match(/\.(png|jpe?g|svg|webp)($|\?)/i) ? (
+                          <img src={file.url} alt={file.name} className="w-full h-full object-contain" />
                         ) : (
                           <FileText size={20} />
                         )}

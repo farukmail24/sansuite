@@ -46,7 +46,7 @@ export default function PracticeeSignPage() {
   });
 
   // Fetch Clients
-  const { data: clientsList = [] } = useQuery<any[]>({
+  const { data: clientsData = [] } = useQuery<any>({
     queryKey: ["/api/pm/clients"],
     queryFn: async () => {
       const res = await apiRequest("GET", "/api/pm/clients");
@@ -55,8 +55,14 @@ export default function PracticeeSignPage() {
     }
   });
 
+  const clientsList = useMemo(() => {
+    if (Array.isArray(clientsData)) return clientsData;
+    if (Array.isArray(clientsData?.clients)) return clientsData.clients;
+    return [];
+  }, [clientsData]);
+
   // Fetch Practice LoE / eSign Documents
-  const { data: documentsList = [], isLoading } = useQuery<any[]>({
+  const { data: loeDocsData = [], isLoading } = useQuery<any>({
     queryKey: ["/api/pm/proposals"],
     queryFn: async () => {
       const res = await apiRequest("GET", "/api/pm/loe");
@@ -65,8 +71,14 @@ export default function PracticeeSignPage() {
     }
   });
 
+  const documentsList = useMemo(() => {
+    if (Array.isArray(loeDocsData)) return loeDocsData;
+    if (Array.isArray(loeDocsData?.documents)) return loeDocsData.documents;
+    return [];
+  }, [loeDocsData]);
+
   // Fetch Standalone eSign Documents as complementary source
-  const { data: esignDocs = [] } = useQuery<any[]>({
+  const { data: esignDocsData = [] } = useQuery<any>({
     queryKey: ["/api/esign/documents"],
     queryFn: async () => {
       const res = await apiRequest("GET", "/api/esign/documents");
@@ -74,6 +86,12 @@ export default function PracticeeSignPage() {
       return res.json();
     }
   });
+
+  const esignDocs = useMemo(() => {
+    if (Array.isArray(esignDocsData)) return esignDocsData;
+    if (Array.isArray(esignDocsData?.documents)) return esignDocsData.documents;
+    return [];
+  }, [esignDocsData]);
 
   // Create Document Mutation
   const createDocumentMutation = useMutation({
@@ -119,7 +137,7 @@ export default function PracticeeSignPage() {
 
   // Merged Document List
   const allDocs = useMemo(() => {
-    const fromLoE = documentsList.map((d: any) => ({
+    const fromLoE = (Array.isArray(documentsList) ? documentsList : []).map((d: any) => ({
       id: d.id,
       clientName: d.clientName || d.prospectName || "Client",
       title: d.documentTitle || d.proposalTitle || "Letter of Engagement",
@@ -133,7 +151,7 @@ export default function PracticeeSignPage() {
       docType: "Letter of Engagement",
     }));
 
-    const fromeSign = esignDocs.map((d: any) => ({
+    const fromeSign = (Array.isArray(esignDocs) ? esignDocs : []).map((d: any) => ({
       id: d.id + 1000,
       clientName: d.clientName || d.signerName || "Client",
       title: d.title || "Annual Accounts Declaration",

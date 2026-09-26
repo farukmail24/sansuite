@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import {
   UserCheck, Calendar, Calculator, Shield, FileText, ArrowRight,
   Clock, AlertCircle, CheckCircle2, DollarSign, Plus, CreditCard,
-  FileSpreadsheet, HelpCircle, Layers, ExternalLink
+  FileSpreadsheet, HelpCircle, Layers, ExternalLink, Copy
 } from "lucide-react";
 
 export default function SADashboardPage() {
@@ -15,7 +15,7 @@ export default function SADashboardPage() {
 }
 
 function SADashboardContent() {
-  const { clientId, client, currentReturn, selectedTaxYear, setOpenNewReturnModal } = useSAWorkspace();
+  const { clientId, client, currentReturn, selectedTaxYear, setOpenNewReturnModal, handleDuplicateAmended, isDuplicatingAmended } = useSAWorkspace();
 
   // Calculate deadline days
   const now = new Date();
@@ -33,8 +33,50 @@ function SADashboardContent() {
   const netTaxDue = parseFloat(currentReturn.netTaxDue || "0");
   const poaFirst = parseFloat(currentReturn.poaFirstPayment || "0");
 
+  const isSubmitted = currentReturn.status === "Submitted" || currentReturn.status === "Accepted";
+  const isAmended = currentReturn.taxYear?.includes("Amended") || currentReturn.isAmended;
+
   return (
     <div className="space-y-6">
+      {/* Submitted Status & Amended Option Banner (Capium Art 31, 51) */}
+      {isSubmitted && (
+        <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/80 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 rounded-lg shrink-0">
+              <CheckCircle2 size={18} />
+            </div>
+            <div>
+              <h4 className="font-bold text-xs text-emerald-900 dark:text-emerald-200">
+                Tax Return Filed to HMRC for {currentReturn.taxYear}
+              </h4>
+              <p className="text-[11px] text-emerald-700 dark:text-emerald-300">
+                {currentReturn.irMark ? `IR Mark: ${currentReturn.irMark} • ` : ""}
+                Locked for direct editing. To correct figures or submit an amendment, duplicate as an amended return.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleDuplicateAmended}
+            disabled={isDuplicatingAmended}
+            className="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors shrink-0 cursor-pointer disabled:opacity-50"
+          >
+            <Copy size={13} className={isDuplicatingAmended ? "animate-spin" : ""} />
+            <span>Duplicate as Amended Return</span>
+          </button>
+        </div>
+      )}
+
+      {/* Amended Return Indicator Banner */}
+      {isAmended && (
+        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/80 rounded-xl p-3.5 flex items-center gap-2.5 text-xs text-amber-900 dark:text-amber-200 shadow-xs">
+          <AlertCircle size={16} className="text-amber-600 shrink-0" />
+          <span>
+            <strong>Amended Return in Progress:</strong> Figures in this return can be adjusted and re-transmitted to HMRC as an official amendment under TMA 1970 s9ZA.
+          </span>
+        </div>
+      )}
       {/* 1. Profile and Status Bar */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Taxpayer Card */}
