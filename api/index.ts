@@ -25,7 +25,11 @@ async function ensureApp() {
   if (isReady) return;
   if (!initPromise) {
     initPromise = (async () => {
-      await registerRoutes(app);
+      try {
+        await registerRoutes(app);
+      } catch (err: any) {
+        console.error("Warning during serverless registerRoutes initialization:", err);
+      }
       isReady = true;
     })();
   }
@@ -35,9 +39,13 @@ async function ensureApp() {
 export default async function handler(req: any, res: any) {
   try {
     await ensureApp();
+    // Normalize url if Vercel strips /api prefix during rewrite
+    if (req.url && !req.url.startsWith("/api")) {
+      req.url = "/api" + (req.url.startsWith("/") ? req.url : "/" + req.url);
+    }
     return app(req, res);
   } catch (err: any) {
-    console.error("Vercel Serverless Function error:", err);
+    console.error("Vercel Serverless Function fatal error:", err);
     res.status(500).json({ error: "Server initialization error", message: err.message });
   }
 }

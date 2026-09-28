@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { Link } from "wouter";
+import { motion } from "framer-motion";
 import { Calculator, Clock, TrendingUp, CheckCircle2, ArrowRight, Sparkles } from "lucide-react";
 
 interface RoiCalculatorProps {
@@ -63,7 +64,13 @@ export default function RoiCalculator({ config }: RoiCalculatorProps) {
   return (
     <section id="why-sansuite" className="py-20 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white relative transition-colors duration-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
-        <div className="text-center space-y-3 max-w-3xl mx-auto">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-40px" }}
+          transition={{ duration: 0.55 }}
+          className="text-center space-y-3 max-w-3xl mx-auto"
+        >
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-semibold">
             <TrendingUp size={14} />
             <span>{eyebrow}</span>
@@ -74,9 +81,15 @@ export default function RoiCalculator({ config }: RoiCalculatorProps) {
           <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400">
             {subtitle}
           </p>
-        </div>
+        </motion.div>
 
-        <div className="max-w-5xl mx-auto bg-white dark:bg-slate-950 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 sm:p-10 shadow-xl grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-40px" }}
+          transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
+          className="max-w-5xl mx-auto bg-white dark:bg-slate-950 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 sm:p-10 shadow-xl grid grid-cols-1 lg:grid-cols-12 gap-8 items-center"
+        >
           {/* Controls Column */}
           <div className="lg:col-span-7 space-y-8">
             {/* Slider 1: Active Clients */}
@@ -196,7 +209,7 @@ export default function RoiCalculator({ config }: RoiCalculatorProps) {
               <ArrowRight size={14} />
             </Link>
           </div>
-        </div>
+        </motion.div>
       </div>
     </section>
   );

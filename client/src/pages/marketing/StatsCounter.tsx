@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import { TrendingUp, Users, ShieldCheck, Layers } from "lucide-react";
 
 interface StatItem {
@@ -80,18 +81,23 @@ export default function StatsCounter() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-12">
           {stats.map((stat, idx) => (
-            <div
+            <motion.div
               key={idx}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-30px" }}
+              transition={{ duration: 0.5, delay: idx * 0.1 }}
+              whileHover={{ y: -3, transition: { duration: 0.2 } }}
               className="text-center space-y-3 group"
             >
-              <div className="w-12 h-12 mx-auto rounded-2xl bg-purple-100 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/20 text-[#6c5ce7] flex items-center justify-center group-hover:bg-[#6c5ce7] group-hover:text-white transition-colors duration-300">
+              <div className="w-12 h-12 mx-auto rounded-2xl bg-purple-100 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/20 text-[#6c5ce7] flex items-center justify-center group-hover:bg-[#6c5ce7] group-hover:text-white transition-colors duration-300 shadow-sm">
                 {stat.icon}
               </div>
               <AnimatedCounter target={stat.value} suffix={stat.suffix} />
               <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 font-medium">
                 {stat.label}
               </p>
-            </div>
+            </motion.div>
           ))}
         </div>
       </div>

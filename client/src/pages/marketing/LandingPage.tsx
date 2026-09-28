@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
+import { motion } from "framer-motion";
 import Navbar from "./Navbar";
 import HeroSection from "./HeroSection";
 import TrustBar from "./TrustBar";
@@ -147,7 +148,13 @@ export default function LandingPage() {
       {/* 12. Bottom Conversion CTA Banner */}
       {visibility.homeCta !== false && (
         <section className="py-20 bg-gradient-to-br from-purple-700 via-[#6c5ce7] to-indigo-900 text-white relative overflow-hidden">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-6 relative z-10">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-40px" }}
+            transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
+            className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-6 relative z-10"
+          >
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-xs font-semibold">
               <Sparkles size={14} className="text-amber-300" />
               <span>Full UK Statutory Parity</span>
@@ -187,7 +194,7 @@ export default function LandingPage() {
                 <span>Zero Lock-In Contracts</span>
               </span>
             </div>
-          </div>
+          </motion.div>
         </section>
       )}
 

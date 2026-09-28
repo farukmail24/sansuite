@@ -1,3 +1,4 @@
+import { motion } from "framer-motion";
 import { Sparkles, ShieldCheck, Zap, BarChart3, FileText, Users } from "lucide-react";
 
 const callouts = [
@@ -16,7 +17,13 @@ export default function DashboardShowcase() {
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
         {/* Section Header */}
-        <div className="text-center space-y-3 max-w-3xl mx-auto">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-40px" }}
+          transition={{ duration: 0.55 }}
+          className="text-center space-y-3 max-w-3xl mx-auto"
+        >
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-100 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/20 text-purple-700 dark:text-purple-300 text-xs font-semibold">
             <Sparkles size={14} className="text-[#6c5ce7]" />
             <span>See SanSuite in Action</span>
@@ -27,10 +34,16 @@ export default function DashboardShowcase() {
           <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400">
             From client onboarding to final statutory filing — every metric, deadline, and compliance status at your fingertips.
           </p>
-        </div>
+        </motion.div>
 
-        {/* Dashboard Screenshot with floating callouts */}
-        <div className="relative max-w-6xl mx-auto">
+        {/* Dashboard Screenshot with floating callouts and motion */}
+        <motion.div
+          initial={{ opacity: 0, y: 30, scale: 0.98 }}
+          whileInView={{ opacity: 1, y: 0, scale: 1 }}
+          viewport={{ once: true, margin: "-40px" }}
+          transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+          className="relative max-w-6xl mx-auto"
+        >
           {/* Main Image Container */}
           <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700/70 shadow-2xl shadow-purple-900/15 dark:shadow-purple-950/40 bg-white dark:bg-slate-900">
             {/* Window chrome */}
@@ -51,18 +64,22 @@ export default function DashboardShowcase() {
             />
           </div>
 
-          {/* Floating Callout Badges */}
+          {/* Floating Callout Badges with Staggered Entrance */}
           {callouts.map((callout, idx) => (
-            <div
+            <motion.div
               key={idx}
+              initial={{ opacity: 0, scale: 0.8, y: 15 }}
+              whileInView={{ opacity: 1, scale: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: 0.2 + idx * 0.1 }}
               className={`absolute ${callout.position} hidden lg:flex items-center gap-2 px-3 py-2 rounded-xl bg-white/95 dark:bg-slate-800/95 backdrop-blur-md border border-slate-200 dark:border-slate-700 shadow-lg text-xs font-semibold text-slate-700 dark:text-slate-200 animate-float-gentle`}
               style={{ animationDelay: `${idx * 0.4}s` }}
             >
               <span className="text-[#6c5ce7]">{callout.icon}</span>
               <span>{callout.label}</span>
-            </div>
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       </div>
 
       {/* Float animation keyframes */}

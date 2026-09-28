@@ -355,8 +355,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use("/api/public/cms", publicCmsRouter);
   app.use("/api/system-admin/cms", adminCmsRouter);
 
-  // Initialize Compliance Engine Background Daemon
-  startComplianceScheduler();
+  // Initialize Compliance Engine Background Daemon (persistent server only, not serverless Lambdas)
+  if (!process.env.VERCEL) {
+    startComplianceScheduler();
+  }
 
   const httpServer = createServer(app);
 

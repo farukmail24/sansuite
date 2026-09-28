@@ -1,4 +1,5 @@
 import { Link } from "wouter";
+import { motion } from "framer-motion";
 import { Sparkles, ArrowRight, Clock, BookOpen } from "lucide-react";
 
 interface Article {
@@ -60,7 +61,13 @@ export default function BlogTeaser() {
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
         {/* Section Header */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-40px" }}
+          transition={{ duration: 0.55 }}
+          className="flex flex-col md:flex-row md:items-end justify-between gap-6"
+        >
           <div className="space-y-3 max-w-2xl">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-100 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/20 text-purple-700 dark:text-purple-300 text-xs font-semibold">
               <BookOpen size={14} className="text-[#6c5ce7]" />
@@ -81,14 +88,19 @@ export default function BlogTeaser() {
             <span>Browse Compliance Hub</span>
             <ArrowRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
           </Link>
-        </div>
+        </motion.div>
 
         {/* Articles Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {articles.map((art, idx) => (
-            <article
+            <motion.article
               key={idx}
-              className="group bg-white dark:bg-slate-900/80 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden hover:border-purple-400 dark:hover:border-purple-500/40 hover:shadow-xl dark:hover:shadow-purple-950/20 transition-all flex flex-col justify-between"
+              initial={{ opacity: 0, y: 25 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-30px" }}
+              transition={{ duration: 0.5, delay: idx * 0.12 }}
+              whileHover={{ y: -4, transition: { duration: 0.2 } }}
+              className="group bg-white dark:bg-slate-900/80 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden hover:border-purple-400 dark:hover:border-purple-500/40 hover:shadow-xl dark:hover:shadow-purple-950/20 transition-colors flex flex-col justify-between"
             >
               <div>
                 {/* Article Image with Zoom Effect */}
@@ -140,7 +152,7 @@ export default function BlogTeaser() {
                   <ArrowRight size={13} className="group-link-hover:translate-x-0.5 transition-transform" />
                 </Link>
               </div>
-            </article>
+            </motion.article>
           ))}
         </div>
       </div>

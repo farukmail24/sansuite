@@ -1,3 +1,4 @@
+import { motion } from "framer-motion";
 import { Sparkles } from "lucide-react";
 
 interface Partner {
@@ -14,8 +15,7 @@ const partners: Partner[] = [
   { name: "Xero", description: "Bookkeeping Data Import" },
 ];
 
-// Generate monogram-style logos with initials
-function PartnerLogo({ partner }: { partner: Partner }) {
+function PartnerLogo({ partner, index }: { partner: Partner; index: number }) {
   const initials = partner.name
     .split(" ")
     .map((w) => w[0])
@@ -32,11 +32,18 @@ function PartnerLogo({ partner }: { partner: Partner }) {
   };
 
   return (
-    <div className="flex flex-col items-center gap-3 group cursor-default">
+    <motion.div
+      initial={{ opacity: 0, y: 15, scale: 0.9 }}
+      whileInView={{ opacity: 1, y: 0, scale: 1 }}
+      viewport={{ once: true, margin: "-20px" }}
+      transition={{ duration: 0.45, delay: index * 0.08 }}
+      whileHover={{ y: -4, transition: { duration: 0.2 } }}
+      className="flex flex-col items-center gap-3 group cursor-default"
+    >
       <div
         className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br ${
           colors[partner.name] || "from-purple-600 to-purple-700"
-        } flex items-center justify-center text-white font-black text-lg sm:text-xl shadow-lg group-hover:scale-110 group-hover:shadow-xl transition-all duration-300`}
+        } flex items-center justify-center text-white font-black text-lg sm:text-xl shadow-md group-hover:shadow-xl transition-all duration-300`}
       >
         {initials}
       </div>
@@ -48,7 +55,7 @@ function PartnerLogo({ partner }: { partner: Partner }) {
           {partner.description}
         </p>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -57,7 +64,13 @@ export default function IntegrationPartners() {
     <section className="py-16 bg-slate-50 dark:bg-slate-900/50 border-y border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white transition-colors duration-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
         {/* Section Header */}
-        <div className="text-center space-y-3 max-w-2xl mx-auto">
+        <motion.div
+          initial={{ opacity: 0, y: 18 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-30px" }}
+          transition={{ duration: 0.5 }}
+          className="text-center space-y-3 max-w-2xl mx-auto"
+        >
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-100 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/20 text-purple-700 dark:text-purple-300 text-xs font-semibold">
             <Sparkles size={14} className="text-[#6c5ce7]" />
             <span>Seamless Integrations</span>
@@ -68,12 +81,12 @@ export default function IntegrationPartners() {
           <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
             SanSuite integrates directly with HMRC, Companies House, Open Banking, and leading payment platforms — no bridging software required.
           </p>
-        </div>
+        </motion.div>
 
         {/* Partner Grid */}
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-6 sm:gap-8 max-w-4xl mx-auto">
-          {partners.map((partner) => (
-            <PartnerLogo key={partner.name} partner={partner} />
+          {partners.map((partner, idx) => (
+            <PartnerLogo key={partner.name} partner={partner} index={idx} />
           ))}
         </div>
       </div>

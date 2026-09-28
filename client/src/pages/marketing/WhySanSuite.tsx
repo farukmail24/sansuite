@@ -1,3 +1,4 @@
+import { motion } from "framer-motion";
 import { CheckCircle2, Sparkles } from "lucide-react";
 
 interface Feature {
@@ -54,7 +55,13 @@ export default function WhySanSuite() {
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-20">
         {/* Section Header */}
-        <div className="text-center space-y-3 max-w-3xl mx-auto">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-40px" }}
+          transition={{ duration: 0.55 }}
+          className="text-center space-y-3 max-w-3xl mx-auto"
+        >
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-100 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/20 text-purple-700 dark:text-purple-300 text-xs font-semibold">
             <Sparkles size={14} className="text-[#6c5ce7]" />
             <span>Why UK Practices Choose SanSuite</span>
@@ -65,49 +72,71 @@ export default function WhySanSuite() {
           <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400">
             Every feature in SanSuite is purpose-built around UK statutory requirements, practice workflows, and real accountant feedback.
           </p>
-        </div>
+        </motion.div>
 
-        {/* Zigzag Features */}
-        {features.map((feature, idx) => (
-          <div
-            key={idx}
-            className={`flex flex-col ${
-              idx % 2 === 0 ? "lg:flex-row" : "lg:flex-row-reverse"
-            } items-center gap-10 lg:gap-16`}
-          >
-            {/* Text Side */}
-            <div className="flex-1 space-y-5">
-              <h3 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight leading-tight">
-                {feature.title}
-              </h3>
-              <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 leading-relaxed">
-                {feature.description}
-              </p>
-              <div className="space-y-3 pt-2">
-                {feature.bullets.map((bullet, bIdx) => (
-                  <div key={bIdx} className="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
-                    <CheckCircle2 size={18} className="text-emerald-500 flex-shrink-0 mt-0.5" />
-                    <span>{bullet}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+        {/* Zigzag Features with Alternating Scroll Reveal */}
+        {features.map((feature, idx) => {
+          const isEven = idx % 2 === 0;
+          return (
+            <div
+              key={idx}
+              className={`flex flex-col ${
+                isEven ? "lg:flex-row" : "lg:flex-row-reverse"
+              } items-center gap-10 lg:gap-16`}
+            >
+              {/* Text Side */}
+              <motion.div
+                initial={{ opacity: 0, x: isEven ? -25 : 25 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true, margin: "-50px" }}
+                transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+                className="flex-1 space-y-5"
+              >
+                <h3 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight leading-tight">
+                  {feature.title}
+                </h3>
+                <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 leading-relaxed">
+                  {feature.description}
+                </p>
+                <div className="space-y-3 pt-2">
+                  {feature.bullets.map((bullet, bIdx) => (
+                    <motion.div
+                      key={bIdx}
+                      initial={{ opacity: 0, x: -10 }}
+                      whileInView={{ opacity: 1, x: 0 }}
+                      viewport={{ once: true }}
+                      transition={{ duration: 0.4, delay: bIdx * 0.08 }}
+                      className="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300"
+                    >
+                      <CheckCircle2 size={18} className="text-emerald-500 flex-shrink-0 mt-0.5" />
+                      <span>{bullet}</span>
+                    </motion.div>
+                  ))}
+                </div>
+              </motion.div>
 
-            {/* Image Side */}
-            <div className="flex-1 w-full">
-              <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-2xl shadow-purple-900/10 dark:shadow-purple-950/30 group">
-                <img
-                  src={feature.image}
-                  alt={feature.title}
-                  className="w-full h-auto object-cover transition-transform duration-500 group-hover:scale-[1.03]"
-                  loading="lazy"
-                />
-                {/* Hover overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-purple-900/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-              </div>
+              {/* Image Side */}
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                whileInView={{ opacity: 1, scale: 1, y: 0 }}
+                viewport={{ once: true, margin: "-50px" }}
+                transition={{ duration: 0.6, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
+                className="flex-1 w-full"
+              >
+                <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-2xl shadow-purple-900/10 dark:shadow-purple-950/30 group">
+                  <img
+                    src={feature.image}
+                    alt={feature.title}
+                    className="w-full h-auto object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                    loading="lazy"
+                  />
+                  {/* Hover overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-purple-900/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+                </div>
+              </motion.div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );

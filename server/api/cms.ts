@@ -18,6 +18,234 @@ import { authMiddleware } from "../lib/authUtils";
 // ==============================================================================
 export const publicCmsRouter = Router();
 
+const DEFAULT_CMS_MODULES = [
+  {
+    id: 1,
+    slug: "practice-management",
+    title: "Practice Management & CRM",
+    shortDescription: "Centralized client onboarding, AML KYC verification, automated statutory deadlines, and staff timesheets.",
+    detailedDescription: "Complete control over your practice workflows. Automate risk assessments, track HMRC deadlines with zero spreadsheet maintenance, and manage staff capacity effortlessly.",
+    iconName: "Briefcase",
+    category: "Practice",
+    badgeTag: "Core Engine",
+    sortOrder: 1,
+    isFeatured: true,
+    isActive: true,
+    bulletPoints: JSON.stringify([
+      "Automated HMRC & Companies House Deadlines",
+      "Built-in AML & Risk Assessment Scoring",
+      "Client CRM with Multi-Entity Hierarchy",
+      "Staff Timesheets & Capacity Planning",
+      "Integrated Proposal & Letter of Engagement Builder"
+    ]),
+  },
+  {
+    id: 2,
+    slug: "accounts-production",
+    title: "Accounts Production (FRS 102/105)",
+    shortDescription: "Statutory annual accounts for FRS 102 Section 1A, FRS 105 Micro-entities, with automated iXBRL tagging.",
+    detailedDescription: "Prepare compliant statutory financial statements directly from trial balances. Full direct gateway integration with Companies House and HMRC for one-click digital submissions.",
+    iconName: "Building2",
+    category: "Accounting",
+    badgeTag: "HMRC Recognized",
+    sortOrder: 2,
+    isFeatured: true,
+    isActive: true,
+    bulletPoints: JSON.stringify([
+      "FRS 102 (1A) & FRS 105 Compliance",
+      "Automated iXBRL Tagging & Validation Engine",
+      "Direct One-Click Companies House Filing",
+      "Dynamic Chart of Accounts Mapping",
+      "Audit-Ready Detailed Notes & Disclosures"
+    ]),
+  },
+  {
+    id: 3,
+    slug: "bookkeeping",
+    title: "Bookkeeping & MTD VAT",
+    shortDescription: "Intuitive digital sales invoicing, bill capture, bank statement imports, and MTD for VAT digital submissions.",
+    detailedDescription: "Cloud bookkeeping built for seamless accountant-client collaboration. Clients can invoice on the go, while your firm gets pristine reconciled trial balance data with zero re-keying.",
+    iconName: "FileSpreadsheet",
+    category: "Accounting",
+    badgeTag: "MTD Compliant",
+    sortOrder: 3,
+    isFeatured: true,
+    isActive: true,
+    bulletPoints: JSON.stringify([
+      "Automated Bank Feed Reconciliation",
+      "MTD for VAT Direct HMRC Submission",
+      "Digital Sales Invoicing & Purchase Bills",
+      "CIS Deductions & Domestic Reverse Charge Support",
+      "Multi-Currency & Real-Time Cash Flow Reports"
+    ]),
+  },
+  {
+    id: 4,
+    slug: "corporation-tax",
+    title: "Corporation Tax (CT600)",
+    shortDescription: "Comprehensive CT600 tax returns with automatic computation linking directly from Accounts Production.",
+    detailedDescription: "Save hours on company tax filings. Automatically pull figures from financial statements, calculate capital allowances, R&D credits, and submit the joint accounts & CT600 pack to HMRC.",
+    iconName: "Calculator",
+    category: "Tax",
+    badgeTag: "HMRC Gateway",
+    sortOrder: 4,
+    isFeatured: true,
+    isActive: true,
+    bulletPoints: JSON.stringify([
+      "Automated Trial Balance to CT600 Link",
+      "AIA & Capital Allowances Calculator",
+      "Loss Relief Carry-Back & Allocation Tool",
+      "Direct HMRC Tax Gateway Submission",
+      "Detailed PDF Tax Computation Packs"
+    ]),
+  },
+  {
+    id: 5,
+    slug: "self-assessment",
+    title: "Self Assessment (SA100)",
+    shortDescription: "Individual, partnership (SA800), and trust (SA900) tax return filing with instant tax calculation.",
+    detailedDescription: "Streamline the January tax crunch. Capture employment, self-employment, UK/foreign property income, dividends, and capital gains with instant HMRC tax liability breakdown.",
+    iconName: "UserCheck",
+    category: "Tax",
+    badgeTag: "HMRC Direct",
+    sortOrder: 5,
+    isFeatured: true,
+    isActive: true,
+    bulletPoints: JSON.stringify([
+      "SA100, SA800, and SA900 Form Modules",
+      "Employment & Property Schedules Aggregation",
+      "Instant HMRC Tax Calculation Preview",
+      "Client Digital Approval Integration",
+      "HMRC Direct Online Filing with IRmark"
+    ]),
+  },
+  {
+    id: 6,
+    slug: "payroll",
+    title: "Payroll & RTI",
+    shortDescription: "Automated pay runs, workplace pension auto-enrolment, CIS returns, P11D benefits, and RTI submissions.",
+    detailedDescription: "Reliable cloud payroll for practices handling dozens of client payrolls. Run bulk payrolls in minutes, generate GDPR-compliant payslips, and dispatch RTI FPS/EPS automatically.",
+    iconName: "Users",
+    category: "Compliance",
+    badgeTag: "RTI Certified",
+    sortOrder: 6,
+    isFeatured: true,
+    isActive: true,
+    bulletPoints: JSON.stringify([
+      "Full RTI FPS & EPS Direct Submissions",
+      "Auto-Enrolment Nest, Smart & Now Pensions Sync",
+      "CIS Monthly Return & Subcontractor Statements",
+      "P11D Expenses & Benefits Generator",
+      "Employee Self-Service Payslip Access"
+    ]),
+  },
+  {
+    id: 7,
+    slug: "company-secretarial",
+    title: "Company Secretarial (CoSec)",
+    shortDescription: "Real-time Companies House synchronization, company incorporation, and Confirmation Statements (CS01).",
+    detailedDescription: "Never miss a statutory filing. Seamlessly incorporate new UK limited companies, file CS01 Confirmation Statements with PSC verification, and produce board minutes and resolutions.",
+    iconName: "Layers",
+    category: "Compliance",
+    badgeTag: "Companies House",
+    sortOrder: 7,
+    isFeatured: true,
+    isActive: true,
+    bulletPoints: JSON.stringify([
+      "Live Companies House Two-Way API Sync",
+      "Company Incorporation in under 3 Hours",
+      "Confirmation Statement (CS01) Direct Filing",
+      "Statutory Register of Directors, PSC & Members",
+      "Automated Board Minutes & Resolution Templates"
+    ]),
+  },
+  {
+    id: 8,
+    slug: "mtd-it",
+    title: "MTD for Income Tax (MTD IT)",
+    shortDescription: "Quarterly updates, cumulative progression tracking, bridging CSV templates, and End of Year final declarations.",
+    detailedDescription: "Prepare your firm for the largest UK tax transition. Support sole traders and landlords with 3-month quarterly updates, client approval signatures, and annual final tax reconciliations.",
+    iconName: "FileText",
+    category: "Tax",
+    badgeTag: "MTD IT Ready",
+    sortOrder: 8,
+    isFeatured: true,
+    isActive: true,
+    bulletPoints: JSON.stringify([
+      "Quarterly & Cumulative Progression Tracking",
+      "Spreadsheet Bridging CSV Template Engine",
+      "Capisign Client Approval Integration",
+      "HMRC Sandbox & Live MTD IT Gateway",
+      "End of Year Adjustments & Final Declaration"
+    ]),
+  },
+  {
+    id: 9,
+    slug: "capisign",
+    title: "SanSuite Sign (Unlimited eSign)",
+    shortDescription: "Unlimited legally binding electronic signatures with audit trail certificates and real-time tracking.",
+    detailedDescription: "Eliminate printing, postage, and scanning. Send annual accounts, letters of engagement, and tax returns for digital signature on any device with legal compliance under eIDAS.",
+    iconName: "Send",
+    category: "Practice",
+    badgeTag: "Unlimited",
+    sortOrder: 9,
+    isFeatured: true,
+    isActive: true,
+    bulletPoints: JSON.stringify([
+      "Unlimited Signatures Included in Every Plan",
+      "Full Audit Trail with IP & Timestamp Verification",
+      "Legally Binding under UK & EU eIDAS Regulations",
+      "Customizable Signing Field Placement",
+      "Automated Reminder Sequences for Faster Signing"
+    ]),
+  },
+  {
+    id: 10,
+    slug: "client-portal-365",
+    title: "Client Portal 365",
+    shortDescription: "Modern white-label portal for SME clients to upload documents, review tax returns, and sign approvals.",
+    detailedDescription: "Provide a modern 365 digital client experience. Eliminate unsecure email attachments, share statutory reports securely, and request missing documents with one click.",
+    iconName: "Globe",
+    category: "Practice",
+    badgeTag: "White-Label",
+    sortOrder: 10,
+    isFeatured: true,
+    isActive: true,
+    bulletPoints: JSON.stringify([
+      "Fully Responsive 24/7 Client Mobile Access",
+      "Secure Bank-Grade Document Vault",
+      "One-Click Document Approval & Sign-Off",
+      "Real-Time Tax Liability & Due Date Visibility",
+      "Firm-Branded Experience with Custom Subdomain"
+    ]),
+  }
+];
+
+const DEFAULT_SETTINGS = {
+  siteName: "SanSuite",
+  siteTagline: "The Unified Cloud Operating System for UK Accounting Practices",
+  contactEmail: "contact@sansuite.co.uk",
+  contactPhone: "+44 (0) 20 8000 0000",
+  officeAddress: "1 Canada Square, Canary Wharf, London, E14 5AA, United Kingdom",
+  headerAnnouncementText: "HMRC Making Tax Digital for Income Tax (MTD IT) Live & Fully Compliant",
+  headerAnnouncementLink: "/solutions/mtd-it",
+  headerAnnouncementActive: true,
+};
+
+const DEFAULT_HERO = {
+  badgeText: "HMRC & Companies House Recognized Software",
+  title: "The Unified Cloud Operating System for Modern UK Accounting Practices",
+  highlightWord: "Unified Cloud Operating System",
+  subtitle:
+    "Say goodbye to fragmented desktop tools and clunky bridging spreadsheets. SanSuite integrates Practice Management, FRS 102/105 Accounts Production, CT600 Corporation Tax, SA100, MTD VAT, RTI Payroll, CoSec, and Unlimited eSign into one single, high-speed platform.",
+  primaryCtaText: "Book a 1-on-1 Practice Demo",
+  primaryCtaUrl: "/book-demo",
+  secondaryCtaText: "Explore All 10 Modules",
+  secondaryCtaUrl: "#modules",
+  ratingScore: "4.9",
+  ratingCount: 1420,
+};
+
 // Combined Landing Page Data (Single round-trip for optimal Web Vitals)
 publicCmsRouter.get("/landing-data", async (_req, res) => {
   try {
@@ -61,38 +289,25 @@ publicCmsRouter.get("/landing-data", async (_req, res) => {
       .limit(3);
 
     res.json({
-      settings: settings || {
-        siteName: "SanSuite",
-        siteTagline: "The Unified Cloud Operating System for UK Accounting Practices",
-        contactEmail: "contact@sansuite.co.uk",
-        contactPhone: "+44 (0) 20 8000 0000",
-        officeAddress: "1 Canada Square, Canary Wharf, London, E14 5AA, United Kingdom",
-        headerAnnouncementText: "HMRC Making Tax Digital for Income Tax (MTD IT) Live & Fully Compliant",
-        headerAnnouncementLink: "/solutions/mtd-it",
-        headerAnnouncementActive: true,
-      },
-      hero: hero || {
-        badgeText: "HMRC & Companies House Recognized",
-        title: "The Unified Cloud Operating System for Modern UK Accounting Practices",
-        highlightWord: "Unified Cloud Operating System",
-        subtitle:
-          "Say goodbye to fragmented desktop tools. SanSuite unifies Practice Management, FRS 102/105 Accounts Production, CT600 Corporation Tax, SA100, MTD VAT, RTI Payroll, CoSec, and Unlimited eSign into a single high-speed cloud platform.",
-        primaryCtaText: "Book a 1-on-1 Practice Demo",
-        primaryCtaUrl: "/book-demo",
-        secondaryCtaText: "Explore All 10 Modules",
-        secondaryCtaUrl: "#modules",
-        ratingScore: "4.9",
-        ratingCount: 1420,
-      },
-      modules,
-      pricing,
-      testimonials,
-      faqs,
-      featuredBlogs,
+      settings: settings || DEFAULT_SETTINGS,
+      hero: hero || DEFAULT_HERO,
+      modules: modules.length > 0 ? modules : DEFAULT_CMS_MODULES,
+      pricing: pricing || [],
+      testimonials: testimonials || [],
+      faqs: faqs || [],
+      featuredBlogs: featuredBlogs || [],
     });
   } catch (error: any) {
-    console.error("Failed to fetch public landing data:", error);
-    res.status(500).json({ error: error.message });
+    console.error("Failed to fetch public landing data, serving resilient defaults:", error.message);
+    res.json({
+      settings: DEFAULT_SETTINGS,
+      hero: DEFAULT_HERO,
+      modules: DEFAULT_CMS_MODULES,
+      pricing: [],
+      testimonials: [],
+      faqs: [],
+      featuredBlogs: [],
+    });
   }
 });
 

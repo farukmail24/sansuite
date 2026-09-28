@@ -1,3 +1,4 @@
+import { motion } from "framer-motion";
 import { Star, MessageSquareQuote, CheckCircle2, MapPin, Quote } from "lucide-react";
 
 interface Props {
@@ -46,7 +47,13 @@ export default function TestimonialsSection({ testimonials = [] }: Props) {
   return (
     <section className="py-20 bg-slate-50/70 dark:bg-slate-950 text-slate-900 dark:text-white relative overflow-hidden transition-colors duration-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
-        <div className="text-center space-y-3 max-w-3xl mx-auto">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-40px" }}
+          transition={{ duration: 0.55 }}
+          className="text-center space-y-3 max-w-3xl mx-auto"
+        >
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-100 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/20 text-purple-700 dark:text-purple-300 text-xs font-semibold">
             <MessageSquareQuote size={14} className="text-[#6c5ce7]" />
             <span>Verified Practice Testimonials</span>
@@ -57,7 +64,7 @@ export default function TestimonialsSection({ testimonials = [] }: Props) {
           <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400">
             See why forward-thinking accounting firms across England, Scotland, Wales, and Northern Ireland trust SanSuite for their daily practice compliance.
           </p>
-        </div>
+        </motion.div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {items.map((t: any, idx: number) => {
@@ -65,9 +72,14 @@ export default function TestimonialsSection({ testimonials = [] }: Props) {
             const gradient = t.gradient || (idx === 0 ? "from-purple-500 to-indigo-600" : idx === 1 ? "from-indigo-500 to-blue-600" : "from-emerald-500 to-teal-600");
 
             return (
-              <div
+              <motion.div
                 key={idx}
-                className="relative bg-white dark:bg-slate-900/80 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 flex flex-col justify-between hover:border-purple-400 dark:hover:border-purple-500/40 hover:shadow-xl dark:hover:shadow-none transition-all group"
+                initial={{ opacity: 0, y: 25 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-30px" }}
+                transition={{ duration: 0.5, delay: idx * 0.12 }}
+                whileHover={{ y: -4, transition: { duration: 0.2 } }}
+                className="relative bg-white dark:bg-slate-900/80 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 flex flex-col justify-between hover:border-purple-400 dark:hover:border-purple-500/40 hover:shadow-xl dark:hover:shadow-none transition-colors group"
               >
                 {/* Decorative quote mark */}
                 <div className="absolute top-4 right-4 text-purple-200 dark:text-purple-900/40 group-hover:text-purple-300 dark:group-hover:text-purple-800/60 transition-colors pointer-events-none">
@@ -102,11 +114,13 @@ export default function TestimonialsSection({ testimonials = [] }: Props) {
                       </span>
                     </div>
                   </div>
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-500/20 flex-shrink-0">
-                    <CheckCircle2 size={11} /> Verified
+
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30 flex items-center gap-1">
+                    <CheckCircle2 size={11} />
+                    Verified Firm
                   </span>
                 </div>
-              </div>
+              </motion.div>
             );
           })}
         </div>

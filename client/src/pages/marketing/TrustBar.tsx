@@ -1,3 +1,4 @@
+import { motion } from "framer-motion";
 import { ShieldCheck, Building2, CheckCircle2, Lock, Cloud, Award } from "lucide-react";
 
 interface TrustBadge {
@@ -65,22 +66,33 @@ export default function TrustBar({ config }: TrustBarProps) {
   return (
     <div className="bg-slate-50 dark:bg-slate-900 border-y border-slate-200 dark:border-slate-800 py-10 text-slate-800 dark:text-white transition-colors duration-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
-        <div className="text-center space-y-1">
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-30px" }}
+          transition={{ duration: 0.5 }}
+          className="text-center space-y-1"
+        >
           <span className="text-[11px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
             {eyebrow}
           </span>
           <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">
             {heading}
           </h3>
-        </div>
+        </motion.div>
 
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 pt-2">
           {badges.map((c, idx) => {
             const IconComponent = (c.iconName && ICON_MAP[c.iconName]) || [Award, Building2, CheckCircle2, Lock, Cloud][idx % 5] || ShieldCheck;
             return (
-              <div
+              <motion.div
                 key={c.title + idx}
-                className="bg-white dark:bg-slate-950/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-purple-400 dark:hover:border-purple-500/40 shadow-sm transition-all flex flex-col justify-between space-y-2 group"
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-20px" }}
+                transition={{ duration: 0.45, delay: idx * 0.08 }}
+                whileHover={{ y: -3, transition: { duration: 0.2 } }}
+                className="bg-white dark:bg-slate-950/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-purple-400 dark:hover:border-purple-500/40 shadow-sm transition-colors flex flex-col justify-between space-y-2 group"
               >
                 <div className="flex items-center justify-between">
                   <div className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/20 text-[#6c5ce7] flex items-center justify-center group-hover:bg-[#6c5ce7] group-hover:text-white transition-colors">
@@ -97,7 +109,7 @@ export default function TrustBar({ config }: TrustBarProps) {
                   </h4>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">{c.subtitle}</p>
                 </div>
-              </div>
+              </motion.div>
             );
           })}
         </div>
