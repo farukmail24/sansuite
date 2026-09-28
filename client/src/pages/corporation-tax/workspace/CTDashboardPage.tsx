@@ -3,7 +3,7 @@ import CTWorkspaceLayout, { useCTWorkspace } from "./CTWorkspaceLayout";
 import {
   Building2, Calculator, Shield, Calendar, Clock, AlertCircle,
   CheckCircle2, ArrowRight, ExternalLink, FileSpreadsheet, FileText,
-  FileSignature, Printer, Layers, Trash2, Plus
+  FileSignature, Printer, Layers, Trash2, Plus, Download
 } from "lucide-react";
 
 export default function CTDashboardPage() {
@@ -25,6 +25,14 @@ function CTDashboardContent() {
     openNewReturnModal,
     openDeleteModal,
     openManageReturnsModal,
+    openCT600FormModal,
+    openComputationModal,
+    openAttachmentsModal,
+    downloadCT600Pdf,
+    downloadComputationPdf,
+    downloadIxbrlAccounts,
+    downloadTaxSummaryDoc,
+    downloadDocumentPack,
     updateReturnStatus
   } = useCTWorkspace();
 
@@ -59,6 +67,13 @@ function CTDashboardContent() {
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            <button
+              onClick={openCT600FormModal}
+              className="px-3 py-1.5 bg-teal-700 hover:bg-teal-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+            >
+              <FileText size={12} />
+              <span>View CT600 Form</span>
+            </button>
             <Link
               href={`/corporation-tax/${clientId}/computation`}
               className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
@@ -83,7 +98,15 @@ function CTDashboardContent() {
             <Building2 size={16} className="text-indigo-600" />
             <h2 className="font-bold text-sm text-slate-900 dark:text-slate-100">Corporate Tax Statutory Profile</h2>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={openCT600FormModal}
+              className="px-2.5 py-1 bg-teal-700 hover:bg-teal-800 text-white rounded-md text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+              title="Open 12-page HMRC CT600 Return Form"
+            >
+              <FileText size={12} />
+              <span>CT600 Form</span>
+            </button>
             <span
               className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold ${
                 currentReturn.status === "Accepted"
@@ -217,12 +240,13 @@ function CTDashboardContent() {
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 uppercase tracking-wider border-b border-slate-200 dark:border-slate-800">
               <tr>
-                <th className="py-2.5 px-4 font-semibold">Return ID</th>
+                <th className="py-2.5 px-4 font-semibold">Ref No.</th>
                 <th className="py-2.5 px-4 font-semibold">Accounting Period</th>
                 <th className="py-2.5 px-4 font-semibold">Tax Year</th>
                 <th className="py-2.5 px-4 font-semibold">Turnover</th>
                 <th className="py-2.5 px-4 font-semibold">Taxable Profit</th>
                 <th className="py-2.5 px-4 font-semibold">Net Tax Due</th>
+                <th className="py-2.5 px-4 font-semibold">Reports</th>
                 <th className="py-2.5 px-4 font-semibold">Workflow Status</th>
                 <th className="py-2.5 px-4 text-right font-semibold">Actions</th>
               </tr>
@@ -253,6 +277,32 @@ function CTDashboardContent() {
                     <td className="py-3 px-4 font-semibold text-emerald-600 dark:text-emerald-400">
                       £{parseFloat(r.netTaxDue || "0").toLocaleString("en-GB", { minimumFractionDigits: 2 })}
                     </td>
+                    {/* Direct Reports Dropdown (Capium Standard) */}
+                    <td className="py-3 px-4">
+                      <select
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "form-online") {
+                            setSelectedReturnId(r.id);
+                            setTimeout(() => openCT600FormModal(r.id), 50);
+                          } else if (val === "comp-online") {
+                            setSelectedReturnId(r.id);
+                            setTimeout(() => openComputationModal(r.id), 50);
+                          } else if (val === "attachments") {
+                            setSelectedReturnId(r.id);
+                            setTimeout(() => openAttachmentsModal(r.id), 50);
+                          }
+                          e.target.value = "";
+                        }}
+                        className="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded text-[11px] font-semibold cursor-pointer"
+                        defaultValue=""
+                      >
+                        <option value="" disabled>Reports ▾</option>
+                        <option value="form-online">View CT600 Form (Interactive)</option>
+                        <option value="comp-online">View Tax Computation Online</option>
+                        <option value="attachments">View Attachments Checklist</option>
+                      </select>
+                    </td>
                     <td className="py-3 px-4">
                       <select
                         value={r.status || "Draft"}
@@ -276,7 +326,18 @@ function CTDashboardContent() {
                       </select>
                     </td>
                     <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                        <button
+                          onClick={() => {
+                            setSelectedReturnId(r.id);
+                            setTimeout(() => openCT600FormModal(r.id), 50);
+                          }}
+                          className="px-2 py-1 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/60 dark:text-teal-300 text-teal-800 rounded text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                          title="Open official 12-page HMRC CT600 Form"
+                        >
+                          <FileText size={12} />
+                          <span>CT600 Form</span>
+                        </button>
                         {!isActive ? (
                           <button
                             onClick={() => setSelectedReturnId(r.id)}

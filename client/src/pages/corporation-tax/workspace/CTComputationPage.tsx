@@ -5,7 +5,7 @@ import { apiRequest } from "../../../lib/queryClient";
 import { useToast } from "../../../hooks/useToast";
 import {
   Calculator, RefreshCw, Save, CheckCircle2, AlertCircle,
-  HelpCircle, Download, ArrowRight, Layers, ExternalLink, BookOpen
+  HelpCircle, Download, ArrowRight, Layers, ExternalLink, BookOpen, FileText
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -18,7 +18,7 @@ export default function CTComputationPage() {
 }
 
 function CTComputationContent() {
-  const { clientId, client, currentReturn, periods, refetchReturns } = useCTWorkspace();
+  const { clientId, client, currentReturn, periods, refetchReturns, openCT600FormModal } = useCTWorkspace();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -33,6 +33,9 @@ function CTComputationContent() {
   const [nonTradingIncome, setNonTradingIncome] = useState("0.00");
   const [qualifyingDonations, setQualifyingDonations] = useState("0.00");
   const [taxDeductedAtSource, setTaxDeductedAtSource] = useState("0.00");
+  const [associatedCompaniesCount, setAssociatedCompaniesCount] = useState("0");
+  const [isAmendedReturn, setIsAmendedReturn] = useState(false);
+  const [amendmentReason, setAmendmentReason] = useState("");
 
   const [isSyncingAp, setIsSyncingAp] = useState(false);
 
@@ -49,6 +52,9 @@ function CTComputationContent() {
       setNonTradingIncome(currentReturn.nonTradingIncome || "0.00");
       setQualifyingDonations(currentReturn.qualifyingDonations || "0.00");
       setTaxDeductedAtSource(currentReturn.taxDeductedAtSource || "0.00");
+      setAssociatedCompaniesCount(String(currentReturn.associatedCompaniesCount || "0"));
+      setIsAmendedReturn(Boolean(currentReturn.isAmendedReturn));
+      setAmendmentReason(currentReturn.amendmentReason || "");
     }
   }, [currentReturn]);
 
@@ -86,7 +92,7 @@ function CTComputationContent() {
     }
   };
 
-  // Real-time Computation Logic (Statutory Finance Act 2023)
+  // Real-time Computation Logic (Statutory Finance Act 2021 & 2023)
   const netProfit = parseFloat(netAccountingProfit || "0");
   const disallowables = parseFloat(disallowableExpenses || "0");
   const depreciation = parseFloat(depreciationAddBack || "0");
@@ -98,22 +104,27 @@ function CTComputationContent() {
   const taxableTradingProfit = Math.max(0, netProfit + disallowables + depreciation - capitalAllowances - lossRelief);
   const profitsChargeable = Math.max(0, taxableTradingProfit + nonTrading - donations);
 
-  // UK Standard Rates & Marginal Relief Formula
+  // HMRC Box 326: Associated Companies Threshold Apportionment
+  const associatedCount = parseInt(associatedCompaniesCount || "0");
+  const divisor = 1 + Math.max(0, associatedCount);
+  const lowerLimit = 50000 / divisor;
+  const upperLimit = 250000 / divisor;
+
   let ctRate = 19.0;
   let marginalRelief = 0;
   let taxPayable = 0;
 
-  if (profitsChargeable <= 50000) {
+  if (profitsChargeable <= lowerLimit) {
     ctRate = 19.0;
     taxPayable = profitsChargeable * 0.19;
-  } else if (profitsChargeable >= 250000) {
+  } else if (profitsChargeable >= upperLimit) {
     ctRate = 25.0;
     taxPayable = profitsChargeable * 0.25;
   } else {
     ctRate = 25.0;
     const fullTax = profitsChargeable * 0.25;
-    // Statutory standard fraction 3/200: (250,000 - profits) * (3 / 200)
-    marginalRelief = (250000 - profitsChargeable) * (3 / 200);
+    // Statutory standard fraction 3/200: (Upper Limit - Profits) * (3/200)
+    marginalRelief = Math.max(0, (upperLimit - profitsChargeable) * (3 / 200));
     taxPayable = Math.max(0, fullTax - marginalRelief);
   }
 
@@ -142,6 +153,9 @@ function CTComputationContent() {
         nonTradingIncome,
         qualifyingDonations,
         taxDeductedAtSource,
+        associatedCompaniesCount: associatedCount,
+        isAmendedReturn,
+        amendmentReason,
       });
     },
     onSuccess: async () => {
@@ -214,6 +228,16 @@ function CTComputationContent() {
           >
             <RefreshCw size={12} className={isSyncingAp ? "animate-spin" : ""} />
             <span>Import Figures from Accounts Production</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={openCT600FormModal}
+            className="px-3.5 py-1.5 border border-teal-300 dark:border-teal-700 bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 hover:bg-teal-100 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+            title="Preview official statutory HMRC CT600 Form with current figures"
+          >
+            <FileText size={13} />
+            <span>View CT600 Form</span>
           </button>
 
           <button
@@ -399,6 +423,59 @@ function CTComputationContent() {
               </div>
             </div>
           </div>
+
+          {/* Section E: Associated Companies & HMRC Return Details (Box 326 & Box 35) */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs space-y-4">
+            <h3 className="font-bold text-xs text-slate-900 dark:text-slate-100 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800 pb-2 flex items-center justify-between">
+              <span>5. Associated Companies & Return Status (HMRC Box 326 & 35)</span>
+              <span className="text-[10px] text-teal-700 dark:text-teal-400 font-semibold">Finance Act 2021 Apportionment</span>
+            </h3>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-slate-600 dark:text-slate-400 font-medium mb-1 text-[11px]">
+                  Number of Associated Companies (Box 326)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="50"
+                  value={associatedCompaniesCount}
+                  onChange={(e) => setAssociatedCompaniesCount(e.target.value)}
+                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Thresholds divided by (1 + N): Lower limit £{(50000 / divisor).toLocaleString("en-GB", { maximumFractionDigits: 0 })}, Upper limit £{(250000 / divisor).toLocaleString("en-GB", { maximumFractionDigits: 0 })}.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-slate-600 dark:text-slate-400 font-medium mb-1 text-[11px]">
+                  Return Submission Type (Box 35)
+                </label>
+                <label className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isAmendedReturn}
+                    onChange={(e) => setIsAmendedReturn(e.target.checked)}
+                    className="rounded text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    This is an Amended Return (CT600 Replacement)
+                  </span>
+                </label>
+                {isAmendedReturn && (
+                  <input
+                    type="text"
+                    placeholder="Reason for amendment (e.g. Revised Capital Allowances, Disallowed Expenses)"
+                    value={amendmentReason}
+                    onChange={(e) => setAmendmentReason(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800"
+                  />
+                )}
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Right Column: Live Statutory Tax Calculation Sheet (5 Cols) */}
@@ -459,6 +536,21 @@ function CTComputationContent() {
               <div className="py-2.5 flex justify-between font-bold bg-slate-50 dark:bg-slate-800/60 px-2 rounded-lg">
                 <span className="text-slate-900 dark:text-slate-100">Profits Chargeable to CT:</span>
                 <span className="font-mono text-slate-900 dark:text-slate-100">£{profitsChargeable.toFixed(2)}</span>
+              </div>
+
+              <div className="py-2 flex justify-between text-slate-500">
+                <span>Associated Companies (N):</span>
+                <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">{associatedCount}</span>
+              </div>
+
+              <div className="py-2 flex justify-between text-slate-500 text-[11px]">
+                <span>Small Profit Limit (£50k / {divisor}):</span>
+                <span className="font-mono">£{lowerLimit.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</span>
+              </div>
+
+              <div className="py-2 flex justify-between text-slate-500 text-[11px]">
+                <span>Main Rate Limit (£250k / {divisor}):</span>
+                <span className="font-mono">£{upperLimit.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</span>
               </div>
 
               <div className="py-2 flex justify-between">

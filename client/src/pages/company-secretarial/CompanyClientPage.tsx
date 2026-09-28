@@ -310,7 +310,7 @@ export default function CompanyClientPage() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/company-secretarial/record", clientId] });
       queryClient.invalidateQueries({ queryKey: ["/api/company-secretarial/deadlines"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/practice/clients"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/company-secretarial/companies"] });
       toast({ title: "Archive Status Updated", description: data.message, type: "success" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, type: "error" })
@@ -324,7 +324,7 @@ export default function CompanyClientPage() {
     },
     onSuccess: () => {
       toast({ title: "Company Deleted", description: "Company and all associated secretarial records removed.", type: "success" });
-      queryClient.invalidateQueries({ queryKey: ["/api/practice/clients"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/company-secretarial/companies"] });
       queryClient.invalidateQueries({ queryKey: ["/api/company-secretarial/deadlines"] });
       navigate("/company-secretarial");
     },

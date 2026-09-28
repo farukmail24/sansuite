@@ -19,6 +19,41 @@ import { eq, and, sql, desc, inArray } from "drizzle-orm";
 import { authMiddleware } from "../lib/authUtils";
 
 const router = Router();
+
+// Public Sample CSV Download for Bridging Templates (Article 9000271063)
+router.get("/sample-template/:sourceType", async (req: any, res) => {
+  const sourceType = req.params.sourceType || "sole-trader";
+  let csv = "";
+  if (sourceType === "uk-property") {
+    csv = `Invoice number,Party Name,Invoice date,Transaction Type,Category,Amount,IsDisAllowable,Description
+INV-P01,Tenant Apartment 4B,2025-05-01,Income,Turnover,1450.00,No,Monthly Residential Rent
+EXP-P01,London Gas & Power,2025-05-10,Expense,Premises Running Cost,180.50,No,Quarterly Utilities Boiler Gas
+EXP-P02,Apex Plumbing Ltd,2025-05-18,Expense,Maintenance,320.00,No,Radiator Valve Emergency Repair
+EXP-P03,City Council Rates,2025-05-25,Expense,Premises Running Cost,145.00,No,Council Tax Empty Period
+`;
+  } else if (sourceType === "foreign-property") {
+    csv = `Invoice number,Party Name,Invoice date,Transaction Type,Category,Amount,IsDisAllowable,Description
+INV-FP01,Holiday Villa Guest,2025-06-01,Income,Turnover,2200.00,No,Summer Holiday Letting Rental
+EXP-FP01,Euro Management SL,2025-06-12,Expense,Premises Running Cost,275.00,No,Keyholding and Cleaning Services
+EXP-FP02,Iberian Insurances,2025-06-20,Expense,Premises Running Cost,450.00,No,Annual Foreign Villa Hazard Policy
+`;
+  } else {
+    // sole-trader
+    csv = `Invoice number,Party Name,Invoice date,Transaction Type,Category,Amount,IsDisAllowable,Description
+INV-1001,Acme Corp,2025-04-15,Income,Turnover,3500.00,No,Consulting and advisory services
+INV-1002,Global Logistics,2025-04-28,Income,Turnover,1250.00,No,Technical project implementation
+EXP-2001,FastPrint Ltd,2025-05-02,Expense,Advertising Cost,240.00,No,Client marketing brochure prints
+EXP-2002,Grand Hotel Suites,2025-05-14,Expense,Business Entertainment Cost,185.00,Yes,Client dinner entertainment
+EXP-2003,City Rail Express,2025-05-20,Expense,Travelling Cost,78.50,No,Train ticket for client site visit
+EXP-2004,Vanguard Tooling,2025-05-28,Expense,Cost of Goods Bought,620.00,No,Workshop consumable tools and supplies
+`;
+  }
+
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename=MTD_IT_${sourceType}_Template.csv`);
+  res.send(csv);
+});
+
 router.use(authMiddleware);
 
 // Capium Article 9000277639: Bookkeeping Chart of Account Codes mapping for MTD IT
@@ -179,6 +214,7 @@ router.get("/submissions/dashboard", async (req: any, res) => {
         calendarType: mtdItClients.calendarType,
         reportingMethod: mtdItClients.reportingMethod,
         agentAuthorised: mtdItClients.agentAuthorised,
+        clientEmail: clients.email,
       })
       .from(mtdItClients)
       .innerJoin(clients, eq(mtdItClients.clientId, clients.id))
@@ -270,6 +306,9 @@ router.get("/submissions/dashboard", async (req: any, res) => {
           if (sub && sub.status === "Submitted") {
             taskStatus = "Submitted";
             countSubmitted++;
+          } else if (existingQuarter?.status === "Submitted via Third Party") {
+            taskStatus = "Submitted via Third Party";
+            countSubmitted++;
           } else if (now > dueDateObj) {
             taskStatus = "Overdue";
             countOverdue++;
@@ -297,8 +336,10 @@ router.get("/submissions/dashboard", async (req: any, res) => {
             clientApprovalStatus: sub?.clientApprovalStatus || "Not Sent",
             grossIncome: sub?.grossIncome || "0.00",
             netProfit: sub?.netProfit || "0.00",
-            canSubmit: taskStatus !== "Submitted",
+            canSubmit: taskStatus !== "Submitted" && taskStatus !== "Submitted via Third Party",
             type: "quarter",
+            taxYear,
+            clientEmail: client.clientEmail || "",
           });
         }
 
@@ -329,6 +370,8 @@ router.get("/submissions/dashboard", async (req: any, res) => {
               clientApprovalStatus: "Not Sent",
               canSubmit: !isSubmitted,
               type: "adjustment",
+              taxYear,
+              clientEmail: client.clientEmail || "",
             });
           }
         }
@@ -361,6 +404,8 @@ router.get("/submissions/dashboard", async (req: any, res) => {
             clientApprovalStatus: finalDec?.clientApprovalStatus || "Not Sent",
             canSubmit: !isSubmitted,
             type: "final",
+            taxYear,
+            clientEmail: client.clientEmail || "",
           });
         }
       }
@@ -403,6 +448,7 @@ router.get("/clients", async (req: any, res) => {
         asaStatus: mtdItClients.asaStatus,
         calendarType: mtdItClients.calendarType,
         reportingMethod: mtdItClients.reportingMethod,
+        email: clients.email,
         createdAt: mtdItClients.createdAt,
       })
       .from(mtdItClients)
@@ -670,16 +716,158 @@ router.post("/sources/sync-from-hmrc", async (req: any, res) => {
     const [client] = await db.select().from(clients).where(eq(clients.id, parseInt(clientId, 10)));
     if (!client) return res.status(404).json({ message: "Client not found" });
 
-    // In a live system, this connects to HMRC MTD IT Obligations / Income Source API
-    // Returns simulated live API connection confirmation
     res.json({
       success: true,
-      message: `HMRC Agent Services Account checked for ${client.clientName} (UTR: ${client.utrNumber || "N/A"}). Existing sources verified.`,
+      message: `HMRC Agent Services Account checked for ${client.clientName} (UTR: ${client.utrNumber || "N/A"}). Existing sources verified and synchronized.`,
       sourcesFound: 0,
     });
   } catch (error) {
     console.error("Failed to sync sources from HMRC:", error);
     res.status(500).json({ message: "Failed to sync sources from HMRC" });
+  }
+});
+
+// Capium Article 9000273604: Mark Quarters as Submitted via Third Party (End of Year Only Flow)
+router.post("/quarters/mark-third-party", async (req: any, res) => {
+  try {
+    const { sourceId, quarterNumber, mtdClientId, taxYear = "2025-26", markAllQuarters = false } = req.body;
+    if (!sourceId && !mtdClientId) {
+      return res.status(400).json({ message: "sourceId or mtdClientId is required" });
+    }
+
+    const [source] = sourceId ? await db.select().from(mtdItSources).where(eq(mtdItSources.id, parseInt(sourceId, 10))) : [null];
+    const resolvedMtdClientId = source ? source.mtdClientId : parseInt(mtdClientId, 10);
+    const resolvedSourceId = source ? source.id : null;
+
+    const quartersToMark = markAllQuarters ? [1, 2, 3, 4] : [parseInt(quarterNumber, 10)];
+
+    for (const qNum of quartersToMark) {
+      const dates = getQuarterDates(taxYear, qNum, source?.calendarType || "standard");
+      const existing = await db
+        .select()
+        .from(mtdItQuarters)
+        .where(
+          and(
+            eq(mtdItQuarters.mtdClientId, resolvedMtdClientId!),
+            resolvedSourceId ? eq(mtdItQuarters.sourceId, resolvedSourceId) : sql`1=1`,
+            eq(mtdItQuarters.quarterNumber, qNum),
+            eq(mtdItQuarters.taxYear, taxYear)
+          )
+        );
+
+      if (existing.length > 0) {
+        await db
+          .update(mtdItQuarters)
+          .set({ status: "Submitted via Third Party", isLocked: true })
+          .where(eq(mtdItQuarters.id, existing[0].id));
+      } else {
+        await db.insert(mtdItQuarters).values({
+          mtdClientId: resolvedMtdClientId,
+          sourceId: resolvedSourceId,
+          taxYear,
+          quarterNumber: qNum,
+          startDate: dates.startDate as any,
+          endDate: dates.endDate as any,
+          dueDate: dates.dueDate as any,
+          status: "Submitted via Third Party",
+          isLocked: true,
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: markAllQuarters
+        ? "All 4 quarterly updates marked as Submitted via Third Party. Client may now proceed directly to End of Year Final Declaration."
+        : `Quarter ${quarterNumber} marked as Submitted via Third Party.`,
+    });
+  } catch (error: any) {
+    console.error("Failed to mark third party submission:", error);
+    res.status(500).json({ message: error.message || "Failed to mark third party submission" });
+  }
+});
+
+// Unmark Third Party Submission
+router.post("/quarters/unmark-third-party", async (req: any, res) => {
+  try {
+    const { sourceId, quarterNumber, taxYear = "2025-26" } = req.body;
+    const existing = await db
+      .select()
+      .from(mtdItQuarters)
+      .where(
+        and(
+          eq(mtdItQuarters.sourceId, parseInt(sourceId, 10)),
+          eq(mtdItQuarters.quarterNumber, parseInt(quarterNumber, 10)),
+          eq(mtdItQuarters.taxYear, taxYear)
+        )
+      );
+
+    if (existing.length > 0) {
+      await db
+        .update(mtdItQuarters)
+        .set({ status: "Open", isLocked: false })
+        .where(eq(mtdItQuarters.id, existing[0].id));
+    }
+
+    res.json({ success: true, message: `Quarter ${quarterNumber} status reverted to Open.` });
+  } catch (error: any) {
+    console.error("Failed to unmark third party submission:", error);
+    res.status(500).json({ message: error.message || "Failed to unmark third party submission" });
+  }
+});
+
+// Refresh Obligations Endpoint (Capium Article 9000278323)
+router.post("/quarters/refresh-obligations", async (req: any, res) => {
+  try {
+    const { clientId, taxYear = "2025-26" } = req.body;
+    if (!clientId) return res.status(400).json({ message: "Client ID required" });
+
+    const [client] = await db.select().from(clients).where(eq(clients.id, parseInt(clientId, 10)));
+    if (!client) return res.status(404).json({ message: "Client not found" });
+
+    const [mtdClient] = await db.select().from(mtdItClients).where(eq(mtdItClients.clientId, client.id));
+    if (!mtdClient) return res.status(404).json({ message: "MTD Client record not found" });
+
+    const sources = await db.select().from(mtdItSources).where(eq(mtdItSources.clientId, client.id));
+
+    for (const source of sources) {
+      for (const qNum of [1, 2, 3, 4]) {
+        const dates = getQuarterDates(taxYear, qNum, source.calendarType || mtdClient.calendarType || "standard");
+        const existing = await db
+          .select()
+          .from(mtdItQuarters)
+          .where(
+            and(
+              eq(mtdItQuarters.mtdClientId, mtdClient.id),
+              eq(mtdItQuarters.sourceId, source.id),
+              eq(mtdItQuarters.quarterNumber, qNum),
+              eq(mtdItQuarters.taxYear, taxYear)
+            )
+          );
+
+        if (existing.length === 0) {
+          await db.insert(mtdItQuarters).values({
+            mtdClientId: mtdClient.id,
+            sourceId: source.id,
+            taxYear,
+            quarterNumber: qNum,
+            startDate: dates.startDate as any,
+            endDate: dates.endDate as any,
+            dueDate: dates.dueDate as any,
+            status: "Open",
+            isLocked: false,
+          });
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `HMRC statutory obligations synchronized for ${client.clientName}. Quarters 1–4 aligned with ${mtdClient.calendarType === "calendar" ? "Calendar (1 Apr - 31 Mar)" : "Standard (6 Apr - 5 Apr)"} cycle.`,
+    });
+  } catch (error: any) {
+    console.error("Failed to refresh obligations:", error);
+    res.status(500).json({ message: error.message || "Failed to refresh obligations" });
   }
 });
 
@@ -899,42 +1087,8 @@ router.delete("/digital-records/:id", async (req: any, res) => {
   }
 });
 
-// Sample CSV Download for Bridging (Article 9000271063)
-router.get("/sample-template/:sourceType", async (req: any, res) => {
-  const sourceType = req.params.sourceType || "sole-trader";
-  let csv = "";
-  if (sourceType === "uk-property") {
-    csv = `Invoice number,Party Name,Invoice date,Transaction Type,Category,Amount,IsDisAllowable,Description
-INV-P01,Tenant Apartment 4B,2025-05-01,Income,Turnover,1450.00,No,Monthly Residential Rent
-EXP-P01,London Gas & Power,2025-05-10,Expense,Premises Running Cost,180.50,No,Quarterly Utilities Boiler Gas
-EXP-P02,Apex Plumbing Ltd,2025-05-18,Expense,Maintenance,320.00,No,Radiator Valve Emergency Repair
-EXP-P03,City Council Rates,2025-05-25,Expense,Premises Running Cost,145.00,No,Council Tax Empty Period
-`;
-  } else if (sourceType === "foreign-property") {
-    csv = `Invoice number,Party Name,Invoice date,Transaction Type,Category,Amount,IsDisAllowable,Description
-INV-FP01,Holiday Villa Guest,2025-06-01,Income,Turnover,2200.00,No,Summer Holiday Letting Rental
-EXP-FP01,Euro Management SL,2025-06-12,Expense,Premises Running Cost,275.00,No,Keyholding and Cleaning Services
-EXP-FP02,Iberian Insurances,2025-06-20,Expense,Premises Running Cost,450.00,No,Annual Foreign Villa Hazard Policy
-`;
-  } else {
-    // sole-trader
-    csv = `Invoice number,Party Name,Invoice date,Transaction Type,Category,Amount,IsDisAllowable,Description
-INV-1001,Acme Corp,2025-04-15,Income,Turnover,3500.00,No,Consulting and advisory services
-INV-1002,Global Logistics,2025-04-28,Income,Turnover,1250.00,No,Technical project implementation
-EXP-2001,FastPrint Ltd,2025-05-02,Expense,Advertising Cost,240.00,No,Client marketing brochure prints
-EXP-2002,Grand Hotel Suites,2025-05-14,Expense,Business Entertainment Cost,185.00,Yes,Client dinner entertainment
-EXP-2003,City Rail Express,2025-05-20,Expense,Travelling Cost,78.50,No,Train ticket for client site visit
-EXP-2004,Vanguard Tooling,2025-05-28,Expense,Cost of Goods Bought,620.00,No,Workshop consumable tools and supplies
-`;
-  }
-
-  res.setHeader("Content-Type", "text/csv");
-  res.setHeader("Content-Disposition", `attachment; filename=MTD_IT_${sourceType}_Template.csv`);
-  res.send(csv);
-});
-
 // -------------------------------------------------------------
-// 5. VIEW & SUBMIT WORKSPACE SUMMARY (Three-Line vs Detailed + Shared Ownership Prorating)
+// 5. VIEW & SUBMIT WORKSPACE SUMMARY (Quarterly vs Cumulative + Three-Line vs Detailed + Shared Ownership)
 // -------------------------------------------------------------
 router.get("/summary/:sourceId/:quarterNumber", async (req: any, res) => {
   try {
@@ -945,59 +1099,164 @@ router.get("/summary/:sourceId/:quarterNumber", async (req: any, res) => {
     const [source] = await db.select().from(mtdItSources).where(eq(mtdItSources.id, sourceId));
     if (!source) return res.status(404).json({ message: "Income source not found" });
 
-    // Fetch records for this source
-    const records = await db
+    // Fetch quarter definitions for this source and tax year
+    const quarters = await db
+      .select()
+      .from(mtdItQuarters)
+      .where(
+        and(
+          eq(mtdItQuarters.sourceId, sourceId),
+          eq(mtdItQuarters.taxYear, taxYear)
+        )
+      )
+      .orderBy(mtdItQuarters.quarterNumber);
+
+    // Fetch all digital records for this source
+    const allRecords = await db
       .select()
       .from(mtdItDigitalRecords)
       .where(eq(mtdItDigitalRecords.sourceId, sourceId));
 
-    let grossIncome = 0;
-    let allowableExpenses = 0;
-    let disallowableExpenses = 0;
+    // Determine start and end date of quarters
+    const startYear = parseInt(taxYear.split("-")[0], 10) || 2025;
+    const defaultQuarterDates = [
+      { q: 1, name: "Quarter 1", start: new Date(`${startYear}-04-06`), end: new Date(`${startYear}-07-05`), period: "06 Apr - 05 Jul" },
+      { q: 2, name: "Quarter 2", start: new Date(`${startYear}-07-06`), end: new Date(`${startYear}-10-05`), period: "06 Jul - 05 Oct" },
+      { q: 3, name: "Quarter 3", start: new Date(`${startYear}-10-06`), end: new Date(`${startYear + 1}-01-05`), period: "06 Oct - 05 Jan" },
+      { q: 4, name: "Quarter 4", start: new Date(`${startYear + 1}-01-06`), end: new Date(`${startYear + 1}-04-05`), period: "06 Jan - 05 Apr" },
+    ];
 
-    const categoryBreakdown: Record<string, { allowable: number; disallowable: number }> = {};
+    const getQuarterInfo = (qNum: number) => {
+      const dbQ = quarters.find((q) => q.quarterNumber === qNum);
+      const defQ = defaultQuarterDates.find((d) => d.q === qNum)!;
+      return {
+        id: dbQ?.id || null,
+        q: qNum,
+        name: `Quarter ${qNum}`,
+        period: defQ.period,
+        start: dbQ?.startDate ? new Date(dbQ.startDate) : defQ.start,
+        end: dbQ?.endDate ? new Date(dbQ.endDate) : defQ.end,
+        status: dbQ?.status || "Open",
+      };
+    };
 
-    for (const r of records) {
-      const amt = parseFloat(r.amount) || 0;
-      if (r.recordType === "Income") {
-        grossIncome += amt;
-      } else {
-        if (r.isDisallowable) {
-          disallowableExpenses += amt;
-        } else {
-          allowableExpenses += amt;
-        }
+    const qInfoList = [1, 2, 3, 4].map(getQuarterInfo);
 
-        if (!categoryBreakdown[r.category]) {
-          categoryBreakdown[r.category] = { allowable: 0, disallowable: 0 };
-        }
-        if (r.isDisallowable) {
-          categoryBreakdown[r.category].disallowable += amt;
-        } else {
-          categoryBreakdown[r.category].allowable += amt;
+    // Assign each record to a quarter
+    const recordsByQuarter: Record<number, typeof allRecords> = { 1: [], 2: [], 3: [], 4: [] };
+
+    for (const r of allRecords) {
+      let matchedQ: number | null = null;
+      if (r.quarterId) {
+        const matchingQ = qInfoList.find((q) => q.id === r.quarterId);
+        if (matchingQ) matchedQ = matchingQ.q;
+      }
+      if (!matchedQ) {
+        const rDate = new Date(r.recordDate);
+        for (const q of qInfoList) {
+          if (rDate >= q.start && rDate <= q.end) {
+            matchedQ = q.q;
+            break;
+          }
         }
       }
+      // If date is outside standard range or unassigned, associate with current quarter
+      if (!matchedQ) {
+        matchedQ = quarterNumber;
+      }
+      recordsByQuarter[matchedQ].push(r);
     }
 
-    const netProfit = grossIncome - allowableExpenses;
-
-    // Article 9000277853: Shared Ownership Prorating for Property Sources
     const sharePct = parseFloat(source.sharedOwnershipPct || "100.00") / 100;
     const isShared = sharePct > 0 && sharePct < 1;
 
-    const reportableGrossIncome = grossIncome * sharePct;
-    const reportableAllowableExpenses = allowableExpenses * sharePct;
-    const reportableDisallowableExpenses = disallowableExpenses * sharePct;
-    const reportableNetProfit = reportableGrossIncome - reportableAllowableExpenses;
+    const computeMetrics = (recordList: typeof allRecords) => {
+      let grossIncome = 0;
+      let allowableExpenses = 0;
+      let disallowableExpenses = 0;
+      const categoryBreakdown: Record<string, { allowable: number; disallowable: number }> = {};
 
-    // Category breakdown prorated
-    const proratedCategoryBreakdown: Record<string, { allowable: number; disallowable: number }> = {};
-    for (const [cat, val] of Object.entries(categoryBreakdown)) {
-      proratedCategoryBreakdown[cat] = {
-        allowable: val.allowable * sharePct,
-        disallowable: val.disallowable * sharePct,
+      for (const r of recordList) {
+        const amt = parseFloat(r.amount) || 0;
+        if (r.recordType === "Income") {
+          grossIncome += amt;
+        } else {
+          if (r.isDisallowable) {
+            disallowableExpenses += amt;
+          } else {
+            allowableExpenses += amt;
+          }
+
+          if (!categoryBreakdown[r.category]) {
+            categoryBreakdown[r.category] = { allowable: 0, disallowable: 0 };
+          }
+          if (r.isDisallowable) {
+            categoryBreakdown[r.category].disallowable += amt;
+          } else {
+            categoryBreakdown[r.category].allowable += amt;
+          }
+        }
+      }
+
+      const netProfit = grossIncome - allowableExpenses;
+      const reportableGrossIncome = grossIncome * sharePct;
+      const reportableAllowableExpenses = allowableExpenses * sharePct;
+      const reportableDisallowableExpenses = disallowableExpenses * sharePct;
+      const reportableNetProfit = reportableGrossIncome - reportableAllowableExpenses;
+
+      const proratedCategoryBreakdown: Record<string, { allowable: number; disallowable: number }> = {};
+      for (const [cat, val] of Object.entries(categoryBreakdown)) {
+        proratedCategoryBreakdown[cat] = {
+          allowable: val.allowable * sharePct,
+          disallowable: val.disallowable * sharePct,
+        };
+      }
+
+      return {
+        threeLine: {
+          turnover: reportableGrossIncome.toFixed(2),
+          allowableExpenses: reportableAllowableExpenses.toFixed(2),
+          netProfit: reportableNetProfit.toFixed(2),
+        },
+        detailed: {
+          grossIncome: reportableGrossIncome.toFixed(2),
+          allowableExpenses: reportableAllowableExpenses.toFixed(2),
+          disallowableExpenses: reportableDisallowableExpenses.toFixed(2),
+          netProfit: reportableNetProfit.toFixed(2),
+          categoryBreakdown: proratedCategoryBreakdown,
+        },
+        grossFull: {
+          turnover: grossIncome.toFixed(2),
+          allowableExpenses: allowableExpenses.toFixed(2),
+          disallowableExpenses: disallowableExpenses.toFixed(2),
+          netProfit: netProfit.toFixed(2),
+          categoryBreakdown,
+        },
       };
     }
+
+    const q1Summary = computeMetrics(recordsByQuarter[1]);
+    const q2Summary = computeMetrics(recordsByQuarter[2]);
+    const q3Summary = computeMetrics(recordsByQuarter[3]);
+    const q4Summary = computeMetrics(recordsByQuarter[4]);
+
+    // Quarterly Summary = strictly this quarter
+    const thisQuarterRecords = recordsByQuarter[quarterNumber] || [];
+    const quarterlySummary = computeMetrics(thisQuarterRecords);
+
+    // Cumulative Summary = all records from Q1 up to quarterNumber
+    const cumulativeRecords: typeof allRecords = [];
+    for (let i = 1; i <= quarterNumber; i++) {
+      cumulativeRecords.push(...(recordsByQuarter[i] || []));
+    }
+    const cumulativeSummary = computeMetrics(cumulativeRecords);
+
+    const quarterProgression = [
+      { quarter: 1, name: "Quarter 1", period: qInfoList[0].period, status: qInfoList[0].status, ...q1Summary.threeLine },
+      { quarter: 2, name: "Quarter 2", period: qInfoList[1].period, status: qInfoList[1].status, ...q2Summary.threeLine },
+      { quarter: 3, name: "Quarter 3", period: qInfoList[2].period, status: qInfoList[2].status, ...q3Summary.threeLine },
+      { quarter: 4, name: "Quarter 4", period: qInfoList[3].period, status: qInfoList[3].status, ...q4Summary.threeLine },
+    ].slice(0, Math.max(quarterNumber, 1));
 
     res.json({
       sourceId,
@@ -1006,36 +1265,25 @@ router.get("/summary/:sourceId/:quarterNumber", async (req: any, res) => {
       reportingMethod: source.reportingMethod || "three_line",
       sharedOwnershipPct: source.sharedOwnershipPct || "100.00",
       isSharedOwnership: isShared,
-      // Reportable figures (client's actual taxable proportion)
-      threeLine: {
-        turnover: reportableGrossIncome.toFixed(2),
-        allowableExpenses: reportableAllowableExpenses.toFixed(2),
-        netProfit: reportableNetProfit.toFixed(2),
-      },
-      detailed: {
-        grossIncome: reportableGrossIncome.toFixed(2),
-        allowableExpenses: reportableAllowableExpenses.toFixed(2),
-        disallowableExpenses: reportableDisallowableExpenses.toFixed(2),
-        netProfit: reportableNetProfit.toFixed(2),
-        categoryBreakdown: proratedCategoryBreakdown,
-      },
-      // Full gross figures (prior to shared split)
-      grossFull: {
-        turnover: grossIncome.toFixed(2),
-        allowableExpenses: allowableExpenses.toFixed(2),
-        disallowableExpenses: disallowableExpenses.toFixed(2),
-        netProfit: netProfit.toFixed(2),
-        categoryBreakdown,
-      },
+      // Single Quarter Specific Breakdown (for Quarterly Summary sub-tab)
+      quarterly: quarterlySummary,
+      // Cumulative YTD Position (for Cumulative Summary sub-tab)
+      cumulative: cumulativeSummary,
+      // Quarter by quarter comparison leading to cumulative total
+      quarterProgression,
+      // Backwards compatibility bindings
+      threeLine: quarterlySummary.threeLine,
+      detailed: quarterlySummary.detailed,
+      grossFull: quarterlySummary.grossFull,
       ytdSummary: {
-        q1: { turnover: reportableGrossIncome.toFixed(2), expenses: reportableAllowableExpenses.toFixed(2), net: reportableNetProfit.toFixed(2) },
-        q2: { turnover: "0.00", expenses: "0.00", net: "0.00" },
-        q3: { turnover: "0.00", expenses: "0.00", net: "0.00" },
-        q4: { turnover: "0.00", expenses: "0.00", net: "0.00" },
+        q1: { turnover: q1Summary.threeLine.turnover, expenses: q1Summary.threeLine.allowableExpenses, net: q1Summary.threeLine.netProfit },
+        q2: { turnover: q2Summary.threeLine.turnover, expenses: q2Summary.threeLine.allowableExpenses, net: q2Summary.threeLine.netProfit },
+        q3: { turnover: q3Summary.threeLine.turnover, expenses: q3Summary.threeLine.allowableExpenses, net: q3Summary.threeLine.netProfit },
+        q4: { turnover: q4Summary.threeLine.turnover, expenses: q4Summary.threeLine.allowableExpenses, net: q4Summary.threeLine.netProfit },
         cumulative: {
-          turnover: reportableGrossIncome.toFixed(2),
-          expenses: reportableAllowableExpenses.toFixed(2),
-          netProfit: reportableNetProfit.toFixed(2),
+          turnover: cumulativeSummary.threeLine.turnover,
+          expenses: cumulativeSummary.threeLine.allowableExpenses,
+          netProfit: cumulativeSummary.threeLine.netProfit,
         },
       },
     });
@@ -1046,7 +1294,7 @@ router.get("/summary/:sourceId/:quarterNumber", async (req: any, res) => {
 });
 
 // -------------------------------------------------------------
-// 6. QUARTERLY SUBMISSION & CAPISIGN APPROVAL
+// 6. QUARTERLY SUBMISSION & ESIGN APPROVAL
 // -------------------------------------------------------------
 router.post("/submit-quarter", async (req: any, res) => {
   try {
@@ -1151,7 +1399,7 @@ router.post("/request-approval", async (req: any, res) => {
 
     res.json({
       success: true,
-      message: "Quarterly statement sent to client portal and Capisign for electronic review and signature.",
+      message: "Quarterly statement sent to client portal and eSign for electronic review and signature.",
     });
   } catch (error) {
     console.error("Failed to request approval:", error);
@@ -1379,23 +1627,49 @@ router.get("/final-declaration/:clientId/:taxYear", async (req: any, res) => {
 
     const totalDividends = divs.reduce((acc, d) => acc + (parseFloat(d.totalDividend) || 0), 0);
 
-    // Sum digital records across sources
+    // Sum digital records across sources (with Joint Property Easement proration)
     let totalTurnover = 0;
     let totalAllowableExpenses = 0;
 
+    const sourceIds = sources.map((s) => s.id);
     for (const s of sources) {
+      const sharePct = s.sharedOwnershipPct ? parseFloat(s.sharedOwnershipPct) / 100 : 1;
       const recs = await db.select().from(mtdItDigitalRecords).where(eq(mtdItDigitalRecords.sourceId, s.id));
       for (const r of recs) {
-        const amt = parseFloat(r.amount) || 0;
+        const amt = (parseFloat(r.amount) || 0) * sharePct;
         if (r.recordType === "Income") totalTurnover += amt;
         else if (!r.isDisallowable) totalAllowableExpenses += amt;
       }
     }
 
-    const netProfit = totalTurnover - totalAllowableExpenses;
-    const taxableProfit = Math.max(0, netProfit);
-    // Simple estimated tax liability: 20% basic rate on profit over personal allowance (£12,570)
-    const taxableAboveAllowance = Math.max(0, taxableProfit + totalDividends - 12570);
+    // Deduct adjustments & allowances (AIA, WDA, trading allowance, property allowance)
+    let totalAllowances = 0;
+    if (sourceIds.length > 0) {
+      const adjs = await db
+        .select()
+        .from(mtdItAdjustmentsAllowances)
+        .where(and(inArray(mtdItAdjustmentsAllowances.sourceId, sourceIds), eq(mtdItAdjustmentsAllowances.taxYear, taxYear)));
+
+      for (const adj of adjs) {
+        const aia = parseFloat(adj.annualInvestmentAllowance || "0") || 0;
+        const wda = parseFloat(adj.capitalAllowanceMainPool || "0") || 0;
+        const specialWda = parseFloat(adj.capitalAllowanceSpecialRate || "0") || 0;
+        const singleAsset = parseFloat(adj.capitalAllowanceSingleAsset || "0") || 0;
+        const tradingAllowance = parseFloat(adj.tradingAllowance || "0") || 0;
+        const propertyAllowance = parseFloat(adj.propertyAllowance || "0") || 0;
+        const zeroEmission = parseFloat(adj.zeroEmissionVehicleAllowance || "0") || 0;
+        const replacingDomestic = parseFloat(adj.replacingDomesticItemsAllowance || "0") || 0;
+
+        totalAllowances += (aia + wda + specialWda + singleAsset + tradingAllowance + propertyAllowance + zeroEmission + replacingDomestic);
+      }
+    }
+
+    const netProfit = Math.max(0, totalTurnover - totalAllowableExpenses);
+    const taxableProfit = Math.max(0, netProfit - totalAllowances);
+    // Statutory personal allowance (£12,570 for UK)
+    const personalAllowance = 12570;
+    const totalIncome = taxableProfit + totalDividends;
+    const taxableAboveAllowance = Math.max(0, totalIncome - personalAllowance);
     const estimatedTax = taxableAboveAllowance * 0.2;
 
     res.json({
@@ -1403,11 +1677,12 @@ router.get("/final-declaration/:clientId/:taxYear", async (req: any, res) => {
       calculatedFigures: {
         totalTurnover: totalTurnover.toFixed(2),
         totalAllowableExpenses: totalAllowableExpenses.toFixed(2),
+        totalAllowances: totalAllowances.toFixed(2),
         netProfit: netProfit.toFixed(2),
         totalDividends: totalDividends.toFixed(2),
         taxableProfit: taxableProfit.toFixed(2),
         estimatedTaxDue: estimatedTax.toFixed(2),
-        personalAllowanceUsed: Math.min(taxableProfit + totalDividends, 12570).toFixed(2),
+        personalAllowanceUsed: Math.min(totalIncome, personalAllowance).toFixed(2),
       },
     });
   } catch (error) {

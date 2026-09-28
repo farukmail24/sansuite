@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
 import AppLayout from "../../components/layout/AppLayout";
 import {
   Smartphone, Users, Coins, Search, Plus, Filter, Download,
   CheckCircle2, AlertCircle, Clock, Briefcase, Building2, Globe,
-  ShieldCheck, RefreshCw, ChevronRight, FileText, Send, Layers
+  ShieldCheck, RefreshCw, ChevronRight, FileText, Send, Layers,
+  ExternalLink, Sparkles, ArrowRight
 } from "lucide-react";
 import { apiRequest } from "../../lib/queryClient";
 import { useToast } from "../../hooks/useToast";
@@ -70,14 +71,50 @@ export default function MtdItHome() {
   const tasks = dashboardData?.tasks || [];
   const counts = dashboardData?.quarterStatusCounts || { all: 0, open: 0, overdue: 0, submitted: 0 };
 
+  // Mark / Unmark Third Party Mutation (Capium Article 9000273604)
+  const markThirdPartyMutation = useMutation({
+    mutationFn: async (payload: { sourceId?: number | null; quarterNumber?: number; mtdClientId?: number; taxYear?: string; markAllQuarters?: boolean }) => {
+      const res = await apiRequest("POST", "/api/mtd-it/quarters/mark-third-party", payload);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/mtd-it/submissions/dashboard"] });
+      toast({ title: "Third Party Status Updated", description: data.message });
+    },
+    onError: (err: any) => {
+      toast({ title: "Update Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const unmarkThirdPartyMutation = useMutation({
+    mutationFn: async (payload: { sourceId?: number | null; quarterNumber?: number; taxYear?: string }) => {
+      const res = await apiRequest("POST", "/api/mtd-it/quarters/unmark-third-party", payload);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/mtd-it/submissions/dashboard"] });
+      toast({ title: "Status Reverted", description: data.message });
+    },
+    onError: (err: any) => {
+      toast({ title: "Revert Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   const filteredTasks = tasks.filter((t) => {
     const matchesSearch =
       t.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.tradingName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.taskName.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === "all" || t.taskStatus.toLowerCase() === statusFilter.toLowerCase();
+    const matchesStatus =
+      statusFilter === "all" ||
+      (statusFilter === "third_party" ? t.taskStatus === "Submitted via Third Party" : t.taskStatus.toLowerCase() === statusFilter.toLowerCase());
     return matchesSearch && matchesStatus;
   });
+
+  const quarterTasks = tasks.filter((t) => t.type === "quarter");
+  const allQuartersDone =
+    quarterTasks.length > 0 &&
+    quarterTasks.every((t) => t.taskStatus === "Submitted" || t.taskStatus === "Submitted via Third Party");
 
   // Handle View & Submit Click
   const handleViewAndSubmit = (task: MtdTask) => {
@@ -227,6 +264,39 @@ export default function MtdItHome() {
                     </div>
                   </div>
 
+                  {/* Capium Article 9000273604: All Quarters Completed / Third Party Filed Banner */}
+                  {allQuartersDone && (
+                    <div className="p-4 bg-gradient-to-r from-purple-50 via-indigo-50 to-emerald-50 border border-indigo-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2.5 bg-[#6c5ce7] text-white rounded-xl shadow-sm">
+                          <Sparkles size={18} />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-bold text-gray-900">
+                            All 4 Quarterly Updates Completed / Filed via Third Party
+                          </h4>
+                          <p className="text-[11px] text-gray-600 mt-0.5">
+                            Quarterly obligations satisfied for {selectedTaxYear}. You may now proceed straight to End of Year Adjustments & Allowances and the Final Declaration.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setActiveSubTab("adjustments")}
+                          className="px-3.5 py-1.5 text-xs font-semibold text-[#6c5ce7] bg-white border border-[#6c5ce7]/30 hover:bg-[#6c5ce7]/10 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
+                        >
+                          Adjustments & Allowances
+                        </button>
+                        <button
+                          onClick={() => setActiveSubTab("final")}
+                          className="px-3.5 py-1.5 text-xs font-semibold text-white bg-[#6c5ce7] hover:bg-[#5b4bc4] rounded-lg shadow-sm transition-colors flex items-center gap-1.5"
+                        >
+                          Final Declaration <ArrowRight size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {/* 7 Sub-tabs Bar (Official Capium Parity) */}
                   <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                     <div className="flex border-b border-gray-200 overflow-x-auto bg-gray-50/70">
@@ -268,6 +338,7 @@ export default function MtdItHome() {
                           <option value="open">Open</option>
                           <option value="overdue">Overdue</option>
                           <option value="submitted">Submitted</option>
+                          <option value="third_party">Submitted via Third Party</option>
                         </select>
                       </div>
                     </div>
@@ -336,16 +407,19 @@ export default function MtdItHome() {
                                   <span
                                     className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                                       task.taskStatus === "Submitted"
-                                        ? "bg-green-100 text-green-700"
+                                        ? "bg-green-100 text-green-700 border border-green-200"
+                                        : task.taskStatus === "Submitted via Third Party"
+                                        ? "bg-purple-100 text-purple-800 border border-purple-200"
                                         : task.taskStatus === "Overdue"
-                                        ? "bg-red-100 text-red-700"
-                                        : "bg-amber-100 text-amber-800"
+                                        ? "bg-red-100 text-red-700 border border-red-200"
+                                        : "bg-amber-100 text-amber-800 border border-amber-200"
                                     }`}
                                   >
                                     {task.taskStatus === "Submitted" && <CheckCircle2 size={10} />}
+                                    {task.taskStatus === "Submitted via Third Party" && <ExternalLink size={10} />}
                                     {task.taskStatus === "Overdue" && <AlertCircle size={10} />}
                                     {task.taskStatus === "Open" && <Clock size={10} />}
-                                    {task.taskStatus}
+                                    {task.taskStatus === "Submitted via Third Party" ? "Third Party Filed" : task.taskStatus}
                                   </span>
                                 </td>
                                 <td className="px-4 py-3 text-gray-500">
@@ -354,12 +428,45 @@ export default function MtdItHome() {
                                     : "—"}
                                 </td>
                                 <td className="px-4 py-3 text-center">
-                                  <button
-                                    onClick={() => handleViewAndSubmit(task)}
-                                    className="px-3 py-1.5 text-xs font-semibold text-white bg-[#6c5ce7] hover:bg-[#5b4bc4] rounded-lg shadow-sm inline-flex items-center gap-1 transition-colors"
-                                  >
-                                    View & Submit <ChevronRight size={12} />
-                                  </button>
+                                  <div className="flex flex-col items-center gap-1">
+                                    <button
+                                      onClick={() => handleViewAndSubmit(task)}
+                                      className="px-3 py-1.5 text-xs font-semibold text-white bg-[#6c5ce7] hover:bg-[#5b4bc4] rounded-lg shadow-sm inline-flex items-center gap-1 transition-colors"
+                                    >
+                                      View & Submit <ChevronRight size={12} />
+                                    </button>
+                                    {task.type === "quarter" && (
+                                      task.taskStatus === "Submitted via Third Party" ? (
+                                        <button
+                                          onClick={() =>
+                                            unmarkThirdPartyMutation.mutate({
+                                              sourceId: task.sourceId,
+                                              quarterNumber: task.quarterNumber,
+                                              taxYear: selectedTaxYear,
+                                            })
+                                          }
+                                          className="text-[10px] text-gray-500 hover:text-rose-600 underline font-medium"
+                                          title="Revert to open quarter"
+                                        >
+                                          Revert Third Party
+                                        </button>
+                                      ) : task.taskStatus !== "Submitted" ? (
+                                        <button
+                                          onClick={() =>
+                                            markThirdPartyMutation.mutate({
+                                              sourceId: task.sourceId,
+                                              quarterNumber: task.quarterNumber,
+                                              taxYear: selectedTaxYear,
+                                            })
+                                          }
+                                          className="text-[10px] text-indigo-600 hover:text-indigo-800 hover:underline font-medium"
+                                          title="Capium Article 9000273604: Mark quarter as filed via third party software"
+                                        >
+                                          Filed Externally?
+                                        </button>
+                                      ) : null
+                                    )}
+                                  </div>
                                 </td>
                                 <td className="px-4 py-3">
                                   <span

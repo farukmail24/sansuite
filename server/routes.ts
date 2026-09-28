@@ -45,6 +45,7 @@ import { authRateLimiter, apiRateLimiter } from "./middleware/rateLimiter";
 import ipBansRouter from "./api/ip-bans";
 import invoiceTemplatesRouter from "./api/invoice-templates";
 import bookkeepingSettingsRouter from "./api/bookkeeping-settings";
+import { publicCmsRouter, adminCmsRouter } from "./api/cms";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Apply Rate Limiting Middleware
@@ -280,7 +281,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       req.path.startsWith("/health") ||
       req.path.startsWith("/media-settings") ||
       req.path.startsWith("/subscription-plans") ||
-      req.path.startsWith("/public/security-settings")
+      req.path.startsWith("/public")
     ) {
       return next();
     }
@@ -349,6 +350,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use("/api/pm/loe", pmLoeRouter);
   app.use("/api/pm/documents", pmDocumentsRouter);
   app.use("/api/pm", practiceRouter);
+
+  // Frontend CMS & Public Marketing API
+  app.use("/api/public/cms", publicCmsRouter);
+  app.use("/api/system-admin/cms", adminCmsRouter);
 
   // Initialize Compliance Engine Background Daemon
   startComplianceScheduler();

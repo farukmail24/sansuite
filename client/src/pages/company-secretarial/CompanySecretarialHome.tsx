@@ -1,13 +1,14 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
 import AppLayout from "../../components/layout/AppLayout";
 import {
   Shield, Building2, FilePlus, Search, Download, ExternalLink,
-  Plus, Calendar, AlertTriangle, CheckCircle2, MoreVertical,
+  Plus, Calendar, AlertTriangle, CheckCircle2,
   Users, FileText, Trash2, RefreshCw, Clock, Settings,
-  Send, Check, X, ChevronDown, Filter, UserCheck, Landmark,
-  AlertCircle
+  Send, Check, X, Filter, Landmark, AlertCircle,
+  Archive, ArchiveRestore, ArrowUpRight, RotateCcw,
+  SlidersHorizontal, CheckSquare
 } from "lucide-react";
 import { apiRequest, queryClient } from "../../lib/queryClient";
 import { useToast } from "../../hooks/useToast";
@@ -30,18 +31,24 @@ export default function CompanySecretarialHome() {
   const confirm = useConfirm();
 
   const [search, setSearch] = useState("");
-  const [activeDropdown, setActiveDropdown] = useState<number | null>(null);
+
+  // Capium Article 9000202625: Sub-tab states for Companies and People
+  const [companySubTab, setCompanySubTab] = useState<"live" | "archived" | "all">("live");
+  const [peopleSubTab, setPeopleSubTab] = useState<"live" | "archived" | "all">("live");
+  const [peopleRoleFilter, setPeopleRoleFilter] = useState<"all" | "Officer" | "Shareholder" | "PSC">("all");
+
+  // Action Station Filters
+  const [deadlineUrgencyFilter, setDeadlineUrgencyFilter] = useState<"all" | "overdue" | "due30" | "upcoming">("all");
+  const [deadlineTaskFilter, setDeadlineTaskFilter] = useState<"all" | "cs01" | "accounts">("all");
 
   // Modals state
   const [showAddCompanyModal, setShowAddCompanyModal] = useState(false);
   const [addMode, setAddMode] = useState<"ch_download" | "type_own">("ch_download");
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [showSubmissionsModal, setShowSubmissionsModal] = useState(false);
 
   // CH Download state
   const [chCompanyNumber, setChCompanyNumber] = useState("");
   const [chFilingCode, setChFilingCode] = useState("");
-  const [overwritePeople, setOverwritePeople] = useState(false);
   const [chPreviewData, setChPreviewData] = useState<any>(null);
   const [isSearchingCh, setIsSearchingCh] = useState(false);
 
@@ -54,18 +61,23 @@ export default function CompanySecretarialHome() {
     country: "United Kingdom",
     sicCode: "62020",
     registeredEmail: "",
+    tradingStatus: "Trading",
   });
 
-  // Queries
-  const { data: clients = [], isLoading: isLoadingClients } = useQuery({
-    queryKey: ["/api/practice/clients"],
+  // 1. Query Companies from dedicated CoSec registry (Rule #5 & Capium 9000200190)
+  const { data: companiesData, isLoading: isLoadingCompanies } = useQuery({
+    queryKey: ["/api/company-secretarial/companies", companySubTab, search],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/practice/clients");
-      if (!res.ok) return [];
+      const res = await apiRequest("GET", `/api/company-secretarial/companies?tab=${companySubTab}&search=${encodeURIComponent(search.trim())}`);
+      if (!res.ok) return { companies: [], counts: { total: 0, live: 0, archived: 0 } };
       return res.json();
     },
   });
 
+  const companiesList: any[] = companiesData?.companies || [];
+  const companyCounts = companiesData?.counts || { total: 0, live: 0, archived: 0 };
+
+  // 2. Query Deadlines for Action Station
   const { data: deadlinesData, isLoading: isLoadingDeadlines } = useQuery({
     queryKey: ["/api/company-secretarial/deadlines"],
     queryFn: async () => {
@@ -75,6 +87,7 @@ export default function CompanySecretarialHome() {
     },
   });
 
+  // 3. Query Filings / Submissions
   const { data: filings = [], isLoading: isLoadingFilings } = useQuery({
     queryKey: ["/api/company-secretarial/filings"],
     queryFn: async () => {
@@ -84,6 +97,7 @@ export default function CompanySecretarialHome() {
     },
   });
 
+  // 4. Query Settings
   const { data: settingsData } = useQuery({
     queryKey: ["/api/company-secretarial/settings"],
     queryFn: async () => {
@@ -93,6 +107,7 @@ export default function CompanySecretarialHome() {
     },
   });
 
+  // 5. Query People Directory
   const { data: people = [], isLoading: isLoadingPeople } = useQuery<any[]>({
     queryKey: ["/api/company-secretarial/people"],
     queryFn: async () => {
@@ -104,7 +119,7 @@ export default function CompanySecretarialHome() {
 
   // Mutations
   const rollDeadline = useMutation({
-    mutationFn: async ({ clientId, taskType }: { clientId: number, taskType: string }) => {
+    mutationFn: async ({ clientId, taskType }: { clientId: number; taskType: string }) => {
       const res = await apiRequest("POST", "/api/company-secretarial/deadlines/roll", { clientId, taskType });
       if (!res.ok) throw new Error("Failed to roll deadline");
       return res.json();
@@ -112,29 +127,53 @@ export default function CompanySecretarialHome() {
     onSuccess: (data) => {
       toast({ title: "Deadline Rolled Forward", description: data.message, type: "success" });
       queryClient.invalidateQueries({ queryKey: ["/api/company-secretarial/deadlines"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/practice/clients"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/company-secretarial/companies"] });
     },
-    onError: (e: any) => toast({ title: "Error", description: e.message, type: "error" })
+    onError: (e: any) => toast({ title: "Error", description: e.message, type: "error" }),
   });
 
-  const deleteClient = useMutation({
+  // Dedicated CoSec Archive Mutation (Capium Article 9000202625)
+  const archiveCompany = useMutation({
+    mutationFn: async ({ id, isArchived }: { id: number; isArchived: boolean }) => {
+      const res = await apiRequest("POST", `/api/company-secretarial/archive/${id}`, { isArchived });
+      if (!res.ok) throw new Error("Failed to update archive status");
+      return res.json();
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/company-secretarial/companies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/company-secretarial/people"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/company-secretarial/deadlines"] });
+      toast({
+        title: vars.isArchived ? "Company Archived" : "Company Restored",
+        description: vars.isArchived
+          ? "The company has been moved to Archived Companies."
+          : "The company has been restored to Live Companies.",
+        type: "success",
+      });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, type: "error" }),
+  });
+
+  // Dedicated CoSec Cascade Delete (Capium Article 9000202625)
+  const deleteCompany = useMutation({
     mutationFn: async (id: number) => {
       const isConfirmed = await confirm({
-        title: "Remove Company",
-        description: "Are you sure you want to remove this company? This action cannot be undone.",
-        confirmText: "Remove",
-        variant: "danger"
+        title: "Delete Company Permanently",
+        description: "Are you sure you want to delete this company and all its secretarial registers (officers, shareholders, PSCs, filings)? This cannot be undone.",
+        confirmText: "Delete Permanently",
+        variant: "danger",
       });
       if (!isConfirmed) throw new Error("Cancelled");
 
-      const res = await apiRequest("DELETE", `/api/practice/clients/${id}`);
+      const res = await apiRequest("DELETE", `/api/company-secretarial/company/${id}`);
       if (!res.ok) throw new Error("Failed to delete company");
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/practice/clients"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/company-secretarial/companies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/company-secretarial/people"] });
       queryClient.invalidateQueries({ queryKey: ["/api/company-secretarial/deadlines"] });
-      toast({ title: "Company Removed", description: "The company has been removed from your list." });
+      toast({ title: "Company Deleted", description: "Company and all associated registers removed cleanly." });
     },
     onError: (e: any) => {
       if (e.message !== "Cancelled") {
@@ -155,9 +194,10 @@ export default function CompanySecretarialHome() {
     onSuccess: (data) => {
       toast({ title: "Sync Successful", description: data.message, type: "success" });
       queryClient.invalidateQueries({ queryKey: ["/api/company-secretarial/deadlines"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/practice/clients"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/company-secretarial/companies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/company-secretarial/people"] });
     },
-    onError: (e: any) => toast({ title: "Sync Failed", description: e.message, type: "error" })
+    onError: (e: any) => toast({ title: "Sync Failed", description: e.message, type: "error" }),
   });
 
   // Handle Companies House Lookup for Download Modal
@@ -183,7 +223,7 @@ export default function CompanySecretarialHome() {
     }
   };
 
-  // Import from Companies House into DB
+  // Import from Companies House directly via CoSec endpoint (Rule #5)
   const importFromCh = useMutation({
     mutationFn: async () => {
       if (!chPreviewData?.profile) throw new Error("No company data previewed.");
@@ -191,85 +231,60 @@ export default function CompanySecretarialHome() {
       const roa = profile.registered_office_address || {};
       const regAddress = [roa.address_line_1, roa.address_line_2, roa.locality, roa.postal_code, roa.country].filter(Boolean).join(", ");
 
-      // 1. Create client
-      const clientRes = await apiRequest("POST", "/api/myadmin/clients", {
-        clientName: profile.company_name,
-        clientType: profile.type || "Limited",
-        registrationNumber: profile.company_number,
-        address: regAddress,
+      const clientRes = await apiRequest("POST", "/api/company-secretarial/companies", {
+        companyName: profile.company_name,
+        companyType: profile.type || "Limited",
+        companyRegNo: profile.company_number,
+        registeredAddress: regAddress,
+        registeredEmail: profile.email || "",
+        country: roa.country || "United Kingdom",
+        sicCode: (profile.sic_codes && profile.sic_codes[0]) || "62020",
+        authCode: chFilingCode || "",
         tradingStatus: profile.company_status === "active" ? "Trading" : "Dormant",
-        isActive: true,
       });
-      if (!clientRes.ok) throw new Error("Failed to create client in practice database");
+      if (!clientRes.ok) {
+        const err = await clientRes.json().catch(() => ({}));
+        throw new Error(err.message || "Failed to create company in secretarial registry");
+      }
       const clientData = await clientRes.json();
       const newClientId = clientData.id || clientData.clientId;
 
-      // 2. Sync full bundle (csRecords, officers, pscs)
+      // Sync full bundle (officers, PSCs, accounts/CS dates)
       await apiRequest("POST", `/api/company-secretarial/sync-ch/${newClientId}`);
-
-      // 3. If auth code provided, save to csRecords
-      if (chFilingCode) {
-        await apiRequest("POST", "/api/company-secretarial/record", {
-          clientId: newClientId,
-          authCode: chFilingCode
-        });
-      }
 
       return newClientId;
     },
     onSuccess: (newClientId) => {
       toast({ title: "Company Downloaded", description: "Company imported from Companies House with all officers and dates.", type: "success" });
-      queryClient.invalidateQueries({ queryKey: ["/api/practice/clients"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/company-secretarial/companies"] });
       queryClient.invalidateQueries({ queryKey: ["/api/company-secretarial/deadlines"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/company-secretarial/people"] });
       setShowAddCompanyModal(false);
       setChCompanyNumber("");
       setChFilingCode("");
       setChPreviewData(null);
       navigate(`/company-secretarial/${newClientId}`);
     },
-    onError: (e: any) => toast({ title: "Download Failed", description: e.message, type: "error" })
+    onError: (e: any) => toast({ title: "Download Failed", description: e.message, type: "error" }),
   });
 
-  // Save manual company
+  // Save manual company directly via CoSec endpoint (Rule #5)
   const saveManualCompany = useMutation({
     mutationFn: async () => {
       if (!manualForm.companyName.trim()) throw new Error("Company Name is required");
       if (!manualForm.registeredAddress.trim()) throw new Error("Registered Office Address is required");
-      if (!manualForm.sicCode.trim()) throw new Error("SIC Code is required");
 
-      const clientRes = await apiRequest("POST", "/api/myadmin/clients", {
-        clientName: manualForm.companyName,
-        clientType: manualForm.companyType,
-        registrationNumber: manualForm.companyRegNo || undefined,
-        address: manualForm.registeredAddress,
-        email: manualForm.registeredEmail || undefined,
-        tradingStatus: "Trading",
-        isActive: true
-      });
-      if (!clientRes.ok) throw new Error("Failed to create client in database");
-      const clientData = await clientRes.json();
-      const newClientId = clientData.id || clientData.clientId;
-
-      // Create CS record
-      const nextYear = new Date();
-      nextYear.setFullYear(nextYear.getFullYear() + 1);
-
-      await apiRequest("POST", "/api/company-secretarial/record", {
-        clientId: newClientId,
-        companyRegNo: manualForm.companyRegNo,
-        companyType: manualForm.companyType,
-        registeredAddress: manualForm.registeredAddress,
-        registeredEmail: manualForm.registeredEmail,
-        sicCode: manualForm.sicCode,
-        nextConfirmationDue: nextYear,
-        nextAccountsDue: nextYear,
-      });
-
-      return newClientId;
+      const res = await apiRequest("POST", "/api/company-secretarial/companies", manualForm);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Failed to create company");
+      }
+      const data = await res.json();
+      return data.id || data.clientId;
     },
     onSuccess: (newClientId) => {
       toast({ title: "Company Created", description: "New corporate client added successfully.", type: "success" });
-      queryClient.invalidateQueries({ queryKey: ["/api/practice/clients"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/company-secretarial/companies"] });
       queryClient.invalidateQueries({ queryKey: ["/api/company-secretarial/deadlines"] });
       setShowAddCompanyModal(false);
       setManualForm({
@@ -279,132 +294,113 @@ export default function CompanySecretarialHome() {
         registeredAddress: "",
         country: "United Kingdom",
         sicCode: "62020",
-        registeredEmail: ""
+        registeredEmail: "",
+        tradingStatus: "Trading",
       });
       navigate(`/company-secretarial/${newClientId}`);
     },
-    onError: (e: any) => toast({ title: "Creation Failed", description: e.message, type: "error" })
+    onError: (e: any) => toast({ title: "Creation Failed", description: e.message, type: "error" }),
   });
 
-  // Filtered clients
-  const limitedClients = clients.filter((c: any) => c.clientType === "Limited" || c.clientType === "Ltd" || c.clientType === "LLP" || !c.clientType);
-  const filteredClients = limitedClients.filter((c: any) =>
-    c.clientName?.toLowerCase().includes(search.toLowerCase()) ||
-    c.registrationNumber?.toLowerCase().includes(search.toLowerCase())
-  );
-
-  const deadlines = deadlinesData?.deadlines || [];
-  const counts = deadlinesData?.counts || {
-    totalCompanies: limitedClients.length,
+  const deadlines: any[] = deadlinesData?.deadlines || [];
+  const deadlineCounts = deadlinesData?.counts || {
+    totalCompanies: companyCounts.total,
     csDueSoon: 0,
     accountsDueSoon: 0,
-    overdueTotal: 0
+    overdueTotal: 0,
   };
 
-  const handleExport = () => {
-    if (filteredClients.length === 0) {
-      toast({ title: "Export Failed", description: "No data available to export.", type: "error" });
+  // Filtered Deadlines with Multi-Dimensional Filters
+  const filteredDeadlines = useMemo(() => {
+    return deadlines.filter((item: any) => {
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        const matchName = item.companyName?.toLowerCase().includes(q);
+        const matchReg = item.companyRegNo?.toLowerCase().includes(q);
+        if (!matchName && !matchReg) return false;
+      }
+      if (deadlineTaskFilter !== "all" && item.taskType !== deadlineTaskFilter) return false;
+      if (deadlineUrgencyFilter === "overdue" && item.daysLeft >= 0) return false;
+      if (deadlineUrgencyFilter === "due30" && (item.daysLeft < 0 || item.daysLeft > 30)) return false;
+      if (deadlineUrgencyFilter === "upcoming" && item.daysLeft <= 30) return false;
+      return true;
+    });
+  }, [deadlines, search, deadlineTaskFilter, deadlineUrgencyFilter]);
+
+  // Filtered People with Capium Live/Archived Sub-tabs & Classification
+  const filteredPeople = useMemo(() => {
+    return people.filter((p: any) => {
+      if (peopleSubTab === "live" && p.isArchived) return false;
+      if (peopleSubTab === "archived" && !p.isArchived) return false;
+      if (peopleRoleFilter !== "all" && p.type !== peopleRoleFilter) return false;
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        const matchName = p.name?.toLowerCase().includes(q);
+        const matchCo = p.companyName?.toLowerCase().includes(q);
+        const matchEmail = p.email?.toLowerCase().includes(q);
+        if (!matchName && !matchCo && !matchEmail) return false;
+      }
+      return true;
+    });
+  }, [people, peopleSubTab, peopleRoleFilter, search]);
+
+  const handleExportCompanies = () => {
+    if (companiesList.length === 0) {
+      toast({ title: "Export Failed", description: "No company data available to export.", type: "error" });
       return;
     }
-    const headers = ["Company Name", "Registration No", "Company Type", "Trading Status", "Address"];
+    const headers = ["Company Name", "Registration No", "Company Type", "Trading Status", "Address", "CS01 Due", "Accounts Due", "Archived"];
     const csvContent = [
       headers.join(","),
-      ...filteredClients.map((c: any) =>
-        `"${c.clientName || ''}","${c.registrationNumber || ''}","${c.clientType || 'Limited'}","${c.tradingStatus || 'Trading'}","${(c.address || '').replace(/"/g, '""')}"`
-      )
+      ...companiesList.map((c: any) =>
+        `"${c.clientName || ""}","${c.registrationNumber || ""}","${c.clientType || "Limited"}","${c.tradingStatus || "Trading"}","${(c.address || "").replace(/"/g, '""')}","${c.nextConfirmationDue || ""}","${c.nextAccountsDue || ""}","${c.isArchived ? "Yes" : "No"}"`
+      ),
     ].join("\n");
 
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", "sansuite_companies_export.csv");
+    link.setAttribute("download", `sansuite_companies_${companySubTab}_export.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
+  const isAnyDeadlineFilterActive = deadlineUrgencyFilter !== "all" || deadlineTaskFilter !== "all" || search.trim() !== "";
+
   return (
     <AppLayout sidebar={sidebar} module="Company Secretarial">
       <div className="bg-slate-50 min-h-screen pb-16">
-        {/* Capium-Aligned Top Navigation Sub-bar */}
-        <div className="bg-slate-900 text-slate-200 px-6 py-2.5 flex flex-wrap items-center justify-between border-b border-slate-800 shadow-sm">
-          <div className="flex items-center gap-6 text-sm font-medium">
-            <button
-              onClick={() => navigate("/company-secretarial")}
-              className={`hover:text-white transition-colors cursor-pointer flex items-center gap-1.5 ${currentTab === "dashboard" ? "text-white font-semibold" : "text-slate-400"}`}
-            >
-              <Shield size={15} /> Home
-            </button>
-            <button
-              onClick={() => setShowSettingsModal(true)}
-              className="text-slate-400 hover:text-white transition-colors cursor-pointer flex items-center gap-1.5"
-            >
-              <Settings size={15} /> My Office
-            </button>
-            <button
-              onClick={() => navigate("/company-secretarial?tab=companies")}
-              className={`hover:text-white transition-colors cursor-pointer flex items-center gap-1.5 ${currentTab === "companies" ? "text-white font-semibold" : "text-slate-400"}`}
-            >
-              <Building2 size={15} /> Company
-            </button>
-            <button
-              onClick={() => navigate("/company-secretarial?tab=people")}
-              className={`hover:text-white transition-colors cursor-pointer flex items-center gap-1.5 ${currentTab === "people" ? "text-white font-semibold" : "text-slate-400"}`}
-            >
-              <Users size={15} /> Person ({people.length})
-            </button>
-            <button
-              onClick={() => navigate("/company-secretarial?tab=formations")}
-              className={`hover:text-white transition-colors cursor-pointer flex items-center gap-1.5 ${currentTab === "formations" ? "text-white font-semibold" : "text-slate-400"}`}
-            >
-              <FilePlus size={15} /> Formations
-            </button>
-            <button
-              onClick={() => navigate("/company-secretarial?tab=submissions")}
-              className={`hover:text-white transition-colors cursor-pointer flex items-center gap-1.5 ${currentTab === "submissions" ? "text-white font-semibold" : "text-slate-400"}`}
-            >
-              <Send size={15} /> E-Filing ({filings.length})
-            </button>
-          </div>
-
-          <div className="flex items-center gap-4 text-xs">
-            <button
-              onClick={() => {
-                setAddMode("ch_download");
-                setShowAddCompanyModal(true);
-              }}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
-            >
-              <Download size={14} /> Download from CH
-            </button>
-            <button
-              onClick={() => navigate("/practice/clients")}
-              className="text-slate-400 hover:text-white transition-colors cursor-pointer"
-            >
-              Return to client list &rarr;
-            </button>
-          </div>
-        </div>
-
         <div className="p-6 w-full mx-auto space-y-6">
           {/* Header Action Bar */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
             <div>
               <h1 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2.5">
-                <Building2 className="text-slate-700" size={26} />
-                {currentTab === "dashboard" && "Action Station & Compliance"}
-                {currentTab === "companies" && "Managed Corporate Clients"}
+                {currentTab === "dashboard" && <Shield className="text-indigo-600" size={26} />}
+                {currentTab === "companies" && <Building2 className="text-indigo-600" size={26} />}
+                {currentTab === "people" && <Users className="text-indigo-600" size={26} />}
+                {currentTab === "formations" && <FilePlus className="text-indigo-600" size={26} />}
+                {currentTab === "submissions" && <Send className="text-indigo-600" size={26} />}
+
+                {currentTab === "dashboard" && "Action Station & Statutory Compliance"}
+                {currentTab === "companies" && "Corporate Clients Directory"}
                 {currentTab === "people" && "People & Officers Directory"}
                 {currentTab === "formations" && "Company Formations (IN01)"}
-                {currentTab === "submissions" && "E-Filing Submissions Log"}
+                {currentTab === "submissions" && "E-Filing Submissions Trail"}
               </h1>
               <p className="text-xs text-slate-500 mt-1">
-                UK Companies House Secretarial Suite with live CS01 filings, statutory registers, and formations.
+                UK Companies House Secretarial Suite with live CS01 filings, statutory registers, and formation gateway.
               </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                onClick={() => setShowSettingsModal(true)}
+                className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Settings size={14} /> My Office
+              </button>
               <button
                 onClick={() => {
                   setAddMode("ch_download");
@@ -435,68 +431,173 @@ export default function CompanySecretarialHome() {
           {/* TAB 1: ACTION STATION (HOME / DEADLINES) */}
           {currentTab === "dashboard" && (
             <div className="space-y-6">
-              {/* Metric Cards - 100% Authentic DB */}
+              {/* Interactive Metric Cards - Clickable to instantly filter below */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs">
+                <div
+                  onClick={() => navigate("/company-secretarial?tab=companies")}
+                  className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs hover:border-indigo-400 hover:shadow-sm transition-all cursor-pointer group"
+                >
                   <div className="flex justify-between items-center text-slate-500 text-xs font-medium mb-2">
-                    <span>Managed Companies</span>
-                    <span className="p-2 bg-blue-50 text-blue-600 rounded-xl"><Building2 size={16} /></span>
+                    <span className="group-hover:text-indigo-600 transition-colors">Managed Companies</span>
+                    <span className="p-2 bg-blue-50 text-blue-600 rounded-xl group-hover:bg-blue-100"><Building2 size={16} /></span>
                   </div>
-                  <div className="text-3xl font-extrabold text-slate-800">{counts.totalCompanies}</div>
+                  <div className="text-3xl font-extrabold text-slate-800">{deadlineCounts.totalCompanies}</div>
                   <div className="text-[11px] text-emerald-600 font-medium mt-1 flex items-center gap-1">
-                    <CheckCircle2 size={12} /> Active Corporate Entities
+                    <CheckCircle2 size={12} /> Active Entities &bull; Click to view list
                   </div>
                 </div>
 
-                <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs">
+                <div
+                  onClick={() => {
+                    setDeadlineTaskFilter("cs01");
+                    setDeadlineUrgencyFilter("due30");
+                  }}
+                  className={`bg-white rounded-xl border p-5 shadow-xs hover:shadow-sm transition-all cursor-pointer ${deadlineTaskFilter === "cs01" && deadlineUrgencyFilter === "due30"
+                    ? "border-amber-500 ring-2 ring-amber-200"
+                    : "border-slate-200 hover:border-amber-300"
+                    }`}
+                >
                   <div className="flex justify-between items-center text-slate-500 text-xs font-medium mb-2">
                     <span>CS01 Due (30 Days)</span>
                     <span className="p-2 bg-amber-50 text-amber-600 rounded-xl"><AlertTriangle size={16} /></span>
                   </div>
-                  <div className="text-3xl font-extrabold text-slate-800">{counts.csDueSoon}</div>
+                  <div className="text-3xl font-extrabold text-slate-800">{deadlineCounts.csDueSoon}</div>
                   <div className="text-[11px] text-amber-600 font-medium mt-1 flex items-center gap-1">
-                    <Clock size={12} /> Confirmation Statements
+                    <Clock size={12} /> Click to filter CS01 due
                   </div>
                 </div>
 
-                <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs">
+                <div
+                  onClick={() => {
+                    setDeadlineTaskFilter("accounts");
+                    setDeadlineUrgencyFilter("due30");
+                  }}
+                  className={`bg-white rounded-xl border p-5 shadow-xs hover:shadow-sm transition-all cursor-pointer ${deadlineTaskFilter === "accounts" && deadlineUrgencyFilter === "due30"
+                    ? "border-purple-500 ring-2 ring-purple-200"
+                    : "border-slate-200 hover:border-purple-300"
+                    }`}
+                >
                   <div className="flex justify-between items-center text-slate-500 text-xs font-medium mb-2">
                     <span>Accounts Due</span>
                     <span className="p-2 bg-purple-50 text-purple-600 rounded-xl"><Calendar size={16} /></span>
                   </div>
-                  <div className="text-3xl font-extrabold text-slate-800">{counts.accountsDueSoon}</div>
+                  <div className="text-3xl font-extrabold text-slate-800">{deadlineCounts.accountsDueSoon}</div>
                   <div className="text-[11px] text-purple-600 font-medium mt-1 flex items-center gap-1">
-                    <CheckCircle2 size={12} /> Annual Accounts
+                    <CheckCircle2 size={12} /> Click to filter Accounts due
                   </div>
                 </div>
 
-                <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs">
+                <div
+                  onClick={() => {
+                    setDeadlineUrgencyFilter("overdue");
+                    setDeadlineTaskFilter("all");
+                  }}
+                  className={`bg-white rounded-xl border p-5 shadow-xs hover:shadow-sm transition-all cursor-pointer ${deadlineUrgencyFilter === "overdue"
+                    ? "border-rose-500 ring-2 ring-rose-200 bg-rose-50/20"
+                    : "border-slate-200 hover:border-rose-300"
+                    }`}
+                >
                   <div className="flex justify-between items-center text-slate-500 text-xs font-medium mb-2">
                     <span>Overdue Deadlines</span>
                     <span className="p-2 bg-rose-50 text-rose-600 rounded-xl"><AlertCircle size={16} /></span>
                   </div>
-                  <div className="text-3xl font-extrabold text-rose-600">{counts.overdueTotal}</div>
+                  <div className="text-3xl font-extrabold text-rose-600">{deadlineCounts.overdueTotal}</div>
                   <div className="text-[11px] text-rose-500 font-medium mt-1 flex items-center gap-1">
-                    Requires immediate action
+                    Requires immediate filing &bull; Click to isolate
                   </div>
                 </div>
               </div>
 
-              {/* Action Station Deadlines Table */}
+              {/* Action Station Deadlines Table with Advanced Filter Bar */}
               <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-                <div className="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
+                <div className="p-5 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-50/50">
                   <div>
                     <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                      <Clock size={18} className="text-indigo-600" /> Compliance Deadlines
+                      <Clock size={18} className="text-indigo-600" /> Statutory Compliance Deadlines
                     </h2>
                     <p className="text-xs text-slate-500 mt-0.5">
                       Statutory Confirmation Statements (CS01) and Annual Accounts filing schedule.
                     </p>
                   </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Live Search */}
+                    <div className="relative w-full sm:w-64">
+                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Search company or CRN..."
+                        className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                      />
+                    </div>
+
+                    {isAnyDeadlineFilterActive && (
+                      <button
+                        onClick={() => {
+                          setDeadlineUrgencyFilter("all");
+                          setDeadlineTaskFilter("all");
+                          setSearch("");
+                        }}
+                        className="px-2.5 py-1.5 text-xs text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-xl flex items-center gap-1 transition-colors cursor-pointer font-medium"
+                      >
+                        <RotateCcw size={12} /> Reset
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Urgency & Task Type Filter Pills */}
+                <div className="px-5 py-3 border-b border-slate-100 bg-white flex flex-wrap items-center justify-between gap-3 text-xs">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-slate-400 font-semibold text-[11px] uppercase mr-1">Urgency:</span>
+                    <button
+                      onClick={() => setDeadlineUrgencyFilter("all")}
+                      className={`px-3 py-1 rounded-lg font-medium transition-colors cursor-pointer ${deadlineUrgencyFilter === "all" ? "bg-slate-900 text-white font-semibold" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                    >
+                      All ({deadlines.length})
+                    </button>
+                    <button
+                      onClick={() => setDeadlineUrgencyFilter("overdue")}
+                      className={`px-3 py-1 rounded-lg font-medium transition-colors cursor-pointer flex items-center gap-1 ${deadlineUrgencyFilter === "overdue" ? "bg-rose-600 text-white font-semibold" : "bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200"}`}
+                    >
+                      <AlertCircle size={12} /> Overdue ({deadlineCounts.overdueTotal})
+                    </button>
+                    <button
+                      onClick={() => setDeadlineUrgencyFilter("due30")}
+                      className={`px-3 py-1 rounded-lg font-medium transition-colors cursor-pointer flex items-center gap-1 ${deadlineUrgencyFilter === "due30" ? "bg-amber-600 text-white font-semibold" : "bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200"}`}
+                    >
+                      <Clock size={12} /> Due in 30 Days ({deadlines.filter((d: any) => d.daysLeft >= 0 && d.daysLeft <= 30).length})
+                    </button>
+                    <button
+                      onClick={() => setDeadlineUrgencyFilter("upcoming")}
+                      className={`px-3 py-1 rounded-lg font-medium transition-colors cursor-pointer ${deadlineUrgencyFilter === "upcoming" ? "bg-emerald-600 text-white font-semibold" : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200"}`}
+                    >
+                      Upcoming (30+ Days)
+                    </button>
+                  </div>
+
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-500 font-medium">
-                      {deadlines.length} obligations detected
-                    </span>
+                    <span className="text-slate-400 font-semibold text-[11px] uppercase mr-1">Task:</span>
+                    <button
+                      onClick={() => setDeadlineTaskFilter("all")}
+                      className={`px-2.5 py-1 rounded-lg font-medium transition-colors cursor-pointer ${deadlineTaskFilter === "all" ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                    >
+                      All
+                    </button>
+                    <button
+                      onClick={() => setDeadlineTaskFilter("cs01")}
+                      className={`px-2.5 py-1 rounded-lg font-medium transition-colors cursor-pointer ${deadlineTaskFilter === "cs01" ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                    >
+                      CS01
+                    </button>
+                    <button
+                      onClick={() => setDeadlineTaskFilter("accounts")}
+                      className={`px-2.5 py-1 rounded-lg font-medium transition-colors cursor-pointer ${deadlineTaskFilter === "accounts" ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                    >
+                      Accounts
+                    </button>
                   </div>
                 </div>
 
@@ -505,10 +606,10 @@ export default function CompanySecretarialHome() {
                     <thead>
                       <tr className="bg-slate-50/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
                         <th className="py-3.5 px-6">Company</th>
-                        <th className="py-3.5 px-6">Task</th>
-                        <th className="py-3.5 px-6">Days Left</th>
-                        <th className="py-3.5 px-6">Deadline</th>
-                        <th className="py-3.5 px-6 text-right">Actions</th>
+                        <th className="py-3.5 px-6">Statutory Obligation</th>
+                        <th className="py-3.5 px-6">Urgency / Countdown</th>
+                        <th className="py-3.5 px-6">Due Date</th>
+                        <th className="py-3.5 px-6 text-right">Quick Actions</th>
                       </tr>
                     </thead>
                     <tbody className="text-sm divide-y divide-slate-100">
@@ -516,48 +617,74 @@ export default function CompanySecretarialHome() {
                         <tr>
                           <td colSpan={5} className="py-12 text-center text-slate-400">
                             <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-indigo-500" />
-                            Calculating compliance deadlines...
+                            Calculating live compliance schedule...
                           </td>
                         </tr>
-                      ) : deadlines.length === 0 ? (
+                      ) : filteredDeadlines.length === 0 ? (
                         <tr>
                           <td colSpan={5} className="py-16 text-center">
                             <div className="max-w-md mx-auto space-y-3">
                               <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
                                 <CheckCircle2 size={24} />
                               </div>
-                              <h3 className="text-base font-bold text-slate-800">No Pending Deadlines</h3>
+                              <h3 className="text-base font-bold text-slate-800">
+                                {isAnyDeadlineFilterActive ? "No Matching Deadlines" : "All Entities Up to Date"}
+                              </h3>
                               <p className="text-xs text-slate-500">
-                                All your corporate clients are up to date with their Confirmation Statements and Annual Accounts filings.
+                                {isAnyDeadlineFilterActive
+                                  ? "No statutory deadlines match your selected filter criteria. Click reset to see all obligations."
+                                  : "All managed corporate clients have their Confirmation Statements and Annual Accounts up to date."}
                               </p>
-                              <div className="pt-2">
-                                <button
-                                  onClick={() => {
-                                    setAddMode("ch_download");
-                                    setShowAddCompanyModal(true);
-                                  }}
-                                  className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
-                                >
-                                  + Download a Company from Companies House
-                                </button>
+                              <div className="pt-2 flex justify-center gap-2">
+                                {isAnyDeadlineFilterActive ? (
+                                  <button
+                                    onClick={() => {
+                                      setDeadlineUrgencyFilter("all");
+                                      setDeadlineTaskFilter("all");
+                                      setSearch("");
+                                    }}
+                                    className="px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                                  >
+                                    Clear Active Filters
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => {
+                                      setAddMode("ch_download");
+                                      setShowAddCompanyModal(true);
+                                    }}
+                                    className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                                  >
+                                    + Download Company from Companies House
+                                  </button>
+                                )}
                               </div>
                             </div>
                           </td>
                         </tr>
                       ) : (
-                        deadlines.map((item: any) => (
+                        filteredDeadlines.map((item: any) => (
                           <tr key={item.id} className="hover:bg-slate-50/60 transition-colors">
                             <td className="py-3.5 px-6">
-                              <div className="font-semibold text-slate-800 hover:text-indigo-600 cursor-pointer" onClick={() => navigate(`/company-secretarial/${item.clientId}`)}>
+                              <div
+                                className="font-semibold text-slate-800 hover:text-indigo-600 cursor-pointer flex items-center gap-1.5"
+                                onClick={() => navigate(`/company-secretarial/${item.clientId}`)}
+                              >
                                 {item.companyName}
+                                <ArrowUpRight size={13} className="text-slate-400" />
                               </div>
                               <div className="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
-                                <span>CRN: {item.companyRegNo || "Pending"}</span>
+                                <span>CRN: <strong className="text-slate-600 font-mono">{item.companyRegNo || "Pending"}</strong></span>
                                 {item.registeredEmail && <span>&bull; {item.registeredEmail}</span>}
                               </div>
                             </td>
                             <td className="py-3.5 px-6">
-                              <span className="font-medium text-slate-700">{item.task}</span>
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold ${item.taskType === "cs01"
+                                ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                                : "bg-purple-50 text-purple-700 border border-purple-200"
+                                }`}>
+                                {item.task}
+                              </span>
                             </td>
                             <td className="py-3.5 px-6">
                               <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold border ${item.daysLeft < 0
@@ -566,12 +693,25 @@ export default function CompanySecretarialHome() {
                                   ? "bg-amber-50 text-amber-700 border-amber-200"
                                   : "bg-emerald-50 text-emerald-700 border-emerald-200"
                                 }`}>
-                                {item.daysLeft < 0
-                                  ? `${Math.abs(item.daysLeft)} days overdue`
-                                  : `${item.daysLeft} days left`}
+                                {item.daysLeft < 0 ? (
+                                  <>
+                                    <AlertCircle size={12} />
+                                    {Math.abs(item.daysLeft)} days overdue
+                                  </>
+                                ) : item.daysLeft <= 30 ? (
+                                  <>
+                                    <Clock size={12} />
+                                    {item.daysLeft} days left
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle2 size={12} />
+                                    {item.daysLeft} days left
+                                  </>
+                                )}
                               </span>
                             </td>
-                            <td className="py-3.5 px-6 font-semibold text-slate-700">
+                            <td className="py-3.5 px-6 font-semibold text-slate-700 text-xs">
                               {new Date(item.deadlineDate).toLocaleDateString("en-GB", { day: '2-digit', month: 'short', year: 'numeric' })}
                             </td>
                             <td className="py-3.5 px-6 text-right">
@@ -580,15 +720,15 @@ export default function CompanySecretarialHome() {
                                   onClick={() => rollDeadline.mutate({ clientId: item.clientId, taskType: item.taskType })}
                                   disabled={rollDeadline.isPending}
                                   className="px-2.5 py-1 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors cursor-pointer"
-                                  title="Rollover deadline by 1 year"
+                                  title="Rollover deadline forward by 1 year"
                                 >
-                                  Roll date +1 yr
+                                  Roll +1 yr
                                 </button>
                                 <button
                                   onClick={() => navigate(`/company-secretarial/${item.clientId}`)}
-                                  className="px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                                  className="px-3 py-1 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                                 >
-                                  Manage &rarr;
+                                  Workspace &rarr;
                                 </button>
                               </div>
                             </td>
@@ -602,27 +742,65 @@ export default function CompanySecretarialHome() {
             </div>
           )}
 
-          {/* TAB 2: COMPANIES LIST */}
+          {/* TAB 2: COMPANIES DIRECTORY (Capium Articles 9000200190 & 9000202625) */}
           {currentTab === "companies" && (
             <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-              <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row justify-between gap-4 bg-slate-50/50">
-                <div className="relative w-full sm:max-w-sm">
+              {/* Capium Sub-tabs: Live Companies, Archived Companies, All Companies */}
+              <div className="px-5 pt-4 pb-0 border-b border-slate-200 bg-slate-50/70 flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCompanySubTab("live")}
+                    className={`pb-3 px-3 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${companySubTab === "live"
+                      ? "border-indigo-600 text-indigo-700"
+                      : "border-transparent text-slate-500 hover:text-slate-800"
+                      }`}
+                  >
+                    <Building2 size={14} /> Live Companies ({companyCounts.live})
+                  </button>
+                  <button
+                    onClick={() => setCompanySubTab("archived")}
+                    className={`pb-3 px-3 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${companySubTab === "archived"
+                      ? "border-indigo-600 text-indigo-700"
+                      : "border-transparent text-slate-500 hover:text-slate-800"
+                      }`}
+                  >
+                    <Archive size={14} /> Archived Companies ({companyCounts.archived})
+                  </button>
+                  <button
+                    onClick={() => setCompanySubTab("all")}
+                    className={`pb-3 px-3 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${companySubTab === "all"
+                      ? "border-indigo-600 text-indigo-700"
+                      : "border-transparent text-slate-500 hover:text-slate-800"
+                      }`}
+                  >
+                    All Companies ({companyCounts.total})
+                  </button>
+                </div>
+
+                <div className="pb-3 flex items-center gap-2">
+                  <button
+                    onClick={handleExportCompanies}
+                    className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  >
+                    <Download size={13} /> Export CSV
+                  </button>
+                </div>
+              </div>
+
+              {/* Search & Action bar */}
+              <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row justify-between gap-4 bg-white">
+                <div className="relative w-full sm:max-w-md">
                   <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="Search company by name or registration number..."
-                    className="w-full pl-10 pr-4 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all bg-white"
+                    placeholder="Search company by name, registration number, or SIC..."
+                    className="w-full pl-10 pr-4 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all bg-slate-50/50"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleExport}
-                    className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                  >
-                    <Download size={14} /> Export CSV
-                  </button>
+                <div className="text-xs text-slate-500 flex items-center gap-3">
+                  <span>Displaying: <strong className="text-slate-800">{companiesList.length}</strong> records</span>
                 </div>
               </div>
 
@@ -630,100 +808,216 @@ export default function CompanySecretarialHome() {
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-slate-50/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
-                      <th className="py-3.5 px-6">Company Name</th>
-                      <th className="py-3.5 px-6">Reg No. (CRN)</th>
-                      <th className="py-3.5 px-6">Type</th>
-                      <th className="py-3.5 px-6">Registered Address</th>
-                      <th className="py-3.5 px-6">Status</th>
+                      <th className="py-3.5 px-6">Company &amp; CRN</th>
+                      <th className="py-3.5 px-6">Type &amp; Status</th>
+                      <th className="py-3.5 px-6">CS01 Due</th>
+                      <th className="py-3.5 px-6">Accounts Due</th>
+                      <th className="py-3.5 px-6">Registers</th>
                       <th className="py-3.5 px-6 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="text-sm divide-y divide-slate-100">
-                    {isLoadingClients ? (
-                      <tr><td colSpan={6} className="py-12 text-center text-slate-400">Loading companies...</td></tr>
-                    ) : filteredClients.length === 0 ? (
+                    {isLoadingCompanies ? (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center text-slate-400">
+                          <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-indigo-500" />
+                          Loading company secretarial registry...
+                        </td>
+                      </tr>
+                    ) : companiesList.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="py-16 text-center">
                           <div className="max-w-md mx-auto space-y-3">
                             <div className="w-12 h-12 bg-slate-100 text-slate-500 rounded-full flex items-center justify-center mx-auto">
-                              <Building2 size={24} />
+                              {companySubTab === "archived" ? <Archive size={24} /> : <Building2 size={24} />}
                             </div>
-                            <h3 className="text-base font-bold text-slate-800">No Corporate Clients Found</h3>
+                            <h3 className="text-base font-bold text-slate-800">
+                              {companySubTab === "archived" ? "No Archived Companies" : "No Corporate Clients Found"}
+                            </h3>
                             <p className="text-xs text-slate-500">
-                              You have not added any limited companies to your practice yet.
+                              {companySubTab === "archived"
+                                ? "When a company ceases trading or is archived, it will be listed here with all historical registers preserved."
+                                : "You have not added any corporate entities to your practice yet. Import from Companies House or add manually."}
                             </p>
-                            <div className="pt-2 flex justify-center gap-2">
-                              <button
-                                onClick={() => {
-                                  setAddMode("ch_download");
-                                  setShowAddCompanyModal(true);
-                                }}
-                                className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors cursor-pointer"
-                              >
-                                Download from Companies House
-                              </button>
-                            </div>
+                            {companySubTab !== "archived" && (
+                              <div className="pt-2 flex justify-center gap-2">
+                                <button
+                                  onClick={() => {
+                                    setAddMode("ch_download");
+                                    setShowAddCompanyModal(true);
+                                  }}
+                                  className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors cursor-pointer"
+                                >
+                                  Download from Companies House
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setAddMode("type_own");
+                                    setShowAddCompanyModal(true);
+                                  }}
+                                  className="px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                                >
+                                  + Add Manually
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </td>
                       </tr>
                     ) : (
-                      filteredClients.map((c: any) => (
+                      companiesList.map((c: any) => (
                         <tr key={c.id} className="hover:bg-slate-50/60 transition-colors">
-                          <td className="py-4 px-6 font-semibold text-slate-800">
-                            <span
-                              onClick={() => navigate(`/company-secretarial/${c.id}`)}
-                              className="hover:text-indigo-600 cursor-pointer"
-                            >
-                              {c.clientName}
-                            </span>
+                          <td className="py-4 px-6">
+                            <div className="flex items-start gap-3">
+                              <div className="w-9 h-9 bg-slate-800 text-white rounded-xl flex items-center justify-center text-sm font-bold shadow-2xs mt-0.5">
+                                {c.clientName.charAt(0)}
+                              </div>
+                              <div>
+                                <span
+                                  onClick={() => navigate(`/company-secretarial/${c.id}`)}
+                                  className="font-bold text-slate-800 hover:text-indigo-600 cursor-pointer block text-sm"
+                                >
+                                  {c.clientName}
+                                </span>
+                                <div className="text-xs text-slate-400 flex items-center gap-2 mt-0.5 font-mono">
+                                  {c.registrationNumber ? (
+                                    <a
+                                      href={`https://find-and-update.company-information.service.gov.uk/company/${encodeURIComponent(c.registrationNumber.trim())}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-indigo-600 hover:underline flex items-center gap-1 font-semibold"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      CRN: {c.registrationNumber} <ExternalLink size={11} />
+                                    </a>
+                                  ) : (
+                                    <span>CRN: Pending</span>
+                                  )}
+                                  {c.sicCode && <span>&bull; SIC {c.sicCode}</span>}
+                                </div>
+                              </div>
+                            </div>
                           </td>
-                          <td className="py-4 px-6 font-mono text-xs text-slate-600 font-medium">
-                            {c.registrationNumber ? (
-                              <a
-                                href={`https://find-and-update.company-information.service.gov.uk/company/${c.registrationNumber}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-indigo-600 hover:underline flex items-center gap-1"
-                              >
-                                {c.registrationNumber} <ExternalLink size={12} />
-                              </a>
+
+                          <td className="py-4 px-6">
+                            <div className="space-y-1">
+                              <span className="text-xs font-semibold text-slate-700 block">
+                                {c.clientType || "Limited"}
+                              </span>
+                              {/* 100% Authentic Status Badge - Eliminating hardcoded Active */}
+                              {c.isArchived ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 bg-slate-100 text-slate-700 rounded-full border border-slate-300">
+                                  <Archive size={11} /> Archived
+                                </span>
+                              ) : c.tradingStatus === "Dormant" ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full border border-amber-200">
+                                  Dormant
+                                </span>
+                              ) : c.tradingStatus === "Ceased" || c.tradingStatus === "Dissolved" ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 bg-rose-50 text-rose-700 rounded-full border border-rose-200">
+                                  {c.tradingStatus}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">
+                                  <CheckCircle2 size={11} /> Trading
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          <td className="py-4 px-6">
+                            {c.nextConfirmationDue ? (
+                              <div>
+                                <span className="text-xs font-semibold text-slate-700 block">
+                                  {new Date(c.nextConfirmationDue).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                                </span>
+                                <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full mt-0.5 ${c.daysLeftCs < 0
+                                  ? "bg-rose-50 text-rose-700 border border-rose-200"
+                                  : c.daysLeftCs <= 30
+                                    ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                    : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                  }`}>
+                                  {c.daysLeftCs < 0 ? `${Math.abs(c.daysLeftCs)}d overdue` : `${c.daysLeftCs}d left`}
+                                </span>
+                              </div>
                             ) : (
-                              <span className="text-slate-400">Pending</span>
+                              <span className="text-xs text-slate-400 italic">Not scheduled</span>
                             )}
                           </td>
-                          <td className="py-4 px-6 text-xs text-slate-600 font-medium">
-                            {c.clientType || "Limited"}
-                          </td>
-                          <td className="py-4 px-6 text-xs text-slate-500 max-w-xs truncate">
-                            {c.address || "Not specified"}
-                          </td>
+
                           <td className="py-4 px-6">
-                            <span className="text-[11px] font-bold px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">
-                              Active
-                            </span>
+                            {c.nextAccountsDue ? (
+                              <div>
+                                <span className="text-xs font-semibold text-slate-700 block">
+                                  {new Date(c.nextAccountsDue).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                                </span>
+                                <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full mt-0.5 ${c.daysLeftAcc < 0
+                                  ? "bg-rose-50 text-rose-700 border border-rose-200"
+                                  : c.daysLeftAcc <= 30
+                                    ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                    : "bg-slate-100 text-slate-600"
+                                  }`}>
+                                  {c.daysLeftAcc < 0 ? `${Math.abs(c.daysLeftAcc)}d overdue` : `${c.daysLeftAcc}d left`}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-400 italic">Not scheduled</span>
+                            )}
                           </td>
+
+                          <td className="py-4 px-6">
+                            <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-600">
+                              <span className="bg-slate-100 px-2 py-0.5 rounded-md" title="Active Officers">
+                                {c.officersCount || 0} Off
+                              </span>
+                              <span className="bg-slate-100 px-2 py-0.5 rounded-md" title="Shareholders">
+                                {c.shareholdersCount || 0} Sh
+                              </span>
+                              <span className="bg-slate-100 px-2 py-0.5 rounded-md" title="Persons with Significant Control">
+                                {c.pscsCount || 0} PSC
+                              </span>
+                            </div>
+                          </td>
+
                           <td className="py-4 px-6 text-right">
-                            <div className="flex items-center justify-end gap-2">
+                            <div className="flex items-center justify-end gap-1.5">
                               {c.registrationNumber && (
                                 <button
                                   onClick={() => syncCompanyData.mutate(c.id)}
                                   disabled={syncCompanyData.isPending}
                                   className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors cursor-pointer"
-                                  title="Sync live Companies House data"
+                                  title="Sync live Companies House registers & dates"
                                 >
                                   <RefreshCw size={14} className={syncCompanyData.isPending ? "animate-spin" : ""} />
                                 </button>
                               )}
+
                               <button
                                 onClick={() => navigate(`/company-secretarial/${c.id}`)}
-                                className="px-3 py-1.5 text-xs font-semibold text-white bg-slate-800 hover:bg-slate-900 rounded-lg transition-colors cursor-pointer shadow-2xs"
+                                className="px-3 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer shadow-2xs"
                               >
                                 Workspace
                               </button>
+
+                              {/* Capium Article 9000202625: Instant Archive / Unarchive */}
                               <button
-                                onClick={() => deleteClient.mutate(c.id)}
+                                onClick={() => archiveCompany.mutate({ id: c.id, isArchived: !c.isArchived })}
+                                disabled={archiveCompany.isPending}
+                                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${c.isArchived
+                                  ? "text-indigo-600 hover:bg-indigo-50"
+                                  : "text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                                  }`}
+                                title={c.isArchived ? "Unarchive / Restore to live companies" : "Archive company"}
+                              >
+                                {c.isArchived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+                              </button>
+
+                              {/* Capium Article 9000202625: Delete Company Permanently */}
+                              <button
+                                onClick={() => deleteCompany.mutate(c.id)}
+                                disabled={deleteCompany.isPending}
                                 className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
-                                title="Remove company"
+                                title="Delete company & cascade secretarial registers"
                               >
                                 <Trash2 size={14} />
                               </button>
@@ -738,24 +1032,81 @@ export default function CompanySecretarialHome() {
             </div>
           )}
 
-          {/* TAB: PEOPLE / PERSON DIRECTORY (Capium Articles 9000203190 & 9000202625) */}
+          {/* TAB 3: PEOPLE / PERSON DIRECTORY (Capium Articles 9000203190 & 9000202625) */}
           {currentTab === "people" && (
             <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-              <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row justify-between gap-4 bg-slate-50/50">
-                <div className="relative w-full sm:max-w-sm">
-                  <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              {/* Capium Sub-tabs: People for Live Companies, People for Archived Companies, All People */}
+              <div className="px-5 pt-4 pb-0 border-b border-slate-200 bg-slate-50/70 flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setPeopleSubTab("live")}
+                    className={`pb-3 px-3 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${peopleSubTab === "live"
+                      ? "border-indigo-600 text-indigo-700"
+                      : "border-transparent text-slate-500 hover:text-slate-800"
+                      }`}
+                  >
+                    <Users size={14} /> People for Live Companies ({people.filter((p: any) => !p.isArchived).length})
+                  </button>
+                  <button
+                    onClick={() => setPeopleSubTab("archived")}
+                    className={`pb-3 px-3 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${peopleSubTab === "archived"
+                      ? "border-indigo-600 text-indigo-700"
+                      : "border-transparent text-slate-500 hover:text-slate-800"
+                      }`}
+                  >
+                    <Archive size={14} /> People for Archived Companies ({people.filter((p: any) => p.isArchived).length})
+                  </button>
+                  <button
+                    onClick={() => setPeopleSubTab("all")}
+                    className={`pb-3 px-3 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${peopleSubTab === "all"
+                      ? "border-indigo-600 text-indigo-700"
+                      : "border-transparent text-slate-500 hover:text-slate-800"
+                      }`}
+                  >
+                    All People ({people.length})
+                  </button>
+                </div>
+              </div>
+
+              {/* Role Classification & Search Bar */}
+              <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row justify-between gap-4 bg-white">
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="text-slate-400 font-semibold text-[11px] uppercase mr-1">Classification:</span>
+                  <button
+                    onClick={() => setPeopleRoleFilter("all")}
+                    className={`px-3 py-1 rounded-lg font-medium transition-colors cursor-pointer ${peopleRoleFilter === "all" ? "bg-slate-900 text-white font-semibold" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                  >
+                    All Roles
+                  </button>
+                  <button
+                    onClick={() => setPeopleRoleFilter("Officer")}
+                    className={`px-3 py-1 rounded-lg font-medium transition-colors cursor-pointer ${peopleRoleFilter === "Officer" ? "bg-blue-600 text-white font-semibold" : "bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200"}`}
+                  >
+                    Officers / Directors
+                  </button>
+                  <button
+                    onClick={() => setPeopleRoleFilter("Shareholder")}
+                    className={`px-3 py-1 rounded-lg font-medium transition-colors cursor-pointer ${peopleRoleFilter === "Shareholder" ? "bg-purple-600 text-white font-semibold" : "bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200"}`}
+                  >
+                    Shareholders / Members
+                  </button>
+                  <button
+                    onClick={() => setPeopleRoleFilter("PSC")}
+                    className={`px-3 py-1 rounded-lg font-medium transition-colors cursor-pointer ${peopleRoleFilter === "PSC" ? "bg-amber-600 text-white font-semibold" : "bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200"}`}
+                  >
+                    PSCs
+                  </button>
+                </div>
+
+                <div className="relative w-full sm:max-w-xs">
+                  <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="Search person by name or company..."
-                    className="w-full pl-10 pr-4 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all bg-white"
+                    placeholder="Search person or company..."
+                    className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all bg-slate-50/50"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-500 font-medium">
-                    Total Individuals &amp; Corporate Entities: <strong className="text-slate-800">{people.length}</strong>
-                  </span>
                 </div>
               </div>
 
@@ -775,10 +1126,7 @@ export default function CompanySecretarialHome() {
                   <tbody className="text-sm divide-y divide-slate-100">
                     {isLoadingPeople ? (
                       <tr><td colSpan={7} className="py-12 text-center text-slate-400">Loading people directory...</td></tr>
-                    ) : people.filter((p: any) =>
-                      p.name?.toLowerCase().includes(search.toLowerCase()) ||
-                      p.companyName?.toLowerCase().includes(search.toLowerCase())
-                    ).length === 0 ? (
+                    ) : filteredPeople.length === 0 ? (
                       <tr>
                         <td colSpan={7} className="py-16 text-center">
                           <div className="max-w-md mx-auto space-y-3">
@@ -787,69 +1135,70 @@ export default function CompanySecretarialHome() {
                             </div>
                             <h3 className="text-base font-bold text-slate-800">No People Records Found</h3>
                             <p className="text-xs text-slate-500">
-                              Officers, shareholders, and PSCs from your managed companies will appear here automatically.
+                              Officers, shareholders, and PSCs from your managed corporate entities will appear here automatically.
                             </p>
                           </div>
                         </td>
                       </tr>
                     ) : (
-                      people
-                        .filter((p: any) =>
-                          p.name?.toLowerCase().includes(search.toLowerCase()) ||
-                          p.companyName?.toLowerCase().includes(search.toLowerCase())
-                        )
-                        .map((p: any) => (
-                          <tr key={p.id} className="hover:bg-slate-50/60 transition-colors">
-                            <td className="py-4 px-6 font-semibold text-slate-800">
-                              <div className="flex items-center gap-2">
-                                <div className="w-7 h-7 bg-slate-100 text-slate-700 rounded-full flex items-center justify-center text-xs font-bold">
-                                  {p.name.charAt(0)}
-                                </div>
-                                <span>{p.name}</span>
+                      filteredPeople.map((p: any) => (
+                        <tr key={p.id} className="hover:bg-slate-50/60 transition-colors">
+                          <td className="py-4 px-6 font-semibold text-slate-800">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 bg-slate-100 text-slate-700 rounded-full flex items-center justify-center text-xs font-bold border border-slate-200">
+                                {p.name ? p.name.charAt(0) : "P"}
                               </div>
-                            </td>
-                            <td className="py-4 px-6">
-                              <span
-                                onClick={() => navigate(`/company-secretarial/${p.clientId}`)}
-                                className="font-semibold text-indigo-600 hover:underline cursor-pointer"
-                              >
-                                {p.companyName}
+                              <span>{p.name}</span>
+                            </div>
+                          </td>
+                          <td className="py-4 px-6">
+                            <span
+                              onClick={() => navigate(`/company-secretarial/${p.clientId}`)}
+                              className="font-semibold text-indigo-600 hover:underline cursor-pointer"
+                            >
+                              {p.companyName}
+                            </span>
+                            {p.companyRegNo && (
+                              <span className="block text-[11px] font-mono text-slate-400">{p.companyRegNo}</span>
+                            )}
+                          </td>
+                          <td className="py-4 px-6">
+                            <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${p.type === "Officer"
+                              ? "bg-blue-50 text-blue-700 border-blue-200"
+                              : p.type === "Shareholder"
+                                ? "bg-purple-50 text-purple-700 border-purple-200"
+                                : "bg-amber-50 text-amber-700 border-amber-200"
+                              }`}>
+                              {p.type}
+                            </span>
+                          </td>
+                          <td className="py-4 px-6 text-xs text-slate-600">
+                            {p.role || "Director"}
+                          </td>
+                          <td className="py-4 px-6 text-xs text-slate-500 font-mono">
+                            {p.email || <span className="text-slate-400 italic">Not set</span>}
+                          </td>
+                          <td className="py-4 px-6">
+                            {p.isArchived ? (
+                              <span className="text-[11px] font-bold px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full">
+                                Archived Co
                               </span>
-                              {p.companyRegNo && (
-                                <span className="block text-[11px] font-mono text-slate-400">{p.companyRegNo}</span>
-                              )}
-                            </td>
-                            <td className="py-4 px-6">
-                              <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${p.type === "Officer"
-                                ? "bg-blue-50 text-blue-700 border-blue-200"
-                                : p.type === "Shareholder"
-                                  ? "bg-purple-50 text-purple-700 border-purple-200"
-                                  : "bg-amber-50 text-amber-700 border-amber-200"
-                                }`}>
-                                {p.type}
-                              </span>
-                            </td>
-                            <td className="py-4 px-6 text-xs text-slate-600">
-                              {p.role || "Director"}
-                            </td>
-                            <td className="py-4 px-6 text-xs text-slate-500 font-mono">
-                              {p.email || <span className="text-slate-400 italic">Not set</span>}
-                            </td>
-                            <td className="py-4 px-6">
+                            ) : (
                               <span className="text-[11px] font-bold px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">
                                 {p.isActive !== false ? "Active" : "Resigned"}
                               </span>
-                            </td>
-                            <td className="py-4 px-6 text-right">
-                              <button
-                                onClick={() => navigate(`/company-secretarial/${p.clientId}`)}
-                                className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
-                              >
-                                View Company &rarr;
-                              </button>
-                            </td>
-                          </tr>
-                        ))
+                            )}
+                          </td>
+                          <td className="py-4 px-6 text-right">
+                            <button
+                              onClick={() => navigate(`/company-secretarial/${p.clientId}`)}
+                              className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+                            >
+                              View Company &rarr;
+                            </button>
+                          </td>
+                        </tr>
+                      ))
                     )}
                   </tbody>
                 </table>
@@ -857,10 +1206,9 @@ export default function CompanySecretarialHome() {
             </div>
           )}
 
-          {/* TAB: FORMATIONS (Capium Articles 9000175603, 9000238267, 9000238435) */}
+          {/* TAB 4: FORMATIONS (Capium Articles 9000175603, 9000238267, 9000238435) */}
           {currentTab === "formations" && (
             <div className="space-y-6 max-w-5xl mx-auto">
-              {/* Product Card Selection matching Capium img_4 */}
               <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
                   <div>
@@ -868,7 +1216,7 @@ export default function CompanySecretarialHome() {
                       <FilePlus className="text-indigo-600" size={20} /> Select a Formation Product
                     </h2>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      Choose incorporation package for direct Companies House registration.
+                      Choose an incorporation package for direct Companies House electronic filing.
                     </p>
                   </div>
                   <button
@@ -881,7 +1229,7 @@ export default function CompanySecretarialHome() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
                   <div className="p-4 border-2 border-indigo-500/30 bg-indigo-50/20 rounded-xl flex items-start gap-3">
-                    <input type="radio" checked readOnly className="mt-1 text-indigo-600" />
+                    <CheckSquare size={18} className="text-indigo-600 mt-0.5 shrink-0" />
                     <div>
                       <div className="text-xs font-bold text-slate-800">Own Officers &amp; Shareholders</div>
                       <p className="text-xs text-slate-500 mt-1">
@@ -891,11 +1239,11 @@ export default function CompanySecretarialHome() {
                   </div>
 
                   <div className="p-4 border border-slate-200 bg-slate-50/50 rounded-xl flex items-start gap-3 opacity-80">
-                    <input type="radio" disabled className="mt-1" />
+                    <Building2 size={18} className="text-slate-400 mt-0.5 shrink-0" />
                     <div>
                       <div className="text-xs font-bold text-slate-700">Nominee Officers &amp; Registered Office</div>
                       <p className="text-xs text-slate-500 mt-1">
-                        Form with professional SanSuite nominee services and managed UK address facility.
+                        Form with professional nominee services and managed UK registered office facility.
                       </p>
                     </div>
                   </div>
@@ -961,7 +1309,7 @@ export default function CompanySecretarialHome() {
             </div>
           )}
 
-          {/* TAB 4: SUBMISSIONS (E-FILING LOG) */}
+          {/* TAB 5: SUBMISSIONS (E-FILING AUDIT LOG) */}
           {currentTab === "submissions" && (
             <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
               <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
@@ -1029,11 +1377,10 @@ export default function CompanySecretarialHome() {
           )}
         </div>
 
-        {/* 2-MODE ADD COMPANY MODAL */}
+        {/* 2-MODE ADD COMPANY MODAL (Rule #5 Isolated) */}
         {showAddCompanyModal && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full overflow-hidden border border-slate-200 animate-in fade-in duration-150">
-              {/* Modal Header */}
               <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <Building2 size={20} className="text-indigo-400" />
@@ -1103,16 +1450,7 @@ export default function CompanySecretarialHome() {
                     </div>
                   </div>
 
-                  <div className="flex justify-between items-center pt-1">
-                    <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={overwritePeople}
-                        onChange={(e) => setOverwritePeople(e.target.checked)}
-                        className="rounded text-indigo-600"
-                      />
-                      Overwrite matching people on SanSuite with Companies House data
-                    </label>
+                  <div className="flex justify-end items-center pt-1">
                     <button
                       onClick={handleLookupCh}
                       disabled={isSearchingCh}
@@ -1164,7 +1502,7 @@ export default function CompanySecretarialHome() {
                           className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
                         >
                           {importFromCh.isPending ? <RefreshCw size={13} className="animate-spin" /> : <Download size={13} />}
-                          Confirm & Download Company
+                          Confirm &amp; Download Company
                         </button>
                       </div>
                     </div>
@@ -1203,17 +1541,17 @@ export default function CompanySecretarialHome() {
                       <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Company Number (CRN)</label>
                       <input
                         type="text"
-                        placeholder="Optional if new"
+                        placeholder="Optional if new formation"
                         value={manualForm.companyRegNo}
                         onChange={(e) => setManualForm({ ...manualForm, companyRegNo: e.target.value })}
-                        className="w-full px-3.5 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                        className="w-full px-3.5 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono"
                       />
                     </div>
                     <div className="sm:col-span-2">
                       <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Registered Office Address *</label>
                       <textarea
                         rows={2}
-                        placeholder="Full registered office street and town address"
+                        placeholder="Full registered office street, town, and postal code"
                         value={manualForm.registeredAddress}
                         onChange={(e) => setManualForm({ ...manualForm, registeredAddress: e.target.value })}
                         className="w-full px-3.5 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none"
@@ -1287,8 +1625,8 @@ export default function CompanySecretarialHome() {
   );
 }
 
-// Subcomponent: My Office / Secretarial Settings Modal
-function SettingsModal({ initialSettings, onClose }: { initialSettings: any, onClose: () => void }) {
+// Subcomponent: My Office / Secretarial Settings Modal (Capium 9000200190)
+function SettingsModal({ initialSettings, onClose }: { initialSettings: any; onClose: () => void }) {
   const { toast } = useToast();
   const [presenterId, setPresenterId] = useState(initialSettings?.presenterId || "");
   const [presenterAuthCode, setPresenterAuthCode] = useState(initialSettings?.presenterAuthCode || "");
@@ -1303,7 +1641,7 @@ function SettingsModal({ initialSettings, onClose }: { initialSettings: any, onC
         presenterAuthCode,
         defaultRegisteredOffice,
         defaultCountry,
-        isLiveMode
+        isLiveMode,
       });
       if (!res.ok) throw new Error("Failed to save settings");
       return res.json();
@@ -1313,7 +1651,7 @@ function SettingsModal({ initialSettings, onClose }: { initialSettings: any, onC
       queryClient.invalidateQueries({ queryKey: ["/api/company-secretarial/settings"] });
       onClose();
     },
-    onError: (e: any) => toast({ title: "Error", description: e.message, type: "error" })
+    onError: (e: any) => toast({ title: "Error", description: e.message, type: "error" }),
   });
 
   return (
@@ -1335,7 +1673,7 @@ function SettingsModal({ initialSettings, onClose }: { initialSettings: any, onC
               placeholder="e.g. 00012345678"
               value={presenterId}
               onChange={(e) => setPresenterId(e.target.value)}
-              className="w-full px-3.5 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              className="w-full px-3.5 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono"
             />
           </div>
 

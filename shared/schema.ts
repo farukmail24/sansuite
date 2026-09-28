@@ -1046,12 +1046,23 @@ export const ct600Returns = mysqlTable("ct600_returns", {
   corporationTaxPayable: decimal("corporation_tax_payable", { precision: 15, scale: 2 }).default("0.00"),
   taxDeductedAtSource: decimal("tax_deducted_at_source", { precision: 15, scale: 2 }).default("0.00"),
   netTaxDue: decimal("net_tax_due", { precision: 15, scale: 2 }).default("0.00"),
+  associatedCompaniesCount: int("associated_companies_count").default(0), // HMRC Box 326
+  isAmendedReturn: boolean("is_amended_return").default(false), // HMRC Box 35 / Amendment indicator
+  amendmentReason: text("amendment_reason"),
+  companyType: varchar("company_type", { length: 20 }).default("0"), // HMRC Box 4 (0 = Small/standard)
+  bankName: varchar("bank_name", { length: 100 }), // HMRC Box 920
+  bankSortCode: varchar("bank_sort_code", { length: 20 }), // HMRC Box 925
+  bankAccountNumber: varchar("bank_account_number", { length: 30 }), // HMRC Box 930
+  bankAccountName: varchar("bank_account_name", { length: 100 }), // HMRC Box 935
+  declarationName: varchar("declaration_name", { length: 100 }), // HMRC Box 975
+  declarationStatus: varchar("declaration_status", { length: 50 }).default("Director"), // HMRC Box 985
   paymentDueDate: date("payment_due_date"), // AP End + 9 months 1 day
   filingDueDate: date("filing_due_date"), // AP End + 12 months
   status: varchar("status", { length: 30 }).default("Draft"), // Draft, Validated, SentToCapisign, ReadyToSubmit, Submitted, Accepted, Rejected
   irMark: varchar("ir_mark", { length: 100 }),
   hmrcCorrelationId: varchar("hmrc_correlation_id", { length: 100 }),
   submissionReceiptXml: longtext("submission_receipt_xml"),
+  attachmentsJson: text("attachments_json"),
   submittedAt: timestamp("submitted_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -3146,6 +3157,168 @@ export const ipBans = mysqlTable("ip_bans", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// =============================================
+// FRONTEND CMS & MARKETING SUITE (Capium Parity)
+// =============================================
+
+export const cmsSiteSettings = mysqlTable("cms_site_settings", {
+  id: int("id").primaryKey().autoincrement(),
+  siteName: varchar("site_name", { length: 255 }).default("SanSuite"),
+  siteTagline: varchar("site_tagline", { length: 255 }).default("The Unified Cloud Operating System for UK Accounting Practices"),
+  logoUrl: varchar("logo_url", { length: 500 }),
+  contactEmail: varchar("contact_email", { length: 255 }).default("contact@sansuite.co.uk"),
+  contactPhone: varchar("contact_phone", { length: 50 }).default("+44 (0) 20 8000 0000"),
+  officeAddress: text("office_address"),
+  companyRegNumber: varchar("company_reg_number", { length: 50 }).default("12345678"),
+  vatNumber: varchar("vat_number", { length: 50 }).default("GB 987 6543 21"),
+  headerAnnouncementText: text("header_announcement_text"),
+  headerAnnouncementLink: varchar("header_announcement_link", { length: 500 }).default("/solutions/mtd-it"),
+  headerAnnouncementActive: boolean("header_announcement_active").default(true),
+  socialLinks: text("social_links"), // JSON string
+  pageSectionsConfig: longtext("page_sections_config"), // JSON string for page-wise section configs & visibility toggles
+  seoMetaTitle: varchar("seo_meta_title", { length: 255 }).default("SanSuite - UK Cloud Accounting & Practice Management Software"),
+  seoMetaDescription: text("seo_meta_description"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const cmsHeroSlides = mysqlTable("cms_hero_slides", {
+  id: int("id").primaryKey().autoincrement(),
+  badgeText: varchar("badge_text", { length: 100 }).default("UK Statutory Compliance Ready"),
+  title: varchar("title", { length: 255 }).notNull().default("The Unified Cloud Operating System for UK Accounting Practices"),
+  highlightWord: varchar("highlight_word", { length: 100 }).default("Unified Cloud"),
+  subtitle: text("subtitle"),
+  primaryCtaText: varchar("primary_cta_text", { length: 100 }).default("Book a 1-on-1 Practice Demo"),
+  primaryCtaUrl: varchar("primary_cta_url", { length: 255 }).default("/book-demo"),
+  secondaryCtaText: varchar("secondary_cta_text", { length: 100 }).default("Explore Modules"),
+  secondaryCtaUrl: varchar("secondary_cta_url", { length: 255 }).default("#modules"),
+  previewImageUrl: varchar("preview_image_url", { length: 500 }),
+  ratingScore: decimal("rating_score", { precision: 3, scale: 1 }).default("4.9"),
+  ratingCount: int("rating_count").default(1250),
+  sortOrder: int("sort_order").default(1),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const cmsModules = mysqlTable("cms_modules", {
+  id: int("id").primaryKey().autoincrement(),
+  slug: varchar("slug", { length: 100 }).notNull().unique(),
+  title: varchar("title", { length: 150 }).notNull(),
+  shortDescription: text("short_description").notNull(),
+  detailedDescription: longtext("detailed_description"),
+  workflowSteps: longtext("workflow_steps"), // JSON array of 4-step statutory workflow
+  capiumComparisonHighlight: text("capium_comparison_highlight"),
+  iconName: varchar("icon_name", { length: 50 }).default("Briefcase"),
+  category: varchar("category", { length: 50 }).default("Core Compliance"), // Practice, Accounting, Tax, Compliance
+  bulletPoints: text("bullet_points"), // JSON array
+  previewImageUrl: varchar("preview_image_url", { length: 500 }),
+  badgeTag: varchar("badge_tag", { length: 50 }).default("HMRC Direct"),
+  sortOrder: int("sort_order").default(1),
+  isFeatured: boolean("is_featured").default(true),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const cmsPricingPlans = mysqlTable("cms_pricing_plans", {
+  id: int("id").primaryKey().autoincrement(),
+  planName: varchar("plan_name", { length: 100 }).notNull(),
+  targetAudience: varchar("target_audience", { length: 255 }).default("For Sole Practitioners & Growing Firms"),
+  monthlyPrice: decimal("monthly_price", { precision: 10, scale: 2 }).notNull().default("99.00"),
+  annualPriceMonthlyBilled: decimal("annual_price_monthly_billed", { precision: 10, scale: 2 }).notNull().default("85.00"),
+  currency: varchar("currency", { length: 10 }).default("GBP"),
+  clientLimit: varchar("client_limit", { length: 100 }).default("Up to 50 Clients"),
+  userLimit: varchar("user_limit", { length: 100 }).default("Unlimited Users"),
+  featuresList: text("features_list"), // JSON array
+  popularBadge: boolean("popular_badge").default(false),
+  ctaLabel: varchar("cta_label", { length: 100 }).default("Book Free Trial"),
+  ctaUrl: varchar("cta_url", { length: 255 }).default("/book-demo"),
+  sortOrder: int("sort_order").default(1),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const cmsTestimonials = mysqlTable("cms_testimonials", {
+  id: int("id").primaryKey().autoincrement(),
+  clientName: varchar("client_name", { length: 150 }).notNull(),
+  clientRole: varchar("client_role", { length: 150 }).default("Senior Partner"),
+  practiceName: varchar("practice_name", { length: 200 }).notNull(),
+  practiceLocation: varchar("practice_location", { length: 100 }).default("London, UK"),
+  avatarUrl: varchar("avatar_url", { length: 500 }),
+  rating: int("rating").default(5),
+  reviewText: text("review_text").notNull(),
+  verifiedClient: boolean("verified_client").default(true),
+  sortOrder: int("sort_order").default(1),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const cmsFaqs = mysqlTable("cms_faqs", {
+  id: int("id").primaryKey().autoincrement(),
+  category: varchar("category", { length: 100 }).default("General"), // General, Compliance, Pricing, Migration, Security
+  question: text("question").notNull(),
+  answer: text("answer").notNull(),
+  sortOrder: int("sort_order").default(1),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const cmsBlogPosts = mysqlTable("cms_blog_posts", {
+  id: int("id").primaryKey().autoincrement(),
+  slug: varchar("slug", { length: 200 }).notNull().unique(),
+  title: varchar("title", { length: 255 }).notNull(),
+  excerpt: text("excerpt").notNull(),
+  contentMarkdown: longtext("content_markdown").notNull(),
+  coverImageUrl: varchar("cover_image_url", { length: 500 }),
+  authorName: varchar("author_name", { length: 100 }).default("SanSuite Compliance Team"),
+  authorRole: varchar("author_role", { length: 100 }).default("UK Tax Specialist"),
+  category: varchar("category", { length: 100 }).default("HMRC Regulations"),
+  tags: text("tags"), // JSON array
+  publishedAt: timestamp("published_at").defaultNow(),
+  isFeatured: boolean("is_featured").default(false),
+  isPublished: boolean("is_published").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const cmsLeadInquiries = mysqlTable("cms_lead_inquiries", {
+  id: int("id").primaryKey().autoincrement(),
+  fullName: varchar("full_name", { length: 150 }).notNull(),
+  workEmail: varchar("work_email", { length: 255 }).notNull(),
+  phoneNumber: varchar("phone_number", { length: 50 }),
+  practiceName: varchar("practice_name", { length: 200 }),
+  clientCountBracket: varchar("client_count_bracket", { length: 50 }).default("50 - 150"),
+  interestedModules: text("interested_modules"), // JSON array
+  message: text("message"),
+  inquiryType: varchar("inquiry_type", { length: 50 }).default("book_demo"), // book_demo, contact_sales, pricing_quote
+  status: varchar("status", { length: 50 }).default("new"), // new, contacted, demo_scheduled, closed
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Infer types
+export type CmsSiteSettings = typeof cmsSiteSettings.$inferSelect;
+export type InsertCmsSiteSettings = typeof cmsSiteSettings.$inferInsert;
+
+export type CmsHeroSlide = typeof cmsHeroSlides.$inferSelect;
+export type InsertCmsHeroSlide = typeof cmsHeroSlides.$inferInsert;
+
+export type CmsModule = typeof cmsModules.$inferSelect;
+export type InsertCmsModule = typeof cmsModules.$inferInsert;
+
+export type CmsPricingPlan = typeof cmsPricingPlans.$inferSelect;
+export type InsertCmsPricingPlan = typeof cmsPricingPlans.$inferInsert;
+
+export type CmsTestimonial = typeof cmsTestimonials.$inferSelect;
+export type InsertCmsTestimonial = typeof cmsTestimonials.$inferInsert;
+
+export type CmsFaq = typeof cmsFaqs.$inferSelect;
+export type InsertCmsFaq = typeof cmsFaqs.$inferInsert;
+
+export type CmsBlogPost = typeof cmsBlogPosts.$inferSelect;
+export type InsertCmsBlogPost = typeof cmsBlogPosts.$inferInsert;
+
+export type CmsLeadInquiry = typeof cmsLeadInquiries.$inferSelect;
+export type InsertCmsLeadInquiry = typeof cmsLeadInquiries.$inferInsert;
+
 
 
 

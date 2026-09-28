@@ -3,7 +3,7 @@ import { db } from "../db";
 import {
   csRecords, csShareholders, csOfficers, csPscs, csFilings, csSettings, clients
 } from "@shared/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, inArray } from "drizzle-orm";
 import { authMiddleware } from "../lib/authUtils";
 
 const router = Router();
@@ -16,6 +16,216 @@ const SENSITIVE_WORDS = [
   "ASSURANCE", "POLICE", "NHS", "CHARITY", "CHARITABLE", "TRUST",
   "AUTHORITY", "COMMISSION", "DISPENSARY", "APOTHECARY", "CHAMBER OF COMMERCE"
 ];
+
+// 0. DEDICATED MODULAR COMPANY REGISTRY (Capium Articles 9000200190 & 9000202625)
+router.get("/companies", async (req: any, res) => {
+  try {
+    const practiceId = req.user.practiceId;
+    const tab = (req.query.tab as string) || "all"; // 'live', 'archived', 'all'
+    const search = (req.query.search as string) || "";
+
+    const practiceClients = await db
+      .select()
+      .from(clients)
+      .where(and(eq(clients.practiceId, practiceId), eq(clients.isActive, true)))
+      .orderBy(desc(clients.createdAt));
+
+    const corporateClients = practiceClients.filter(
+      (c) =>
+        c.clientType === "Limited" ||
+        c.clientType === "Ltd" ||
+        c.clientType === "LLP" ||
+        c.clientType === "PLC" ||
+        c.clientType === "Limited by Guarantee" ||
+        !c.clientType
+    );
+
+    if (corporateClients.length === 0) {
+      return res.json({
+        companies: [],
+        counts: { total: 0, live: 0, archived: 0 },
+      });
+    }
+
+    const clientIds = corporateClients.map((c) => c.id);
+
+    const records = await db.select().from(csRecords).where(inArray(csRecords.clientId, clientIds));
+    const officers = await db.select().from(csOfficers).where(inArray(csOfficers.clientId, clientIds));
+    const shareholders = await db.select().from(csShareholders).where(inArray(csShareholders.clientId, clientIds));
+    const pscs = await db.select().from(csPscs).where(inArray(csPscs.clientId, clientIds));
+    const filings = await db.select().from(csFilings).where(inArray(csFilings.clientId, clientIds));
+
+    const recordMap = new Map(records.map((r) => [r.clientId, r]));
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const enriched = corporateClients.map((client) => {
+      const rec = recordMap.get(client.id);
+      const isArchived = !!rec?.isArchived;
+
+      // CS01 due date
+      let csDue: Date | null = null;
+      if (rec?.nextConfirmationDue) {
+        csDue = new Date(rec.nextConfirmationDue);
+      } else if (client.chDataJson) {
+        try {
+          const ch = typeof client.chDataJson === "string" ? JSON.parse(client.chDataJson) : client.chDataJson;
+          if (ch?.confirmation_statement?.next_due) csDue = new Date(ch.confirmation_statement.next_due);
+        } catch {}
+      }
+
+      // Accounts due date
+      let accDue: Date | null = null;
+      if (rec?.nextAccountsDue) {
+        accDue = new Date(rec.nextAccountsDue);
+      } else if (client.chDataJson) {
+        try {
+          const ch = typeof client.chDataJson === "string" ? JSON.parse(client.chDataJson) : client.chDataJson;
+          if (ch?.accounts?.next_accounts?.due_on) accDue = new Date(ch.accounts.next_accounts.due_on);
+        } catch {}
+      }
+
+      let daysLeftCs: number | null = null;
+      let csStatus = "Upcoming";
+      if (csDue) {
+        daysLeftCs = Math.ceil((csDue.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysLeftCs < 0) csStatus = "Overdue";
+        else if (daysLeftCs <= 30) csStatus = "Due";
+      }
+
+      let daysLeftAcc: number | null = null;
+      let accStatus = "Upcoming";
+      if (accDue) {
+        daysLeftAcc = Math.ceil((accDue.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysLeftAcc < 0) accStatus = "Overdue";
+        else if (daysLeftAcc <= 30) accStatus = "Due";
+      }
+
+      return {
+        id: client.id,
+        clientId: client.id,
+        clientName: client.clientName,
+        clientCode: client.clientCode,
+        registrationNumber: client.registrationNumber || rec?.companyRegNo || "",
+        clientType: rec?.companyType || client.clientType || "Limited",
+        tradingStatus: client.tradingStatus || "Trading",
+        address: rec?.registeredAddress || client.address || "",
+        registeredEmail: rec?.registeredEmail || client.email || "",
+        sicCode: rec?.sicCode || client.sicCode || "",
+        authCode: rec?.authCode || "",
+        isArchived,
+        archivedAt: rec?.archivedAt || null,
+        nextConfirmationDue: csDue ? csDue.toISOString().split("T")[0] : null,
+        daysLeftCs,
+        csStatus,
+        nextAccountsDue: accDue ? accDue.toISOString().split("T")[0] : null,
+        daysLeftAcc,
+        accStatus,
+        officersCount: officers.filter((o) => o.clientId === client.id && o.isActive !== false).length,
+        shareholdersCount: shareholders.filter((s) => s.clientId === client.id).length,
+        pscsCount: pscs.filter((p) => p.clientId === client.id && p.isActive !== false).length,
+        filingsCount: filings.filter((f) => f.clientId === client.id).length,
+      };
+    });
+
+    const liveCount = enriched.filter((c) => !c.isArchived).length;
+    const archivedCount = enriched.filter((c) => c.isArchived).length;
+
+    let filtered = enriched;
+    if (tab === "live") {
+      filtered = filtered.filter((c) => !c.isArchived);
+    } else if (tab === "archived") {
+      filtered = filtered.filter((c) => c.isArchived);
+    }
+
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      filtered = filtered.filter(
+        (c) =>
+          c.clientName.toLowerCase().includes(q) ||
+          c.registrationNumber.toLowerCase().includes(q) ||
+          c.sicCode.toLowerCase().includes(q)
+      );
+    }
+
+    res.json({
+      companies: filtered,
+      counts: {
+        total: enriched.length,
+        live: liveCount,
+        archived: archivedCount,
+      },
+    });
+  } catch (error: any) {
+    console.error("Fetch companies error:", error);
+    res.status(500).json({ message: "Failed to fetch company secretarial registry", error: error.message });
+  }
+});
+
+// 0.1 CREATE COMPANY DIRECTLY IN COSEC (Modular Isolation per Rule #5)
+router.post("/companies", async (req: any, res) => {
+  try {
+    const practiceId = req.user.practiceId;
+    const {
+      companyName, companyType, companyRegNo, registeredAddress,
+      registeredEmail, country, sicCode, authCode, tradingStatus
+    } = req.body;
+
+    if (!companyName || !registeredAddress) {
+      return res.status(400).json({ message: "Company name and registered address are required." });
+    }
+
+    const finalCode = `CL-${Date.now().toString().slice(-4)}`;
+    const nextYear = new Date();
+    nextYear.setFullYear(nextYear.getFullYear() + 1);
+
+    // 1. Insert into clients
+    const [clientResult] = await db.insert(clients).values({
+      practiceId,
+      clientCode: finalCode,
+      clientName: companyName.trim(),
+      clientType: companyType || "Limited",
+      registrationNumber: companyRegNo?.trim() || null,
+      address: registeredAddress.trim(),
+      email: registeredEmail?.trim() || null,
+      country: country || "United Kingdom",
+      sicCode: sicCode || null,
+      tradingStatus: tradingStatus || "Trading",
+      isActive: true,
+      nextCsDue: nextYear.toISOString().split("T")[0],
+      nextAccountsDue: nextYear.toISOString().split("T")[0],
+    });
+
+    const clientId = clientResult.insertId;
+
+    // 2. Insert into csRecords
+    await db.insert(csRecords).values({
+      clientId,
+      companyRegNo: companyRegNo?.trim() || null,
+      companyType: companyType || "Limited",
+      incorporationDate: new Date(),
+      sicCode: sicCode || "62020",
+      registeredAddress: registeredAddress.trim(),
+      registeredEmail: registeredEmail?.trim() || null,
+      authCode: authCode?.trim() || null,
+      nextConfirmationDue: nextYear,
+      nextAccountsDue: nextYear,
+      filingPreference: "we_file",
+      registersLocation: "registered_office",
+      isArchived: false,
+    });
+
+    res.json({
+      id: clientId,
+      clientId,
+      clientCode: finalCode,
+      message: "Company added successfully to Company Secretarial registry.",
+    });
+  } catch (error: any) {
+    console.error("Create company error:", error);
+    res.status(500).json({ message: "Failed to create company", error: error.message });
+  }
+});
 
 // 1. Get full CS record for a client (master record + shareholders + officers + pscs + filings + client info)
 router.get("/record/:clientId", async (req: any, res) => {
@@ -959,14 +1169,17 @@ router.get("/people", async (req: any, res) => {
     const officers = await db.select().from(csOfficers);
     const shareholders = await db.select().from(csShareholders);
     const pscs = await db.select().from(csPscs);
+    const records = await db.select().from(csRecords).where(inArray(csRecords.clientId, clientIds));
 
     const clientMap = new Map(practiceClients.map(c => [c.id, c]));
+    const recordMap = new Map(records.map(r => [r.clientId, r]));
     const personList: any[] = [];
 
     // Officers
     for (const off of officers) {
       if (clientIds.includes(off.clientId)) {
         const client = clientMap.get(off.clientId);
+        const csRec = recordMap.get(off.clientId);
         personList.push({
           id: `officer-${off.id}`,
           originalId: off.id,
@@ -981,7 +1194,8 @@ router.get("/people", async (req: any, res) => {
           occupation: off.occupation || "Director",
           dateOfBirth: off.dateOfBirth,
           serviceAddress: off.serviceAddress || off.address || "",
-          isActive: off.isActive
+          isActive: off.isActive,
+          isArchived: !!csRec?.isArchived,
         });
       }
     }
@@ -990,6 +1204,7 @@ router.get("/people", async (req: any, res) => {
     for (const sh of shareholders) {
       if (clientIds.includes(sh.clientId)) {
         const client = clientMap.get(sh.clientId);
+        const csRec = recordMap.get(sh.clientId);
         personList.push({
           id: `shareholder-${sh.id}`,
           originalId: sh.id,
@@ -1002,7 +1217,8 @@ router.get("/people", async (req: any, res) => {
           email: sh.email || client?.email || "",
           sharesHeld: sh.sharesHeld,
           nominalValue: sh.nominalValue,
-          isActive: true
+          isActive: true,
+          isArchived: !!csRec?.isArchived,
         });
       }
     }
@@ -1011,6 +1227,7 @@ router.get("/people", async (req: any, res) => {
     for (const p of pscs) {
       if (clientIds.includes(p.clientId)) {
         const client = clientMap.get(p.clientId);
+        const csRec = recordMap.get(p.clientId);
         personList.push({
           id: `psc-${p.id}`,
           originalId: p.id,
@@ -1022,7 +1239,8 @@ router.get("/people", async (req: any, res) => {
           role: p.natureOfControl || "Person with Significant Control",
           email: client?.email || "",
           nationality: p.nationality || "",
-          isActive: p.isActive
+          isActive: p.isActive,
+          isArchived: !!csRec?.isArchived,
         });
       }
     }

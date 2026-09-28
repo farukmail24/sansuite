@@ -4,7 +4,7 @@ import { useLocation } from "wouter";
 import AppLayout from "../../components/layout/AppLayout";
 import {
   Shield, Building2, FilePlus, ArrowRight, ArrowLeft, Check, Plus, Trash2,
-  Search, RefreshCw, AlertCircle, AlertTriangle, CheckCircle2, Send, Info
+  Search, RefreshCw, AlertCircle, AlertTriangle, CheckCircle2, Send, Info, Users, Landmark
 } from "lucide-react";
 import { apiRequest, queryClient } from "../../lib/queryClient";
 import { useToast } from "../../hooks/useToast";
@@ -12,7 +12,9 @@ import { useToast } from "../../hooks/useToast";
 const sidebar = [
   { label: "Action Station", icon: <Shield size={15} />, route: "/company-secretarial" },
   { label: "Companies", icon: <Building2 size={15} />, route: "/company-secretarial?tab=companies" },
+  { label: "People", icon: <Users size={15} />, route: "/company-secretarial?tab=people" },
   { label: "Formations", icon: <FilePlus size={15} />, route: "/company-secretarial?tab=formations" },
+  { label: "Submissions", icon: <Send size={15} />, route: "/company-secretarial?tab=submissions" },
 ];
 
 export default function FormationWizard() {
@@ -161,7 +163,7 @@ export default function FormationWizard() {
       return res.json();
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/practice/clients"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/company-secretarial/companies"] });
       queryClient.invalidateQueries({ queryKey: ["/api/company-secretarial/deadlines"] });
       queryClient.invalidateQueries({ queryKey: ["/api/company-secretarial/filings"] });
       toast({ title: "Formation Submitted", description: "Form IN01 submitted successfully. Company registered in SanSuite.", type: "success" });
@@ -599,6 +601,17 @@ export default function FormationWizard() {
                   <p className="text-xs text-slate-500 mt-0.5">
                     Carefully review the incorporation details before filing directly with Companies House.
                   </p>
+                </div>
+
+                {/* Companies House Fee Schedule (Capium Article 9000238267) */}
+                <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-xl flex items-start gap-3 text-xs">
+                  <Landmark className="text-indigo-600 shrink-0 mt-0.5" size={18} />
+                  <div>
+                    <h4 className="font-bold text-indigo-950">Companies House Statutory Fee Schedule (Capium Article 9000238267)</h4>
+                    <p className="text-indigo-800/90 mt-0.5 leading-relaxed">
+                      Standard electronic company incorporation fee is <strong>£50.00</strong> (settled via Practice Presenter Account or direct payment gateway). All digital formations include official Certificate of Incorporation, Model Articles of Association, and instant incorporation of officers and PSCs.
+                    </p>
+                  </div>
                 </div>
 
                 <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 space-y-4 text-xs">

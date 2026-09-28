@@ -10,6 +10,11 @@ import {
 } from "lucide-react";
 import { apiRequest } from "../../../lib/queryClient";
 import { useToast } from "../../../hooks/useToast";
+import { downloadAuthorizedFile } from "../../../lib/authDownload";
+import CT600FormModal from "./CT600FormModal";
+import CTComputationReportModal from "./CTComputationReportModal";
+import CTAttachmentsModal from "./CTAttachmentsModal";
+import CTEmailModal from "./CTEmailModal";
 
 interface CTWorkspaceContextType {
   clientId: string;
@@ -26,6 +31,15 @@ interface CTWorkspaceContextType {
   openNewReturnModal: () => void;
   openDeleteModal: (ret?: any) => void;
   openManageReturnsModal: () => void;
+  openCT600FormModal: (returnId?: any) => void;
+  openComputationModal: (returnId?: any) => void;
+  openAttachmentsModal: (returnId?: any) => void;
+  openEmailModal?: (returnId?: any) => void;
+  downloadCT600Pdf: (returnId?: any) => Promise<void>;
+  downloadComputationPdf: (returnId?: any) => Promise<void>;
+  downloadIxbrlAccounts: (returnId?: any) => Promise<void>;
+  downloadTaxSummaryDoc: (returnId?: any) => Promise<void>;
+  downloadDocumentPack: (returnId?: any) => Promise<void>;
   deleteReturn: (id: number) => Promise<any>;
   updateReturnStatus: (id: number, status: string) => Promise<any>;
 }
@@ -59,6 +73,10 @@ export default function CTWorkspaceLayout({ children, activeSection }: CTWorkspa
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [returnToDelete, setReturnToDelete] = useState<any | null>(null);
   const [showManageReturnsModal, setShowManageReturnsModal] = useState(false);
+  const [showCT600FormModal, setShowCT600FormModal] = useState(false);
+  const [showComputationModal, setShowComputationModal] = useState(false);
+  const [showAttachmentsModal, setShowAttachmentsModal] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
 
   const [returnForm, setReturnForm] = useState({
     periodId: 0,
@@ -313,6 +331,100 @@ export default function CTWorkspaceLayout({ children, activeSection }: CTWorkspa
     openNewReturnModal,
     openDeleteModal,
     openManageReturnsModal,
+    openCT600FormModal: (returnId?: any) => {
+      if (typeof returnId === "number") setSelectedReturnId(returnId);
+      setShowCT600FormModal(true);
+    },
+    openComputationModal: (returnId?: any) => {
+      if (typeof returnId === "number") setSelectedReturnId(returnId);
+      setShowComputationModal(true);
+    },
+    openAttachmentsModal: (returnId?: any) => {
+      if (typeof returnId === "number") setSelectedReturnId(returnId);
+      setShowAttachmentsModal(true);
+    },
+    openEmailModal: (returnId?: any) => {
+      if (typeof returnId === "number") setSelectedReturnId(returnId);
+      setShowEmailModal(true);
+    },
+    downloadCT600Pdf: async (returnId?: any) => {
+      const targetId = (typeof returnId === "number" ? returnId : null) || selectedReturnId || currentReturn?.id;
+      if (!targetId) {
+        toast({ title: "No Return Selected", description: "Please select a CT600 return.", variant: "destructive" });
+        return;
+      }
+      const safeName = (client?.clientName || "Company").replace(/[^a-zA-Z0-9_-]/g, "_");
+      try {
+        toast({ title: "Downloading CT600", description: "Preparing official CT600 PDF return..." });
+        await downloadAuthorizedFile(`/api/corporation-tax/${clientId}/returns/${targetId}/ct600-pdf`, `${safeName}_CT600.pdf`);
+        toast({ title: "Download Complete", description: `${safeName}_CT600.pdf downloaded successfully.` });
+      } catch (e: any) {
+        toast({ title: "Download Failed", description: e.message, variant: "destructive" });
+      }
+    },
+    downloadComputationPdf: async (returnId?: any) => {
+      const targetId = (typeof returnId === "number" ? returnId : null) || selectedReturnId || currentReturn?.id;
+      if (!targetId) {
+        toast({ title: "No Return Selected", description: "Please select a CT600 return.", variant: "destructive" });
+        return;
+      }
+      const safeName = (client?.clientName || "Company").replace(/[^a-zA-Z0-9_-]/g, "_");
+      try {
+        toast({ title: "Downloading Computation", description: "Preparing official CT Computation PDF..." });
+        await downloadAuthorizedFile(`/api/corporation-tax/${clientId}/returns/${targetId}/computation-pdf`, `${safeName}_CT_Calc.pdf`);
+        toast({ title: "Download Complete", description: `${safeName}_CT_Calc.pdf downloaded successfully.` });
+      } catch (e: any) {
+        toast({ title: "Download Failed", description: e.message, variant: "destructive" });
+      }
+    },
+    downloadIxbrlAccounts: async (returnId?: any) => {
+      const targetId = (typeof returnId === "number" ? returnId : null) || selectedReturnId || currentReturn?.id;
+      if (!targetId) {
+        toast({ title: "No Return Selected", description: "Please select a CT600 return.", variant: "destructive" });
+        return;
+      }
+      const safeName = (client?.clientName || "Company").replace(/[^a-zA-Z0-9_-]/g, "_");
+      try {
+        toast({ title: "Downloading Accounts", description: "Preparing statutory iXBRL accounts..." });
+        await downloadAuthorizedFile(`/api/corporation-tax/${clientId}/returns/${targetId}/ixbrl-accounts`, `${safeName}_Accounts_iXBRL.html`);
+        toast({ title: "Download Complete", description: `${safeName}_Accounts_iXBRL.html downloaded successfully.` });
+      } catch (e: any) {
+        toast({ title: "Download Failed", description: e.message, variant: "destructive" });
+      }
+    },
+    downloadTaxSummaryDoc: async (returnId?: any) => {
+      const targetId = (typeof returnId === "number" ? returnId : null) || selectedReturnId || currentReturn?.id;
+      if (!targetId) {
+        toast({ title: "No Return Selected", description: "Please select a CT600 return.", variant: "destructive" });
+        return;
+      }
+      const safeName = (client?.clientName || "Company").replace(/[^a-zA-Z0-9_-]/g, "_");
+      try {
+        toast({ title: "Downloading Cover Letter", description: "Preparing Client Tax Summary Document..." });
+        await downloadAuthorizedFile(`/api/corporation-tax/${clientId}/returns/${targetId}/tax-summary-doc`, `${safeName}_CT_Calc.doc`);
+        toast({ title: "Download Complete", description: `${safeName}_CT_Calc.doc downloaded successfully.` });
+      } catch (e: any) {
+        toast({ title: "Download Failed", description: e.message, variant: "destructive" });
+      }
+    },
+    downloadDocumentPack: async (returnId?: any) => {
+      const targetId = (typeof returnId === "number" ? returnId : null) || selectedReturnId || currentReturn?.id;
+      if (!targetId) {
+        toast({ title: "No Return Selected", description: "Please select a CT600 return.", variant: "destructive" });
+        return;
+      }
+      const safeName = (client?.clientName || "Company").replace(/[^a-zA-Z0-9_-]/g, "_");
+      try {
+        await downloadAuthorizedFile(`/api/corporation-tax/${clientId}/returns/${targetId}/ct600-pdf`, `${safeName}_CT600.pdf`);
+        await downloadAuthorizedFile(`/api/corporation-tax/${clientId}/returns/${targetId}/computation-pdf`, `${safeName}_CT_Calc.pdf`);
+        toast({
+          title: "Document Pack Ready",
+          description: "CT600 PDF and Tax Computation PDF downloaded successfully.",
+        });
+      } catch (e: any) {
+        toast({ title: "Download Failed", description: e.message, variant: "destructive" });
+      }
+    },
     deleteReturn,
     updateReturnStatus,
   };
@@ -321,7 +433,9 @@ export default function CTWorkspaceLayout({ children, activeSection }: CTWorkspa
     <CTWorkspaceContext.Provider value={contextValue}>
       <AppLayout sidebar={sidebar} module="Corporation Tax">
         <div className="bg-slate-50 dark:bg-slate-950 min-h-screen text-xs">
-          {/* Top Header Breadcrumb & Return Selector */}
+          {/* Workspace Background Shell (Hidden automatically during CT600 Form print / PDF) */}
+          <div className="ct600-workspace-shell ct600-no-print">
+            {/* Top Header Breadcrumb & Return Selector */}
           <div className="bg-white dark:bg-slate-900 px-5 py-2.5 flex flex-wrap items-center justify-between border-b border-slate-200 dark:border-slate-800 shadow-xs gap-3">
             <div className="flex items-center text-xs text-slate-500 dark:text-slate-400 gap-1.5 flex-wrap">
               <Link href="/corporation-tax" className="flex items-center gap-1 hover:text-indigo-600 font-medium">
@@ -400,6 +514,45 @@ export default function CTWorkspaceLayout({ children, activeSection }: CTWorkspa
                   <Layers size={11} className="text-indigo-600" />
                   <span>Manage Returns ({returns.length})</span>
                 </button>
+              )}
+
+              {/* CT600 Form Button - Prominent 1-Click Access to Interactive 12-Page Return */}
+              {currentReturn && (
+                <button
+                  type="button"
+                  onClick={() => setShowCT600FormModal(true)}
+                  className="bg-teal-700 hover:bg-teal-800 text-white text-[11px] font-bold px-3 py-1.5 rounded-md flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                  title="View / Edit official 12-page HMRC CT600 return form"
+                >
+                  <FileText size={12} />
+                  <span>CT600 Form</span>
+                </button>
+              )}
+
+              {/* Reports Dropdown */}
+              {currentReturn && (
+                <div className="relative inline-block text-left">
+                  <select
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === "form-online") {
+                        setShowCT600FormModal(true);
+                      } else if (val === "comp-online") {
+                        setShowComputationModal(true);
+                      } else if (val === "attachments") {
+                        setShowAttachmentsModal(true);
+                      }
+                      e.target.value = "";
+                    }}
+                    className="bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/40 dark:hover:bg-teal-900/60 text-teal-800 dark:text-teal-300 border border-teal-200 dark:border-teal-800 text-[11px] font-bold px-2.5 py-1.5 rounded-md shadow-xs transition-colors cursor-pointer"
+                    defaultValue=""
+                  >
+                    <option value="" disabled>Reports ▾</option>
+                    <option value="form-online">View CT600 Form (Interactive)</option>
+                    <option value="comp-online">View Tax Computation Online</option>
+                    <option value="attachments">View Attachments Checklist</option>
+                  </select>
+                </div>
               )}
 
               {/* Link to Accounts Production */}
@@ -497,6 +650,7 @@ export default function CTWorkspaceLayout({ children, activeSection }: CTWorkspa
 
             {children}
           </div>
+        </div>
 
           {/* Modal: New CT600 Return */}
           {showReturnModal && (
@@ -593,8 +747,78 @@ export default function CTWorkspaceLayout({ children, activeSection }: CTWorkspa
                     />
                   </div>
 
-                  <div className="p-3 bg-amber-50 dark:bg-amber-950/40 rounded-lg text-amber-800 dark:text-amber-300 text-[11px] border border-amber-200 dark:border-amber-800">
-                    <p className="font-semibold">Statutory Deadlines (HMRC Rule):</p>
+                  {/* Long Accounting Period Check (> 12 months / 366 days) */}
+                  {(() => {
+                    const s = new Date(returnForm.startDate);
+                    const e = new Date(returnForm.endDate);
+                    const days = !isNaN(s.getTime()) && !isNaN(e.getTime()) ? Math.round((e.getTime() - s.getTime()) / (1000 * 3600 * 24)) : 0;
+                    if (days > 366) {
+                      const p1End = new Date(s);
+                      p1End.setFullYear(p1End.getFullYear() + 1);
+                      p1End.setDate(p1End.getDate() - 1);
+                      const p1EndStr = p1End.toISOString().split("T")[0];
+
+                      const p2Start = new Date(p1End);
+                      p2Start.setDate(p2Start.getDate() + 1);
+                      const p2StartStr = p2Start.toISOString().split("T")[0];
+
+                      return (
+                        <div className="p-3 bg-amber-50 dark:bg-amber-950/40 rounded-xl text-amber-900 dark:text-amber-300 text-xs border border-amber-300 dark:border-amber-800 space-y-2">
+                          <div className="flex items-center gap-1.5 font-bold text-amber-900 dark:text-amber-200">
+                            <AlertCircle size={15} className="text-amber-600 shrink-0" />
+                            <span>HMRC 12-Month Rule: Long Period of Account ({days} Days)</span>
+                          </div>
+                          <p className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
+                            Under CTA 2009 s.10, an HMRC CT600 return period cannot exceed 12 months. This period of account must be split into two statutory returns:
+                          </p>
+                          <div className="bg-white/80 dark:bg-slate-900/60 p-2.5 rounded-lg border border-amber-200 dark:border-amber-800 text-[11px] font-mono space-y-1">
+                            <div><strong>Return 1 (12 Months):</strong> {returnForm.startDate} to {p1EndStr}</div>
+                            <div><strong>Return 2 (Stub Period):</strong> {p2StartStr} to {returnForm.endDate}</div>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={createReturnMutation.isPending}
+                            onClick={async () => {
+                              try {
+                                await createReturnMutation.mutateAsync({
+                                  periodId: returnForm.periodId || null,
+                                  utrNumber: returnForm.utrNumber,
+                                  accountingPeriodStart: returnForm.startDate,
+                                  accountingPeriodEnd: p1EndStr,
+                                  taxYear: `${returnForm.startDate.substring(0, 4)}/${p1EndStr.substring(0, 4)}`,
+                                });
+                                await createReturnMutation.mutateAsync({
+                                  periodId: returnForm.periodId || null,
+                                  utrNumber: returnForm.utrNumber,
+                                  accountingPeriodStart: p2StartStr,
+                                  accountingPeriodEnd: returnForm.endDate,
+                                  taxYear: `${p2StartStr.substring(0, 4)}/${returnForm.endDate.substring(0, 4)}`,
+                                });
+                                toast({
+                                  title: "2 Statutory Returns Created",
+                                  description: "Initialized 12-month return and stub period return per HMRC mandate.",
+                                });
+                              } catch (err: any) {
+                                toast({
+                                  title: "Split Failed",
+                                  description: err.message,
+                                  variant: "destructive",
+                                });
+                              }
+                            }}
+                            className="w-full py-2 bg-amber-700 hover:bg-amber-800 text-white rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                          >
+                            <Layers size={13} />
+                            <span>Auto-Generate Both Statutory Returns (12m + Stub)</span>
+                          </button>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+
+                  <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-lg text-slate-700 dark:text-slate-300 text-[11px] border border-slate-200 dark:border-slate-700">
+                    <p className="font-semibold text-slate-900 dark:text-slate-100">Statutory Deadlines (HMRC Rule):</p>
                     <p className="mt-0.5">Payment Due: End date + 9 months 1 day.</p>
                     <p>Filing Due: End date + 12 months.</p>
                   </div>
@@ -771,6 +995,18 @@ export default function CTWorkspaceLayout({ children, activeSection }: CTWorkspa
                                     <CheckCircle2 size={12} /> Active
                                   </span>
                                 )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedReturnId(r.id);
+                                    setShowManageReturnsModal(false);
+                                    setTimeout(() => setShowCT600FormModal(true), 60);
+                                  }}
+                                  className="p-1 text-teal-700 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-950/40 rounded transition-colors cursor-pointer"
+                                  title="View official statutory HMRC CT600 Form"
+                                >
+                                  <FileText size={13} />
+                                </button>
                                 {r.status !== "Accepted" && (
                                   <button
                                     onClick={() => {
@@ -811,6 +1047,56 @@ export default function CTWorkspaceLayout({ children, activeSection }: CTWorkspa
                 </div>
               </div>
             </div>
+          )}
+          {/* CT600 Official Form Modal */}
+          {currentReturn && (
+            <CT600FormModal
+              open={showCT600FormModal}
+              onClose={() => setShowCT600FormModal(false)}
+              client={client}
+              currentReturn={currentReturn}
+            />
+          )}
+
+          {/* Statutory Tax Computation Modal (Matches Page 1 & 2) */}
+          {currentReturn && (
+            <CTComputationReportModal
+              isOpen={showComputationModal}
+              onClose={() => setShowComputationModal(false)}
+              clientId={clientId}
+              client={client}
+              currentReturn={currentReturn}
+              returns={returns}
+              onSelectReturn={(id) => setSelectedReturnId(id)}
+            />
+          )}
+
+          {/* Attachments & iXBRL Accounts Modal */}
+          {currentReturn && (
+            <CTAttachmentsModal
+              isOpen={showAttachmentsModal}
+              onClose={() => setShowAttachmentsModal(false)}
+              clientId={clientId}
+              client={client}
+              currentReturn={currentReturn}
+              returns={returns}
+              onSelectReturn={(id) => setSelectedReturnId(id)}
+              onOpenCT600Form={() => {
+                setShowAttachmentsModal(false);
+                setShowCT600FormModal(true);
+              }}
+            />
+          )}
+
+          {/* Email Return Pack Modal */}
+          {currentReturn && (
+            <CTEmailModal
+              isOpen={showEmailModal}
+              onClose={() => setShowEmailModal(false)}
+              clientId={clientId}
+              client={client}
+              currentReturn={currentReturn}
+            />
           )}
         </div>
       </AppLayout>

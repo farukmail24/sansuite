@@ -183,7 +183,7 @@ export default function LoginPage() {
     } else if (user?.portalType === "365") {
       navigate("/portal/workspace");
     } else {
-      navigate("/");
+      navigate("/dashboard");
     }
   }
 

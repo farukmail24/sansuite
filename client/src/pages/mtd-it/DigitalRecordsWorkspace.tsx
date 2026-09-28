@@ -5,7 +5,7 @@ import {
   Upload, Download, RefreshCw, Trash2, CheckCircle2, AlertCircle, FileText,
   DollarSign, Send, ShieldCheck, HelpCircle, Layers, Search,
   Lock, Unlock, ChevronDown, ChevronUp, X, Check, Users, ShieldAlert,
-  FileSpreadsheet, Sparkles
+  FileSpreadsheet, Sparkles, TrendingUp
 } from "lucide-react";
 import { apiRequest } from "../../lib/queryClient";
 import { useToast } from "../../hooks/useToast";
@@ -46,7 +46,7 @@ export default function DigitalRecordsWorkspace({ task, onBack }: Props) {
   const [approvalSubject, setApprovalSubject] = useState(
     `MTD IT Quarterly Summary Review - ${task.clientName} - Quarter ${task.quarterNumber || 1}`
   );
-  const [approvalEmail, setApprovalEmail] = useState(`client.${task.clientId}@domain.co.uk`);
+  const [approvalEmail, setApprovalEmail] = useState(task.clientEmail || "");
   const [approvalBody, setApprovalBody] = useState(
     `Dear ${task.clientName},\n\nPlease find attached your Making Tax Digital for Income Tax (MTD IT) quarterly figures for Quarter ${task.quarterNumber || 1} (${task.taxYear || "2025-26"}).\n\nPlease review and approve these cumulative figures so we can proceed with submitting to HMRC.\n\nKind regards,\nYour Accounting Team`
   );
@@ -67,7 +67,7 @@ export default function DigitalRecordsWorkspace({ task, onBack }: Props) {
 
   // New record form state
   const [recordForm, setRecordForm] = useState({
-    recordDate: new Date().toISOString().split("T")[0],
+    recordDate: task.startDate ? task.startDate.split("T")[0] : new Date().toISOString().split("T")[0],
     invoiceNumber: "",
     amount: "",
     category: "Turnover",
@@ -111,6 +111,14 @@ export default function DigitalRecordsWorkspace({ task, onBack }: Props) {
     enabled: !!task.sourceId && !!task.quarterNumber,
   });
 
+  // Active summary based on Quarterly Summary vs Cumulative Summary sub-tab (Capium Article 9000274692)
+  const activeSummary = useMemo(() => {
+    if (!summary) return null;
+    return summarySubTab === "quarterly"
+      ? (summary.quarterly || summary)
+      : (summary.cumulative || summary);
+  }, [summary, summarySubTab]);
+
   // Filtered Digital Records
   const filteredRecords = useMemo(() => {
     return records.filter((r) => {
@@ -134,6 +142,7 @@ export default function DigitalRecordsWorkspace({ task, onBack }: Props) {
     mutationFn: async (data: typeof recordForm) => {
       const res = await apiRequest("POST", "/api/mtd-it/digital-records", {
         sourceId: task.sourceId,
+        quarterId: task.quarterId,
         ...data,
       });
       return res.json();
@@ -143,7 +152,7 @@ export default function DigitalRecordsWorkspace({ task, onBack }: Props) {
       queryClient.invalidateQueries({ queryKey: [`/api/mtd-it/summary`, task.sourceId, task.quarterNumber] });
       setShowAddModal(false);
       setRecordForm({
-        recordDate: new Date().toISOString().split("T")[0],
+        recordDate: task.startDate ? task.startDate.split("T")[0] : new Date().toISOString().split("T")[0],
         invoiceNumber: "",
         amount: "",
         category: "Turnover",
@@ -244,14 +253,35 @@ export default function DigitalRecordsWorkspace({ task, onBack }: Props) {
     }
   };
 
-  // Trigger Sample CSV Download
-  const handleDownloadSample = (type: string) => {
+  // Trigger Sample CSV Download (Capium Article 9000271063)
+  const handleDownloadSample = async (type: string) => {
     setShowTemplateDropdown(false);
-    window.open(`/api/mtd-it/sample-template/${type}`, "_blank");
-    toast({
-      title: "Sample Template Downloaded",
-      description: `Downloaded MTD IT bridging CSV template for ${type}.`,
-    });
+    try {
+      const res = await fetch(`/api/mtd-it/sample-template/${type}`);
+      if (!res.ok) {
+        throw new Error("Server responded with status " + res.status);
+      }
+      const text = await res.text();
+      const blob = new Blob([text], { type: "text/csv;charset=utf-8;" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `MTD_IT_${type}_Template.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      toast({
+        title: "Template Downloaded",
+        description: `Sample CSV template for ${type.replace("-", " ")} downloaded successfully.`,
+      });
+    } catch (err: any) {
+      toast({
+        title: "Download Failed",
+        description: err.message || "Failed to download sample CSV template",
+        variant: "destructive",
+      });
+    }
   };
 
   // Submit to HMRC
@@ -284,8 +314,16 @@ export default function DigitalRecordsWorkspace({ task, onBack }: Props) {
     }
   };
 
-  // Request Capisign Client Approval (Article 9000278130)
+  // Request eSign Client Approval (Article 9000278130)
   const handleSendApprovalEmail = async () => {
+    if (!approvalEmail.trim()) {
+      toast({
+        title: "Recipient Email Required",
+        description: "Please enter the client's email address to send the eSign approval request.",
+        variant: "destructive",
+      });
+      return;
+    }
     try {
       setIsRequestingApproval(true);
       const res = await apiRequest("POST", "/api/mtd-it/request-approval", {
@@ -303,7 +341,7 @@ export default function DigitalRecordsWorkspace({ task, onBack }: Props) {
       setShowApprovalModal(false);
       toast({
         title: "Approval Request Sent",
-        description: "Cumulative summary sent to client portal and Capisign for electronic approval.",
+        description: "Cumulative summary sent to client portal and eSign for electronic approval.",
       });
     } catch (err: any) {
       toast({ title: "Approval Error", description: err.message, variant: "destructive" });
@@ -900,6 +938,34 @@ export default function DigitalRecordsWorkspace({ task, onBack }: Props) {
               </button>
             </div>
 
+            {/* Informational Mode Banner explaining the sub-tab */}
+            {summarySubTab === "quarterly" ? (
+              <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-xl flex items-center justify-between text-xs text-blue-900">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={16} className="text-blue-600 flex-shrink-0" />
+                  <span>
+                    <strong>Quarterly Summary Mode:</strong> Displaying figures strictly recorded within Quarter {task.quarterNumber} ({startDate} to {endDate}).
+                  </span>
+                </div>
+                <span className="font-bold bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded text-[11px]">
+                  Quarter {task.quarterNumber} Isolated
+                </span>
+              </div>
+            ) : (
+              <div className="p-3.5 bg-purple-50/70 border border-purple-200 rounded-xl flex items-center justify-between text-xs text-purple-900">
+                <div className="flex items-center gap-2">
+                  <Building2 size={16} className="text-[#6c5ce7] flex-shrink-0" />
+                  <span>
+                    <strong>Cumulative Summary Mode (HMRC Filing Basis):</strong> Progressive Year-to-Date figures accumulated from 6 April 2025 through Quarter {task.quarterNumber}.
+                    {task.quarterNumber === 1 && " (Note: For Quarter 1, Quarterly and Cumulative totals are identical as Q1 starts the tax year)."}
+                  </span>
+                </div>
+                <span className="font-bold bg-purple-100 text-purple-800 px-2.5 py-0.5 rounded text-[11px]">
+                  YTD Cumulative (Q1{task.quarterNumber && task.quarterNumber > 1 ? ` - Q${task.quarterNumber}` : ""})
+                </span>
+              </div>
+            )}
+
             {/* Shared Ownership notice if applicable (Article 9000277853) */}
             {summary?.isSharedOwnership && (
               <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs text-amber-900">
@@ -912,6 +978,74 @@ export default function DigitalRecordsWorkspace({ task, onBack }: Props) {
                 <span className="font-bold bg-amber-100 px-2.5 py-0.5 rounded text-amber-800">
                   Split: {summary.sharedOwnershipPct}%
                 </span>
+              </div>
+            )}
+
+            {/* Quarterly Progression to Cumulative YTD (Displayed on Cumulative Summary tab) */}
+            {summarySubTab === "cumulative" && summary?.quarterProgression && summary.quarterProgression.length > 0 && (
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp size={16} className="text-[#6c5ce7]" />
+                    <h4 className="text-xs font-bold text-gray-800">Quarterly Progression to Cumulative Total</h4>
+                  </div>
+                  <span className="text-[11px] text-gray-500 font-medium">HMRC Statutory Submission Schedule</span>
+                </div>
+                <div className="overflow-x-auto border border-gray-100 rounded-lg">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-gray-50 text-gray-600 font-semibold border-b border-gray-200 uppercase text-[10px]">
+                      <tr>
+                        <th className="px-3 py-2">Quarter</th>
+                        <th className="px-3 py-2">Period</th>
+                        <th className="px-3 py-2 text-right">Turnover</th>
+                        <th className="px-3 py-2 text-right">Allowable Expenses</th>
+                        <th className="px-3 py-2 text-right">Net Profit</th>
+                        <th className="px-3 py-2 text-center">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {summary.quarterProgression.map((qp) => (
+                        <tr key={qp.quarter} className={qp.quarter === task.quarterNumber ? "bg-purple-50/40 font-semibold" : ""}>
+                          <td className="px-3 py-2.5 flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-[#6c5ce7]" />
+                            {qp.name} {qp.quarter === task.quarterNumber && <span className="text-[10px] text-[#6c5ce7] font-bold">(Current)</span>}
+                          </td>
+                          <td className="px-3 py-2.5 text-gray-600">{qp.period}</td>
+                          <td className="px-3 py-2.5 text-right font-medium text-emerald-700">£{qp.turnover}</td>
+                          <td className="px-3 py-2.5 text-right font-medium text-rose-700">£{qp.allowableExpenses}</td>
+                          <td className="px-3 py-2.5 text-right font-bold text-gray-800">£{qp.netProfit}</td>
+                          <td className="px-3 py-2.5 text-center">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                              qp.status === "Submitted" ? "bg-emerald-100 text-emerald-800" : "bg-blue-100 text-blue-800"
+                            }`}>
+                              {qp.status || "Open"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                      {/* Cumulative Total Row */}
+                      <tr className="bg-purple-50 font-bold border-t-2 border-purple-200 text-purple-950">
+                        <td className="px-3 py-2.5" colSpan={2}>
+                          Cumulative Total (Submitted to HMRC)
+                        </td>
+                        <td className="px-3 py-2.5 text-right text-emerald-800">
+                          £{summary.cumulative?.threeLine?.turnover || "0.00"}
+                        </td>
+                        <td className="px-3 py-2.5 text-right text-rose-800">
+                          £{summary.cumulative?.threeLine?.allowableExpenses || "0.00"}
+                        </td>
+                        <td className="px-3 py-2.5 text-right text-[#6c5ce7] font-extrabold">
+                          £{summary.cumulative?.threeLine?.netProfit || "0.00"}
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
+                          <span className="px-2 py-0.5 rounded text-[10px] bg-purple-200 text-purple-900 font-bold">
+                            Filing Figure
+                          </span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
@@ -940,7 +1074,7 @@ export default function DigitalRecordsWorkspace({ task, onBack }: Props) {
                           <input
                             type="text"
                             readOnly
-                            value={summary?.threeLine?.turnover || "0.00"}
+                            value={activeSummary?.threeLine?.turnover || "0.00"}
                             className="w-full pl-7 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs font-bold text-gray-800"
                           />
                         </div>
@@ -982,8 +1116,20 @@ export default function DigitalRecordsWorkspace({ task, onBack }: Props) {
                           <input
                             type="text"
                             readOnly
-                            value={summary?.threeLine?.allowableExpenses || "0.00"}
+                            value={activeSummary?.threeLine?.allowableExpenses || "0.00"}
                             className="w-full pl-7 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs font-bold text-gray-800"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-gray-600 mb-1">Net Profit / (Loss)</label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-2 text-gray-400 font-semibold">£</span>
+                          <input
+                            type="text"
+                            readOnly
+                            value={activeSummary?.threeLine?.netProfit || "0.00"}
+                            className="w-full pl-7 pr-3 py-2 bg-purple-50 border border-purple-200 rounded-lg text-xs font-extrabold text-[#6c5ce7]"
                           />
                         </div>
                       </div>
@@ -1018,7 +1164,7 @@ export default function DigitalRecordsWorkspace({ task, onBack }: Props) {
                           <input
                             type="text"
                             readOnly
-                            value={summary?.threeLine?.turnover || "0.00"}
+                            value={activeSummary?.threeLine?.turnover || "0.00"}
                             className="w-full pl-7 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs font-bold text-gray-800"
                           />
                         </div>
@@ -1070,7 +1216,7 @@ export default function DigitalRecordsWorkspace({ task, onBack }: Props) {
                         { key: "Interest", label: "Interest" },
                         { key: "Others", label: "Others" },
                       ].map((item) => {
-                        const val = summary?.detailed?.categoryBreakdown?.[item.key]?.allowable || 0;
+                        const val = activeSummary?.detailed?.categoryBreakdown?.[item.key]?.allowable || 0;
                         return (
                           <div key={item.key}>
                             <label className="block text-[11px] font-semibold text-gray-600 mb-1">{item.label}</label>
@@ -1125,7 +1271,7 @@ export default function DigitalRecordsWorkspace({ task, onBack }: Props) {
                       { key: "Interest", label: "Disallowable Interest" },
                       { key: "Others", label: "Disallowable Other Expenses" },
                     ].map((item) => {
-                      const val = summary?.detailed?.categoryBreakdown?.[item.key]?.disallowable || 0;
+                      const val = activeSummary?.detailed?.categoryBreakdown?.[item.key]?.disallowable || 0;
                       return (
                         <div key={item.key}>
                           <label className="block text-[11px] font-semibold text-gray-600 mb-1">{item.label}</label>
@@ -1164,7 +1310,7 @@ export default function DigitalRecordsWorkspace({ task, onBack }: Props) {
               </div>
 
               <div className="flex items-center gap-2">
-                {/* Submit for Approval (Capisign Popup - Article 9000278130) */}
+                {/* Submit for Approval (eSign Popup - Article 9000278130) */}
                 <button
                   onClick={() => setShowApprovalModal(true)}
                   className="px-4 py-2 text-xs font-semibold text-white bg-[#6c5ce7] hover:bg-[#5b4bc4] rounded-lg transition-colors shadow-sm flex items-center gap-1.5"
@@ -1428,9 +1574,14 @@ export default function DigitalRecordsWorkspace({ task, onBack }: Props) {
               <p className="text-gray-600">
                 Paste your CSV content below matching the standard Capium Bridging Template. Columns:
               </p>
-              <code className="block bg-gray-100 p-2.5 rounded-lg text-[11px] text-gray-700 font-mono">
-                Invoice number,Party Name,Invoice date,Transaction Type,Category,Amount,IsDisAllowable,Description
-              </code>
+              {source?.sharedOwnershipPct && parseFloat(source.sharedOwnershipPct) < 100 && (
+                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-900 flex items-start gap-2">
+                  <AlertCircle size={14} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                  <span>
+                    <strong>Joint Property Easement (HMRC):</strong> Please enter the <strong>full gross figures (100%)</strong> in your bridging spreadsheet. SanSuite will automatically prorate this client's {source.sharedOwnershipPct}% share upon submission.
+                  </span>
+                </div>
+              )}
 
               <textarea
                 rows={6}
@@ -1468,14 +1619,14 @@ export default function DigitalRecordsWorkspace({ task, onBack }: Props) {
         </div>
       )}
 
-      {/* Modal: Capisign Approval Email Popup (Article 9000278130) */}
+      {/* Modal: eSign Approval Email Popup (Article 9000278130) */}
       {showApprovalModal && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl border border-gray-200 max-w-xl w-full p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-gray-200 pb-3">
               <div className="flex items-center gap-2">
                 <Send size={18} className="text-[#6c5ce7]" />
-                <h3 className="text-base font-bold text-gray-800">Submit for Client Approval (Capisign)</h3>
+                <h3 className="text-base font-bold text-gray-800">Submit for Client Approval (eSign)</h3>
               </div>
               <button onClick={() => setShowApprovalModal(false)} className="text-gray-400 hover:text-gray-600">
                 <X size={18} />
@@ -1489,6 +1640,7 @@ export default function DigitalRecordsWorkspace({ task, onBack }: Props) {
                   type="email"
                   value={approvalEmail}
                   onChange={(e) => setApprovalEmail(e.target.value)}
+                  placeholder="Enter client email address"
                   className="w-full p-2 border border-gray-300 rounded-lg text-xs font-medium"
                 />
               </div>
@@ -1533,7 +1685,7 @@ export default function DigitalRecordsWorkspace({ task, onBack }: Props) {
                 disabled={isRequestingApproval}
                 className="px-4 py-2 text-xs font-semibold text-white bg-[#6c5ce7] hover:bg-[#5b4bc4] rounded-lg shadow-sm flex items-center gap-1.5 disabled:opacity-50"
               >
-                <Send size={13} /> {isRequestingApproval ? "Sending..." : "Send to Client via Capisign"}
+                <Send size={13} /> {isRequestingApproval ? "Sending..." : "Send to Client via eSign"}
               </button>
             </div>
           </div>

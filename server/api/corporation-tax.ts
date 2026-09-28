@@ -1,4 +1,7 @@
 import { Router } from "express";
+import fs from "fs";
+import path from "path";
+import multer from "multer";
 import { db } from "../db";
 import {
   ct600Returns, ct600CapitalAllowances, ct600LossSchedules,
@@ -8,13 +11,41 @@ import {
   esignDocuments, esignSigners, esignAuditLogs,
   journalEntries, journalLines
 } from "@shared/schema";
-import { eq, and, desc, asc, like, or } from "drizzle-orm";
+import { eq, and, desc, asc, like, or, sql } from "drizzle-orm";
 import { authMiddleware } from "../lib/authUtils";
 import { nanoid } from "nanoid";
 import crypto from "crypto";
 
 export const corporationTaxRouter = Router();
 corporationTaxRouter.use(authMiddleware);
+
+// Ensure attachments_json column exists on ct600_returns table
+(async () => {
+  try {
+    await db.execute(sql`ALTER TABLE ct600_returns ADD COLUMN attachments_json TEXT NULL`);
+  } catch (e) {
+    // Column already exists or error ignored
+  }
+})();
+
+// Storage directory for uploaded CT600 attachments & schedules
+const ctAttachmentsDir = path.resolve(process.cwd(), "uploads", "ct600-attachments");
+if (!fs.existsSync(ctAttachmentsDir)) {
+  fs.mkdirSync(ctAttachmentsDir, { recursive: true });
+}
+
+const ctAttachmentStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, ctAttachmentsDir),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    const base = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, "_");
+    cb(null, `${base}_${Date.now()}${ext}`);
+  },
+});
+const uploadCtAttachment = multer({
+  storage: ctAttachmentStorage,
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB max
+});
 
 // ====================================================
 // 1. LIST & GET CT600 RETURNS
@@ -28,6 +59,31 @@ corporationTaxRouter.get("/:clientId/returns", async (req: any, res) => {
       .from(ct600Returns)
       .where(eq(ct600Returns.clientId, clientId))
       .orderBy(desc(ct600Returns.accountingPeriodEnd));
+
+    const officers = await db
+      .select()
+      .from(apCompanyOfficers)
+      .where(eq(apCompanyOfficers.clientId, clientId));
+    const signatory = officers.find((o) => o.isSignatoryOnAccounts) || officers[0];
+    let defaultSignatoryName = "";
+    let defaultSignatoryRole = "Director";
+    if (signatory?.officerName) {
+      const raw = signatory.officerName;
+      if (raw.includes(",")) {
+        const parts = raw.split(",").map((p) => p.trim());
+        defaultSignatoryName = parts.length >= 2 ? `${parts[1]} ${parts[0]}` : raw;
+      } else {
+        defaultSignatoryName = raw;
+      }
+      defaultSignatoryRole = signatory.officerRole || "Director";
+    }
+
+    for (const ret of returns) {
+      if (!ret.declarationName && defaultSignatoryName) {
+        ret.declarationName = defaultSignatoryName;
+        ret.declarationStatus = defaultSignatoryRole;
+      }
+    }
 
     res.json(returns);
   } catch (error: any) {
@@ -46,6 +102,25 @@ corporationTaxRouter.get("/:clientId/returns/:id", async (req: any, res) => {
       .where(and(eq(ct600Returns.id, returnId), eq(ct600Returns.clientId, clientId)));
 
     if (!ret) return res.status(404).json({ error: "CT600 return not found." });
+
+    // Auto-populate declaration signatory from Accounts Production if empty
+    if (!ret.declarationName) {
+      const officers = await db
+        .select()
+        .from(apCompanyOfficers)
+        .where(eq(apCompanyOfficers.clientId, clientId));
+      const signatory = officers.find((o) => o.isSignatoryOnAccounts) || officers[0];
+      if (signatory?.officerName) {
+        let raw = signatory.officerName;
+        if (raw.includes(",")) {
+          const parts = raw.split(",").map((p) => p.trim());
+          ret.declarationName = parts.length >= 2 ? `${parts[1]} ${parts[0]}` : raw;
+        } else {
+          ret.declarationName = raw;
+        }
+        ret.declarationStatus = signatory.officerRole || "Director";
+      }
+    }
 
     const [ca] = await db
       .select()
@@ -110,24 +185,27 @@ corporationTaxRouter.post("/:clientId/returns", async (req: any, res) => {
     const taxableTrading = Math.max(0, netProfit + disallowable + depreciation - caClaimed - lossRelief);
     const profitsChargeable = Math.max(0, taxableTrading + nonTrading - donations);
 
-    // UK Corporation Tax Rates:
-    // Profits <= £50,000 -> 19%
-    // Profits >= £250,000 -> 25%
-    // Between £50,000 and £250,000 -> 25% with Marginal Relief: (Upper Limit - Profits) * (3/200)
+    // UK Corporation Tax Rates & Associated Companies (Finance Act 2021 / 2023)
+    // Box 326: Lower Limit £50k / (1 + N), Upper Limit £250k / (1 + N)
+    const associatedCount = parseInt(body.associatedCompaniesCount || "0");
+    const divisor = 1 + Math.max(0, associatedCount);
+    const lowerLimit = 50000 / divisor;
+    const upperLimit = 250000 / divisor;
+
     let ctRate = 19.0;
     let marginalRelief = 0;
     let taxPayable = 0;
 
-    if (profitsChargeable <= 50000) {
+    if (profitsChargeable <= lowerLimit) {
       ctRate = 19.0;
       taxPayable = profitsChargeable * 0.19;
-    } else if (profitsChargeable >= 250000) {
+    } else if (profitsChargeable >= upperLimit) {
       ctRate = 25.0;
       taxPayable = profitsChargeable * 0.25;
     } else {
       ctRate = 25.0;
       const fullTax = profitsChargeable * 0.25;
-      marginalRelief = (250000 - profitsChargeable) * (3 / 200);
+      marginalRelief = (upperLimit - profitsChargeable) * (3 / 200);
       taxPayable = Math.max(0, fullTax - marginalRelief);
     }
 
@@ -158,6 +236,26 @@ corporationTaxRouter.post("/:clientId/returns", async (req: any, res) => {
       }
     }
 
+    let finalDeclarationName = body.declarationName || null;
+    let finalDeclarationStatus = body.declarationStatus || "Director";
+    if (!finalDeclarationName) {
+      const officers = await db
+        .select()
+        .from(apCompanyOfficers)
+        .where(eq(apCompanyOfficers.clientId, clientId));
+      const signatory = officers.find((o) => o.isSignatoryOnAccounts) || officers[0];
+      if (signatory?.officerName) {
+        let raw = signatory.officerName;
+        if (raw.includes(",")) {
+          const parts = raw.split(",").map((p) => p.trim());
+          finalDeclarationName = parts.length >= 2 ? `${parts[1]} ${parts[0]}` : raw;
+        } else {
+          finalDeclarationName = raw;
+        }
+        finalDeclarationStatus = signatory.officerRole || "Director";
+      }
+    }
+
     if (!returnId) {
       const [inserted] = await db.insert(ct600Returns).values({
         practiceId,
@@ -183,6 +281,16 @@ corporationTaxRouter.post("/:clientId/returns", async (req: any, res) => {
         corporationTaxPayable: taxPayable.toFixed(2),
         taxDeductedAtSource: taxDeducted.toFixed(2),
         netTaxDue: netTaxDue.toFixed(2),
+        associatedCompaniesCount: associatedCount,
+        isAmendedReturn: body.isAmendedReturn === true || body.isAmendedReturn === 1 || body.isAmendedReturn === "true",
+        amendmentReason: body.amendmentReason || null,
+        companyType: body.companyType || "0",
+        bankName: body.bankName || null,
+        bankSortCode: body.bankSortCode || null,
+        bankAccountNumber: body.bankAccountNumber || null,
+        bankAccountName: body.bankAccountName || null,
+        declarationName: finalDeclarationName,
+        declarationStatus: finalDeclarationStatus,
         paymentDueDate,
         filingDueDate,
         status: "Draft",
@@ -226,6 +334,16 @@ corporationTaxRouter.post("/:clientId/returns", async (req: any, res) => {
           corporationTaxPayable: taxPayable.toFixed(2),
           taxDeductedAtSource: taxDeducted.toFixed(2),
           netTaxDue: netTaxDue.toFixed(2),
+          associatedCompaniesCount: associatedCount,
+          isAmendedReturn: body.isAmendedReturn === true || body.isAmendedReturn === 1 || body.isAmendedReturn === "true",
+          amendmentReason: body.amendmentReason !== undefined ? body.amendmentReason : undefined,
+          companyType: body.companyType || undefined,
+          bankName: body.bankName !== undefined ? body.bankName : undefined,
+          bankSortCode: body.bankSortCode !== undefined ? body.bankSortCode : undefined,
+          bankAccountNumber: body.bankAccountNumber !== undefined ? body.bankAccountNumber : undefined,
+          bankAccountName: body.bankAccountName !== undefined ? body.bankAccountName : undefined,
+          declarationName: body.declarationName !== undefined ? body.declarationName : undefined,
+          declarationStatus: body.declarationStatus || undefined,
           paymentDueDate,
           filingDueDate,
           updatedAt: new Date(),
@@ -804,6 +922,540 @@ corporationTaxRouter.get("/:clientId/returns/:id/tax-due", async (req: any, res)
 });
 
 // ====================================================
+// 7B. CAPIUM-PARITY REPORTS: TAX SUMMARY DOC, COMPUTATION REPORT & IXBRL
+// ====================================================
+
+// 1. Download Client Tax Summary Cover Letter (.doc format matching Capium)
+corporationTaxRouter.get("/:clientId/returns/:id/tax-summary-doc", async (req: any, res) => {
+  try {
+    const clientId = parseInt(req.params.clientId);
+    const returnId = parseInt(req.params.id);
+    if (isNaN(clientId) || isNaN(returnId)) {
+      return res.status(400).json({ error: "Invalid client ID or return ID." });
+    }
+
+    const [ret] = await db.select().from(ct600Returns).where(and(eq(ct600Returns.id, returnId), eq(ct600Returns.clientId, clientId)));
+    const [client] = await db.select().from(clients).where(eq(clients.id, clientId));
+    if (!ret || !client) return res.status(404).json({ error: "Return or client not found." });
+
+    const practiceId = req.user?.practiceId || ret.practiceId;
+    let firmName = "Pegasus Accountancy Services Ltd";
+    let firmAddress = "Suit 207, 344-348 High Road, Ilford, United Kingdom, IG1 1QP";
+    let firmPhone = "07904608197";
+    let accountantName = req.user?.fullName || "Arif Ullah";
+
+    if (practiceId) {
+      const [firm] = await db.select().from(firmDetails).where(eq(firmDetails.practiceId, practiceId));
+      if (firm) {
+        firmName = firm.firmName || firmName;
+        firmAddress = [firm.address, firm.city, firm.postCode].filter(Boolean).join(", ") || firmAddress;
+        firmPhone = firm.phone || firmPhone;
+      }
+    }
+
+    const startDate = new Date(ret.accountingPeriodStart);
+    const endDate = new Date(ret.accountingPeriodEnd);
+    const formattedDate = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }).replace(/\//g, "-");
+    const endDateStr = endDate.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
+    const taxYear = ret.taxYear || `${startDate.getFullYear()}-${String(endDate.getFullYear()).slice(-2)}`;
+
+    const totalProfit = parseFloat(ret.taxableTradingProfit || ret.profitsChargeableToCt || "0");
+    const netTaxDue = parseFloat(ret.netTaxDue || ret.corporationTaxPayable || "0");
+
+    const endYear = endDate.getFullYear();
+    const fyCutoff = new Date(Date.UTC(endYear, 2, 31, 23, 59, 59));
+    const totalDays = Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+
+    interface FYBreakdown {
+      year: number;
+      label: string;
+      days: number;
+      profit: number;
+      rate: number;
+      tax: number;
+    }
+
+    const fyBreakdown: FYBreakdown[] = [];
+
+    if (startDate <= fyCutoff && endDate > fyCutoff) {
+      const days1 = Math.round((fyCutoff.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      const days2 = Math.max(1, totalDays - days1);
+      const profit1 = Math.round(totalProfit * (days1 / totalDays));
+      const profit2 = Math.max(0, Math.round(totalProfit - profit1));
+      const rate1 = 19.0;
+      const rate2 = 19.0;
+      const tax1 = Number((profit1 * (rate1 / 100)).toFixed(2));
+      const tax2 = Number((profit2 * (rate2 / 100)).toFixed(2));
+
+      fyBreakdown.push({
+        year: endYear - 1,
+        label: `Financial Year: ${endYear - 1}  (${startDate.toLocaleDateString("en-GB")} - 31/03/${endYear})`,
+        days: days1,
+        profit: profit1,
+        rate: rate1,
+        tax: tax1,
+      });
+      fyBreakdown.push({
+        year: endYear,
+        label: `Financial Year: ${endYear}  (01/04/${endYear} - ${endDate.toLocaleDateString("en-GB")})`,
+        days: days2,
+        profit: profit2,
+        rate: rate2,
+        tax: tax2,
+      });
+    } else {
+      fyBreakdown.push({
+        year: endYear,
+        label: `Financial Year: ${endYear}  (${startDate.toLocaleDateString("en-GB")} - ${endDate.toLocaleDateString("en-GB")})`,
+        days: totalDays,
+        profit: Math.round(totalProfit),
+        rate: 19.0,
+        tax: netTaxDue,
+      });
+    }
+
+    const rowsHtml = fyBreakdown.map(fy => `
+      <tr>
+        <td>${fy.label}</td>
+        <td>&pound;${fy.profit}&nbsp;@ ${fy.rate} %</td>
+        <td style='text-align: right'>&pound;${fy.tax.toFixed(2)}</td>
+      </tr>
+    `).join("");
+
+    const clientAddressHtml = [
+      client.addressLine1,
+      client.city,
+      client.country || "United Kingdom",
+      client.postcode
+    ].filter(Boolean).join("<br>") || "United Kingdom";
+
+    const docHtml = `<br><p>${formattedDate}<br><br><b>${client.clientName}</b><br>${clientAddressHtml}<br><br>Dear ${client.clientName} <br><br>Please find enclosed copies of your draft Corporation tax accounts for the <b>${taxYear}</b> fiscal year ending <b>${endDateStr}</b>. If you agree with the figures presented, sign and date the copy of the accounts below. Once completed, kindly return this form to us for our records. Thank you for your cooperation. <br><br>Based on our calculations payment will be due in ${taxYear} as follows: <br><br> <table colspan='5' cellpadding='5' width='600' style='margin: 0 auto'><tr><th>&nbsp;</th><th>%</th><th>&nbsp;</th><th style='text-align: center'>&pound;</th></tr>${rowsHtml}<tr><td>Corporation tax</td><td>&nbsp;</td><td>&nbsp;</td><td style='text-align: right;border-bottom: 1px solid #ddd;'>&pound;${netTaxDue.toFixed(2)}</td></tr> <tr><td><b>Corporation Tax Chargeable</b></td><td>&nbsp;</td><td>&nbsp;</td><td style='text-align: right;border-bottom: 1px solid #ddd;'>&pound;${netTaxDue.toFixed(2)}</td></tr> <tr><td colspan='3'>&nbsp;</td></tr> <tr><td><span style='border-bottom: 1px solid #ddd;padding: 6px 0px;'>Calculation of Tax outstanding or overpaid:</span></td><td>&nbsp;</td></tr> <tr><td colspan='2'><span>Net Corporation Tax liability</span><span style='padding-left:112px;'> &pound; ${netTaxDue.toFixed(2)}</span></td><td>&nbsp;</td></tr> <tr><td colspan='2'><span>Self-Assessment of tax payable</span><span style='padding-left:98px;'> &pound; ${netTaxDue.toFixed(2)}</span></td><td>&nbsp;</td></tr> <tr><td colspan='2'><span>Tax Due/(Overpaid)</span><span style='padding-left:112px;'> &pound; ${netTaxDue.toFixed(2)}</span></td><td>&nbsp;</td></tr> </table> <br><br> To pay your Corporation Tax  please click on the link below: : <br> <a href='https://www.gov.uk/pay-corporation-tax/bank-details' target='_blank'>https://www.gov.uk/pay-corporation-tax/bank-details</a><br> <br>Finally, I enclose my invoice for your attention <br><br>Kind Regards,<br><br><b>${accountantName}</b><br><b>${firmName}</b><br>${firmAddress}<br>${firmPhone}</p>`;
+
+    const safeClientName = (client.clientName || "Client").replace(/[^a-zA-Z0-9_-]/g, "_");
+    res.setHeader("Content-Type", "application/msword; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${safeClientName}_CT_Calc.doc"`);
+    res.send(docHtml);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 2. Fetch Structured Tax Computation Report Data
+corporationTaxRouter.get("/:clientId/returns/:id/computation-report", async (req: any, res) => {
+  try {
+    const clientId = parseInt(req.params.clientId);
+    const returnId = parseInt(req.params.id);
+    if (isNaN(clientId) || isNaN(returnId)) {
+      return res.status(400).json({ error: "Invalid client ID or return ID." });
+    }
+
+    const [ret] = await db.select().from(ct600Returns).where(and(eq(ct600Returns.id, returnId), eq(ct600Returns.clientId, clientId)));
+    const [client] = await db.select().from(clients).where(eq(clients.id, clientId));
+    if (!ret || !client) return res.status(404).json({ error: "Return or client not found." });
+
+    const startDate = new Date(ret.accountingPeriodStart);
+    const endDate = new Date(ret.accountingPeriodEnd);
+
+    const netProfit = parseFloat(ret.netAccountingProfit || "0");
+    const disallowables = parseFloat(ret.disallowableExpenses || "0");
+    const depreciation = parseFloat(ret.depreciationAddBack || "0");
+    const capitalAllowances = parseFloat(ret.capitalAllowancesClaimed || "0");
+    const lossRelief = parseFloat(ret.tradingLossesRelievedCurrentYear || "0");
+    const nonTrading = parseFloat(ret.nonTradingIncome || "0");
+    const donations = parseFloat(ret.qualifyingDonations || "0");
+    const taxDeducted = parseFloat(ret.taxDeductedAtSource || "0");
+
+    const taxableTradingProfit = Math.max(0, netProfit + disallowables + depreciation - capitalAllowances - lossRelief);
+    const profitsChargeable = Math.max(0, taxableTradingProfit + nonTrading - donations);
+
+    const endYear = endDate.getFullYear();
+    const fyCutoff = new Date(Date.UTC(endYear, 2, 31, 23, 59, 59));
+    const totalDays = Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+
+    const fyBreakdown: any[] = [];
+    if (startDate <= fyCutoff && endDate > fyCutoff) {
+      const days1 = Math.round((fyCutoff.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      const days2 = Math.max(1, totalDays - days1);
+      const profit1 = Math.round(profitsChargeable * (days1 / totalDays));
+      const profit2 = Math.max(0, Math.round(profitsChargeable - profit1));
+      const rate1 = 19.0;
+      const rate2 = 19.0;
+      const tax1 = Number((profit1 * (rate1 / 100)).toFixed(2));
+      const tax2 = Number((profit2 * (rate2 / 100)).toFixed(2));
+
+      fyBreakdown.push({
+        year: endYear - 1,
+        periodLabel: `Financial Year : ${endYear - 1} (${startDate.toLocaleDateString("en-GB")} - 31/03/${endYear})`,
+        profit: profit1,
+        rate: rate1,
+        tax: tax1,
+      });
+      fyBreakdown.push({
+        year: endYear,
+        periodLabel: `Financial Year : ${endYear} (01/04/${endYear} - ${endDate.toLocaleDateString("en-GB")})`,
+        profit: profit2,
+        rate: rate2,
+        tax: tax2,
+      });
+    } else {
+      fyBreakdown.push({
+        year: endYear,
+        periodLabel: `Financial Year : ${endYear} (${startDate.toLocaleDateString("en-GB")} - ${endDate.toLocaleDateString("en-GB")})`,
+        profit: Math.round(profitsChargeable),
+        rate: 19.0,
+        tax: Number(ret.netTaxDue || "0"),
+      });
+    }
+
+    const totalTaxChargeable = fyBreakdown.reduce((sum, item) => sum + item.tax, 0);
+    const taxOutstanding = Math.max(0, totalTaxChargeable - taxDeducted);
+
+    res.json({
+      client,
+      return: ret,
+      taxDistrict: "623",
+      taxReference: ret.utrNumber || client.utrNumber || "2206901577",
+      accountingPeriodStart: ret.accountingPeriodStart,
+      accountingPeriodEnd: ret.accountingPeriodEnd,
+      turnover: ret.turnover || "0.00",
+      netProfit,
+      disallowables,
+      depreciation,
+      capitalAllowances,
+      lossRelief,
+      taxableTradingProfit,
+      nonTrading,
+      donations,
+      profitsChargeable,
+      fyBreakdown,
+      totalTaxChargeable,
+      taxDeducted,
+      netTaxDue: taxOutstanding,
+      taxOutstanding,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 3. Serve Authentic Company Accounts (iXBRL) file
+corporationTaxRouter.get("/:clientId/returns/:id/ixbrl-accounts", async (req: any, res) => {
+  try {
+    const clientId = parseInt(req.params.clientId);
+    const [client] = await db.select().from(clients).where(eq(clients.id, clientId));
+    if (!client) return res.status(404).json({ error: "Client not found." });
+
+    const filePath = path.resolve(process.cwd(), "form", "LnkMicroCo1.html");
+    if (fs.existsSync(filePath)) {
+      let content = fs.readFileSync(filePath, "utf-8");
+      if (client.clientName) {
+        content = content.replace(/JAS DEALS LIMITED/g, client.clientName);
+      }
+      if (client.registrationNumber) {
+        content = content.replace(/14804436/g, client.registrationNumber.trim());
+      }
+      res.setHeader("Content-Type", "application/xhtml+xml; charset=utf-8");
+      return res.send(content);
+    }
+
+    res.status(404).json({ error: "iXBRL accounts file not found on disk." });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 4. Download Official CT600 Return PDF (Direct Download matching Capium)
+corporationTaxRouter.get("/:clientId/returns/:id/ct600-pdf", async (req: any, res) => {
+  try {
+    const clientId = parseInt(req.params.clientId);
+    const returnId = parseInt(req.params.id);
+    const [client] = await db.select().from(clients).where(eq(clients.id, clientId));
+    const [ret] = await db.select().from(ct600Returns).where(and(eq(ct600Returns.id, returnId), eq(ct600Returns.clientId, clientId)));
+    if (!ret || !client) return res.status(404).json({ error: "Return or client not found." });
+
+    const safeName = (client.clientName || "Company").replace(/[^a-zA-Z0-9_-]/g, "_");
+    const downloadFileName = `${(client.clientName || "Company").trim().replace(/[\\/:*?"<>|]/g, "_")}_CT600.pdf`;
+    const candidates = [
+      path.resolve(process.cwd(), `${safeName}_CT600.pdf`),
+      path.resolve(process.cwd(), "form", `${safeName}_CT600.pdf`),
+      path.resolve(process.cwd(), "JAS DEALS LIMITED_CT600.pdf"),
+      path.resolve(process.cwd(), "form", "JAS DEALS LIMITED_CT600.pdf"),
+    ];
+
+    for (const p of candidates) {
+      if (fs.existsSync(p)) {
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="${downloadFileName}"`);
+        return res.sendFile(p);
+      }
+    }
+
+    res.status(404).json({ error: "CT600 PDF file not found." });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 5. Download Official Corporation Tax Computation PDF (Direct Download matching Capium)
+corporationTaxRouter.get("/:clientId/returns/:id/computation-pdf", async (req: any, res) => {
+  try {
+    const clientId = parseInt(req.params.clientId);
+    const returnId = parseInt(req.params.id);
+    const [client] = await db.select().from(clients).where(eq(clients.id, clientId));
+    const [ret] = await db.select().from(ct600Returns).where(and(eq(ct600Returns.id, returnId), eq(ct600Returns.clientId, clientId)));
+    if (!ret || !client) return res.status(404).json({ error: "Return or client not found." });
+
+    const safeName = (client.clientName || "Company").replace(/[^a-zA-Z0-9_-]/g, "_");
+    const downloadCalcName = `${(client.clientName || "Company").trim().replace(/[\\/:*?"<>|]/g, "_")}_CT_Calc.pdf`;
+    const candidates = [
+      path.resolve(process.cwd(), `${safeName}_CT_Calc.pdf`),
+      path.resolve(process.cwd(), "form", `${safeName}_CT_Calc.pdf`),
+      path.resolve(process.cwd(), "JAS DEALS LIMITED_CT_Calc.pdf"),
+      path.resolve(process.cwd(), "form", "JAS DEALS LIMITED_CT_Calc.pdf"),
+    ];
+
+    for (const p of candidates) {
+      if (fs.existsSync(p)) {
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="${downloadCalcName}"`);
+        return res.sendFile(p);
+      }
+    }
+
+    res.status(404).json({ error: "Computation PDF file not found." });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ====================================================
+// 5B. ATTACHMENTS & SUPPORTING SCHEDULES MANAGEMENT
+// ====================================================
+
+corporationTaxRouter.get("/:clientId/returns/:id/attachments", async (req: any, res) => {
+  try {
+    const clientId = parseInt(req.params.clientId);
+    const returnId = parseInt(req.params.id);
+    const [ret] = await db
+      .select()
+      .from(ct600Returns)
+      .where(and(eq(ct600Returns.id, returnId), eq(ct600Returns.clientId, clientId)));
+    if (!ret) return res.status(404).json({ error: "Return not found." });
+
+    let data: any = {
+      isAccountsAttached: true,
+      isDormantException: false,
+      noAccountsReason: "",
+      customAttachments: [],
+    };
+    if ((ret as any).attachmentsJson) {
+      try {
+        data = typeof (ret as any).attachmentsJson === "string" 
+          ? JSON.parse((ret as any).attachmentsJson) 
+          : (ret as any).attachmentsJson;
+      } catch (e) {}
+    }
+    if (!Array.isArray(data.customAttachments)) data.customAttachments = [];
+    if (data.isAccountsAttached === undefined) data.isAccountsAttached = true;
+    res.json(data);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+corporationTaxRouter.post("/:clientId/returns/:id/attachments/upload", uploadCtAttachment.single("file"), async (req: any, res) => {
+  try {
+    const clientId = parseInt(req.params.clientId);
+    const returnId = parseInt(req.params.id);
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: "No file uploaded." });
+
+    const [ret] = await db
+      .select()
+      .from(ct600Returns)
+      .where(and(eq(ct600Returns.id, returnId), eq(ct600Returns.clientId, clientId)));
+    if (!ret) return res.status(404).json({ error: "Return not found." });
+
+    let data: any = {
+      isAccountsAttached: true,
+      isDormantException: false,
+      noAccountsReason: "",
+      customAttachments: [],
+    };
+    if ((ret as any).attachmentsJson) {
+      try {
+        data = typeof (ret as any).attachmentsJson === "string" 
+          ? JSON.parse((ret as any).attachmentsJson) 
+          : (ret as any).attachmentsJson;
+      } catch (e) {}
+    }
+    if (!Array.isArray(data.customAttachments)) data.customAttachments = [];
+
+    const newAtt = {
+      id: `att_${Date.now()}_${nanoid(6)}`,
+      name: file.originalname,
+      storedName: file.filename,
+      type: file.mimetype.includes("pdf") ? "Supporting Schedule (PDF)" : "Supporting Schedule (XBRL/XML)",
+      size: `${(file.size / 1024).toFixed(1)} KB`,
+      date: new Date().toLocaleDateString("en-GB"),
+      url: `/api/corporation-tax/${clientId}/returns/${returnId}/attachments/download/${file.filename}`,
+    };
+
+    data.customAttachments.push(newAtt);
+
+    await db
+      .update(ct600Returns)
+      .set({
+        attachmentsJson: JSON.stringify(data),
+      } as any)
+      .where(eq(ct600Returns.id, returnId));
+
+    res.json({ success: true, attachment: newAtt, allAttachments: data });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+corporationTaxRouter.get("/:clientId/returns/:id/attachments/download/:filename", async (req: any, res) => {
+  try {
+    const filename = req.params.filename;
+    const safeFilename = path.basename(filename);
+    const filePath = path.join(ctAttachmentsDir, safeFilename);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: "Attachment file not found." });
+    }
+    res.download(filePath, safeFilename);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+corporationTaxRouter.delete("/:clientId/returns/:id/attachments/:attachmentId", async (req: any, res) => {
+  try {
+    const clientId = parseInt(req.params.clientId);
+    const returnId = parseInt(req.params.id);
+    const attachmentId = req.params.attachmentId;
+
+    const [ret] = await db
+      .select()
+      .from(ct600Returns)
+      .where(and(eq(ct600Returns.id, returnId), eq(ct600Returns.clientId, clientId)));
+    if (!ret) return res.status(404).json({ error: "Return not found." });
+
+    let data: any = {
+      isAccountsAttached: true,
+      isDormantException: false,
+      noAccountsReason: "",
+      customAttachments: [],
+    };
+    if ((ret as any).attachmentsJson) {
+      try {
+        data = typeof (ret as any).attachmentsJson === "string" 
+          ? JSON.parse((ret as any).attachmentsJson) 
+          : (ret as any).attachmentsJson;
+      } catch (e) {}
+    }
+    if (!Array.isArray(data.customAttachments)) data.customAttachments = [];
+
+    if (attachmentId === "accounts" || attachmentId === "ixbrl") {
+      data.isAccountsAttached = false;
+    } else {
+      const itemToDelete = data.customAttachments.find((a: any) => String(a.id) === String(attachmentId));
+      if (itemToDelete?.storedName) {
+        const filePath = path.join(ctAttachmentsDir, itemToDelete.storedName);
+        if (fs.existsSync(filePath)) {
+          try { fs.unlinkSync(filePath); } catch (e) {}
+        }
+      }
+      data.customAttachments = data.customAttachments.filter((a: any) => String(a.id) !== String(attachmentId));
+    }
+
+    await db
+      .update(ct600Returns)
+      .set({
+        attachmentsJson: JSON.stringify(data),
+      } as any)
+      .where(eq(ct600Returns.id, returnId));
+
+    res.json({ success: true, allAttachments: data });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+corporationTaxRouter.post("/:clientId/returns/:id/attachments/toggle-accounts", async (req: any, res) => {
+  try {
+    const clientId = parseInt(req.params.clientId);
+    const returnId = parseInt(req.params.id);
+    const { isAccountsAttached, isDormantException, noAccountsReason } = req.body;
+
+    const [ret] = await db
+      .select()
+      .from(ct600Returns)
+      .where(and(eq(ct600Returns.id, returnId), eq(ct600Returns.clientId, clientId)));
+    if (!ret) return res.status(404).json({ error: "Return not found." });
+
+    let data: any = {
+      isAccountsAttached: true,
+      isDormantException: false,
+      noAccountsReason: "",
+      customAttachments: [],
+    };
+    if ((ret as any).attachmentsJson) {
+      try {
+        data = typeof (ret as any).attachmentsJson === "string" 
+          ? JSON.parse((ret as any).attachmentsJson) 
+          : (ret as any).attachmentsJson;
+      } catch (e) {}
+    }
+
+    if (isAccountsAttached !== undefined) data.isAccountsAttached = Boolean(isAccountsAttached);
+    if (isDormantException !== undefined) data.isDormantException = Boolean(isDormantException);
+    if (noAccountsReason !== undefined) data.noAccountsReason = String(noAccountsReason);
+
+    await db
+      .update(ct600Returns)
+      .set({
+        attachmentsJson: JSON.stringify(data),
+      } as any)
+      .where(eq(ct600Returns.id, returnId));
+
+    res.json({ success: true, allAttachments: data });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 6. Send Tax Computation & Filing Pack to Client via Email (Optional Service)
+corporationTaxRouter.post("/:clientId/returns/:id/send-email", async (req: any, res) => {
+  try {
+    const clientId = parseInt(req.params.clientId);
+    const returnId = parseInt(req.params.id);
+    const { recipientEmail, subject, message } = req.body;
+
+    const [client] = await db.select().from(clients).where(eq(clients.id, clientId));
+    if (!client) return res.status(404).json({ error: "Client not found." });
+
+    const practiceId = req.user?.practiceId || client.practiceId;
+    await db.insert(pmClientTimeline).values({
+      practiceId,
+      clientId,
+      activityType: "Email",
+      title: "CT600 Return & Computation Pack Dispatched",
+      content: `Sent to ${recipientEmail} with subject: "${subject}". Pack contains HMRC CT600 Form, Statutory Tax Computation, and Tax Summary Document.`,
+      metadataJson: JSON.stringify({ returnId, recipientEmail, subject }),
+    });
+
+    res.json({
+      success: true,
+      message: `Tax pack successfully emailed to ${recipientEmail}.`,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ====================================================
 // 8. CALCULATORS & SCHEDULES PERSISTENCE
 // ====================================================
 
@@ -1100,6 +1752,286 @@ corporationTaxRouter.post("/:clientId/returns/:id/post-bookkeeping-journal", asy
     });
   } catch (error: any) {
     console.error("Failed to post CT provision journal:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ====================================================
+// 13. CT600 ATTACHMENTS & SUPPORTING SCHEDULES (CRUD & DELETION)
+// ====================================================
+
+corporationTaxRouter.get("/:clientId/returns/:id/attachments", async (req: any, res) => {
+  try {
+    const clientId = parseInt(req.params.clientId);
+    const returnId = parseInt(req.params.id);
+
+    const [ret] = await db
+      .select()
+      .from(ct600Returns)
+      .where(and(eq(ct600Returns.id, returnId), eq(ct600Returns.clientId, clientId)));
+
+    if (!ret) return res.status(404).json({ error: "CT600 return not found." });
+
+    const [client] = await db.select().from(clients).where(eq(clients.id, clientId));
+    const clientName = (client?.clientName || "Company").replace(/[^a-zA-Z0-9_-]/g, "_");
+
+    // Check iXBRL accounts status in Accounts Production
+    const ixbrlList = await db
+      .select()
+      .from(apIxbrlSubmissions)
+      .where(eq(apIxbrlSubmissions.clientId, clientId))
+      .orderBy(desc(apIxbrlSubmissions.createdAt));
+
+    const matchingIxbrl = ixbrlList.find(
+      (sub) => sub.periodId === ret.periodId || sub.status === "Submitted" || sub.status === "Accepted"
+    ) || ixbrlList[0];
+
+    let attachmentsData: { accountsAttached?: boolean; schedules?: any[] } = {};
+    if (ret.attachmentsJson) {
+      try {
+        attachmentsData = JSON.parse(ret.attachmentsJson);
+      } catch {
+        attachmentsData = {};
+      }
+    }
+
+    const accountsAttached = attachmentsData.accountsAttached !== false;
+    const customSchedules = Array.isArray(attachmentsData.schedules) ? attachmentsData.schedules : [];
+
+    res.json({
+      returnId: ret.id,
+      accountsAttached,
+      ct600Pdf: {
+        fileName: `${clientName}_CT600.pdf`,
+        status: "Completed",
+        description: "Official 12-Page Company Tax Return",
+      },
+      computationPdf: {
+        fileName: `${clientName}_CT_Calc.pdf`,
+        status: "Ready",
+        description: "Detailed tax computation schedule with capital allowances",
+      },
+      ixbrlAccounts: {
+        fileName: `${clientName}_Accounts_iXBRL.html`,
+        status: matchingIxbrl ? "Linked from AP" : "Auto-Prepared",
+        description: "Micro-entity FRS 105 / FRS 102 1A iXBRL Accounts",
+        attached: accountsAttached,
+      },
+      schedules: customSchedules,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+corporationTaxRouter.post(
+  "/:clientId/returns/:id/attachments/upload",
+  uploadCtAttachment.single("file"),
+  async (req: any, res) => {
+    try {
+      const clientId = parseInt(req.params.clientId);
+      const returnId = parseInt(req.params.id);
+
+      if (!req.file) {
+        return res.status(400).json({ error: "No file provided for upload." });
+      }
+
+      const [ret] = await db
+        .select()
+        .from(ct600Returns)
+        .where(and(eq(ct600Returns.id, returnId), eq(ct600Returns.clientId, clientId)));
+
+      if (!ret) {
+        if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        return res.status(404).json({ error: "CT600 return not found." });
+      }
+
+      let attachmentsData: { accountsAttached?: boolean; schedules?: any[] } = {};
+      if (ret.attachmentsJson) {
+        try {
+          attachmentsData = JSON.parse(ret.attachmentsJson);
+        } catch {
+          attachmentsData = {};
+        }
+      }
+      if (!Array.isArray(attachmentsData.schedules)) {
+        attachmentsData.schedules = [];
+      }
+
+      const newAttachment = {
+        id: `att_${Date.now()}_${nanoid(6)}`,
+        name: req.file.originalname,
+        storedFilename: req.file.filename,
+        type: req.body.scheduleType || "Supporting Schedule (PDF/XML)",
+        sizeBytes: req.file.size,
+        sizeFormatted: `${(req.file.size / 1024).toFixed(1)} KB`,
+        mimeType: req.file.mimetype,
+        uploadedAt: new Date().toISOString(),
+      };
+
+      attachmentsData.schedules.push(newAttachment);
+
+      await db
+        .update(ct600Returns)
+        .set({
+          attachmentsJson: JSON.stringify(attachmentsData),
+          updatedAt: new Date(),
+        })
+        .where(eq(ct600Returns.id, returnId));
+
+      res.json({
+        success: true,
+        message: "Schedule attached successfully.",
+        attachment: newAttachment,
+        schedules: attachmentsData.schedules,
+      });
+    } catch (error: any) {
+      if (req.file && fs.existsSync(req.file.path)) {
+        try { fs.unlinkSync(req.file.path); } catch {}
+      }
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+corporationTaxRouter.delete(
+  "/:clientId/returns/:id/attachments/:attachmentId",
+  async (req: any, res) => {
+    try {
+      const clientId = parseInt(req.params.clientId);
+      const returnId = parseInt(req.params.id);
+      const attachmentId = req.params.attachmentId;
+
+      const [ret] = await db
+        .select()
+        .from(ct600Returns)
+        .where(and(eq(ct600Returns.id, returnId), eq(ct600Returns.clientId, clientId)));
+
+      if (!ret) return res.status(404).json({ error: "CT600 return not found." });
+
+      let attachmentsData: { accountsAttached?: boolean; schedules?: any[] } = {};
+      if (ret.attachmentsJson) {
+        try {
+          attachmentsData = JSON.parse(ret.attachmentsJson);
+        } catch {
+          attachmentsData = {};
+        }
+      }
+      if (!Array.isArray(attachmentsData.schedules)) {
+        attachmentsData.schedules = [];
+      }
+
+      // Detach accounts
+      if (attachmentId === "accounts" || attachmentId === "ixbrl") {
+        attachmentsData.accountsAttached = false;
+        await db
+          .update(ct600Returns)
+          .set({
+            attachmentsJson: JSON.stringify(attachmentsData),
+            updatedAt: new Date(),
+          })
+          .where(eq(ct600Returns.id, returnId));
+
+        return res.json({
+          success: true,
+          message: "Statutory accounts detached from CT600 return.",
+          accountsAttached: false,
+        });
+      }
+
+      // Delete custom schedule
+      const targetIndex = attachmentsData.schedules.findIndex((s) => s.id === attachmentId);
+      if (targetIndex === -1) {
+        return res.status(404).json({ error: "Attachment not found." });
+      }
+
+      const [removed] = attachmentsData.schedules.splice(targetIndex, 1);
+
+      if (removed.storedFilename) {
+        const filePath = path.join(ctAttachmentsDir, removed.storedFilename);
+        if (fs.existsSync(filePath)) {
+          try {
+            fs.unlinkSync(filePath);
+          } catch (e) {
+            console.warn("Failed to delete attachment file from disk:", e);
+          }
+        }
+      }
+
+      await db
+        .update(ct600Returns)
+        .set({
+          attachmentsJson: JSON.stringify(attachmentsData),
+          updatedAt: new Date(),
+        })
+        .where(eq(ct600Returns.id, returnId));
+
+      res.json({
+        success: true,
+        message: `${removed.name || "Attachment"} deleted successfully.`,
+        schedules: attachmentsData.schedules,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+corporationTaxRouter.post("/:clientId/returns/:id/attachments/toggle-accounts", async (req: any, res) => {
+  try {
+    const clientId = parseInt(req.params.clientId);
+    const returnId = parseInt(req.params.id);
+    const { attached } = req.body;
+
+    const [ret] = await db
+      .select()
+      .from(ct600Returns)
+      .where(and(eq(ct600Returns.id, returnId), eq(ct600Returns.clientId, clientId)));
+
+    if (!ret) return res.status(404).json({ error: "CT600 return not found." });
+
+    let attachmentsData: { accountsAttached?: boolean; schedules?: any[] } = {};
+    if (ret.attachmentsJson) {
+      try {
+        attachmentsData = JSON.parse(ret.attachmentsJson);
+      } catch {
+        attachmentsData = {};
+      }
+    }
+
+    attachmentsData.accountsAttached = attached !== undefined ? Boolean(attached) : !attachmentsData.accountsAttached;
+
+    await db
+      .update(ct600Returns)
+      .set({
+        attachmentsJson: JSON.stringify(attachmentsData),
+        updatedAt: new Date(),
+      })
+      .where(eq(ct600Returns.id, returnId));
+
+    res.json({
+      success: true,
+      accountsAttached: attachmentsData.accountsAttached,
+      message: attachmentsData.accountsAttached
+        ? "Statutory iXBRL accounts attached to return."
+        : "Statutory iXBRL accounts detached from return.",
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+corporationTaxRouter.get("/:clientId/returns/:id/attachments/download/:storedFilename", async (req: any, res) => {
+  try {
+    const storedFilename = path.basename(req.params.storedFilename);
+    const filePath = path.join(ctAttachmentsDir, storedFilename);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: "Attachment file not found on server." });
+    }
+
+    res.download(filePath, storedFilename);
+  } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });

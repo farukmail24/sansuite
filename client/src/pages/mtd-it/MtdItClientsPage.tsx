@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Users, Plus, Search, ShieldCheck, CheckCircle2, AlertCircle,
-  Briefcase, Building2, Globe, Edit2, Trash2, ExternalLink, RefreshCw, X
+  Briefcase, Building2, Globe, Edit2, Trash2, ExternalLink, RefreshCw, X,
+  Clock, Info, Sparkles
 } from "lucide-react";
 import { apiRequest } from "../../lib/queryClient";
 import { useToast } from "../../hooks/useToast";
@@ -131,6 +132,38 @@ export default function MtdItClientsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/mtd-it/clients"] });
       queryClient.invalidateQueries({ queryKey: ["/api/mtd-it/submissions/dashboard"] });
       toast({ title: "Source Removed", description: "Income source marked inactive." });
+    },
+  });
+
+  // Sync Sources from HMRC Mutation (Capium Article 9000277688)
+  const syncHmrcSourcesMutation = useMutation({
+    mutationFn: async (clientId: number) => {
+      const res = await apiRequest("POST", "/api/mtd-it/sources/sync-from-hmrc", { clientId });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/mtd-it/clients"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/mtd-it/submissions/dashboard"] });
+      toast({ title: "HMRC Sources Synchronized", description: data.message });
+    },
+    onError: (err: any) => {
+      toast({ title: "Sync Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // Refresh Obligations Mutation (Capium Article 9000278323)
+  const refreshObligationsMutation = useMutation({
+    mutationFn: async (clientId: number) => {
+      const res = await apiRequest("POST", "/api/mtd-it/quarters/refresh-obligations", { clientId });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/mtd-it/clients"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/mtd-it/submissions/dashboard"] });
+      toast({ title: "Obligations Refreshed", description: data.message });
+    },
+    onError: (err: any) => {
+      toast({ title: "Refresh Failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -449,14 +482,34 @@ export default function MtdItClientsPage() {
               </button>
             </div>
 
-            <div className="flex justify-between items-center">
-              <span className="text-xs text-gray-600 font-medium">Registered Sources ({managingClient.sources?.length || 0})</span>
-              <button
-                onClick={() => setShowAddSourceModal(true)}
-                className="px-3 py-1.5 text-xs font-semibold text-white bg-[#6c5ce7] hover:bg-[#5b4bc4] rounded-lg flex items-center gap-1.5"
-              >
-                <Plus size={13} /> Add Income Source
-              </button>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-3">
+              <span className="text-xs text-gray-700 font-bold">Registered Sources ({managingClient.sources?.length || 0})</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => syncHmrcSourcesMutation.mutate(managingClient.clientId)}
+                  disabled={syncHmrcSourcesMutation.isPending}
+                  title="Pull registered sources and businesses from HMRC Agent Services Account (Article 9000277688)"
+                  className="px-2.5 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw size={12} className={syncHmrcSourcesMutation.isPending ? "animate-spin" : ""} />
+                  {syncHmrcSourcesMutation.isPending ? "Syncing..." : "Sync from HMRC"}
+                </button>
+                <button
+                  onClick={() => refreshObligationsMutation.mutate(managingClient.clientId)}
+                  disabled={refreshObligationsMutation.isPending}
+                  title="Synchronize statutory quarterly deadlines and filing windows with HMRC (Article 9000278323)"
+                  className="px-2.5 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                >
+                  <Clock size={12} className={refreshObligationsMutation.isPending ? "animate-spin" : ""} />
+                  {refreshObligationsMutation.isPending ? "Refreshing..." : "Refresh Obligations"}
+                </button>
+                <button
+                  onClick={() => setShowAddSourceModal(true)}
+                  className="px-3 py-1.5 text-xs font-semibold text-white bg-[#6c5ce7] hover:bg-[#5b4bc4] rounded-lg flex items-center gap-1.5 shadow-sm"
+                >
+                  <Plus size={13} /> Add Source
+                </button>
+              </div>
             </div>
 
             {managingClient.sources?.length === 0 ? (
@@ -575,6 +628,16 @@ export default function MtdItClientsPage() {
                 </div>
               </div>
 
+              {/* Capium Article 9000276690: The Golden Rule & 4 Workflows */}
+              <div className="p-3 bg-purple-50/70 border border-purple-200 rounded-lg text-[11px] text-purple-950 space-y-1">
+                <div className="flex items-center gap-1.5 font-bold text-[#6c5ce7]">
+                  <Sparkles size={13} /> The Golden Rule of MTD IT Workflows
+                </div>
+                <p className="text-gray-600 leading-relaxed">
+                  The workflow depends on <strong>where records are kept</strong>. Sole Traders with VAT, CIS, or payroll must use Workflow 3 or 4. Landlords cannot use Workflow 3 or 4 under any circumstance (Workflow 1 or 2 required).
+                </p>
+              </div>
+
               <div>
                 <label className="block font-semibold text-gray-700 mb-1">Workflow Connection</label>
                 <select
@@ -582,10 +645,10 @@ export default function MtdItClientsPage() {
                   value={sourceForm.workflowType}
                   onChange={(e) => setSourceForm({ ...sourceForm, workflowType: e.target.value as any })}
                 >
-                  <option value="workflow_1_bridging">Workflow 1: Spreadsheet Bridging</option>
-                  <option value="workflow_2_365">Workflow 2: Capium 365 Direct</option>
-                  <option value="workflow_3_365_bookkeeping">Workflow 3: Capium 365 + Bookkeeping</option>
-                  <option value="workflow_4_bookkeeping">Workflow 4: Bookkeeping Only</option>
+                  <option value="workflow_1_bridging">Workflow 1: Spreadsheet Bridging (Records kept outside SanSuite)</option>
+                  <option value="workflow_2_365">Workflow 2: Capium 365 Direct (Client portal digital records)</option>
+                  <option value="workflow_3_365_bookkeeping">Workflow 3: Capium 365 + Bookkeeping (Sole traders with VAT/CIS/Payroll)</option>
+                  <option value="workflow_4_bookkeeping">Workflow 4: Bookkeeping Only (Direct nominal ledger import)</option>
                 </select>
               </div>
             </div>

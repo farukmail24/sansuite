@@ -13,7 +13,7 @@ export interface MtdTask {
   startDate?: string;
   endDate?: string;
   dueDate: string;
-  taskStatus: "Open" | "Overdue" | "Submitted" | "Draft";
+  taskStatus: "Open" | "Overdue" | "Submitted" | "Draft" | "Submitted via Third Party";
   lastSubmissionDate: string | null;
   clientApprovalStatus: "Not Sent" | "Sent" | "Approved" | "Resend";
   grossIncome?: string;
@@ -21,6 +21,7 @@ export interface MtdTask {
   canSubmit: boolean;
   type: "quarter" | "adjustment" | "final";
   taxYear?: string;
+  clientEmail?: string;
 }
 
 export interface MtdClientRecord {
@@ -28,6 +29,7 @@ export interface MtdClientRecord {
   clientId: number;
   clientCode?: string;
   clientName: string;
+  email?: string;
   clientType: string;
   utrNumber?: string;
   nino?: string;
@@ -82,6 +84,49 @@ export interface MtdQuarterSummary {
   quarterNumber: number;
   taxYear: string;
   reportingMethod: "three_line" | "detailed";
+  quarterly?: {
+    threeLine: { turnover: string; allowableExpenses: string; netProfit: string };
+    detailed: {
+      grossIncome: string;
+      allowableExpenses: string;
+      disallowableExpenses: string;
+      netProfit: string;
+      categoryBreakdown: Record<string, { allowable: number; disallowable: number }>;
+    };
+    grossFull?: {
+      turnover: string;
+      allowableExpenses: string;
+      disallowableExpenses: string;
+      netProfit: string;
+      categoryBreakdown: Record<string, { allowable: number; disallowable: number }>;
+    };
+  };
+  cumulative?: {
+    threeLine: { turnover: string; allowableExpenses: string; netProfit: string };
+    detailed: {
+      grossIncome: string;
+      allowableExpenses: string;
+      disallowableExpenses: string;
+      netProfit: string;
+      categoryBreakdown: Record<string, { allowable: number; disallowable: number }>;
+    };
+    grossFull?: {
+      turnover: string;
+      allowableExpenses: string;
+      disallowableExpenses: string;
+      netProfit: string;
+      categoryBreakdown: Record<string, { allowable: number; disallowable: number }>;
+    };
+  };
+  quarterProgression?: Array<{
+    quarter: number;
+    name: string;
+    period: string;
+    status?: string;
+    turnover: string;
+    allowableExpenses: string;
+    netProfit: string;
+  }>;
   threeLine: {
     turnover: string;
     allowableExpenses: string;

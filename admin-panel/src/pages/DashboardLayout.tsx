@@ -17,7 +17,9 @@ import { Megaphone, ShieldAlert, Layers, Ticket, Mail, ImageIcon, Ban } from 'lu
 import MediaLibraryTab from '../components/MediaLibraryTab'
 import IpBansTab from '../components/IpBansTab'
 import SystemHealthTab from '../components/SystemHealthTab'
+import FrontendCmsTab from '../components/FrontendCmsTab'
 import { usePaginationLimit } from '../hooks/useSettings'
+import { Globe } from 'lucide-react'
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
@@ -30,6 +32,7 @@ const NAV = [
   { id: 'emails', label: 'Email Templates', icon: Mail },
   { id: 'announcements', label: 'Broadcasts', icon: Megaphone },
   { id: 'media', label: 'Media Library', icon: ImageIcon },
+  { id: 'frontend-cms', label: 'Frontend CMS', icon: Globe },
   { id: 'audit', label: 'Audit Logs', icon: List },
   { id: 'ip-bans', label: 'IP Bans', icon: Ban },
   { id: 'health', label: 'System Health', icon: Activity },
@@ -581,6 +584,8 @@ export default function DashboardLayout({ onLogout }: Props) {
           {tab === 'ip-bans' && <IpBansTab />}
           {/* SYSTEM HEALTH */}
           {tab === 'health' && <SystemHealthTab />}
+          {/* FRONTEND CMS */}
+          {tab === 'frontend-cms' && <FrontendCmsTab />}
           {/* SETTINGS */}
           {tab === 'settings' && <SettingsTab />}
         </div>

@@ -20,11 +20,15 @@ export default function FinalDeclarationWorkspace({ task, onBack }: Props) {
   const [declarationConfirmed, setDeclarationConfirmed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const taxYear = task.taxYear || "2025-26";
+  const endYear = taxYear.split("-")[1] ? `20${taxYear.split("-")[1]}` : "2026";
+  const dueYear = (parseInt(endYear, 10) + 1).toString();
+
   // Fetch consolidated calculation
   const { data: finalData, isLoading } = useQuery({
-    queryKey: [`/api/mtd-it/final-declaration`, task.clientId, "2025-26"],
+    queryKey: [`/api/mtd-it/final-declaration`, task.clientId, taxYear],
     queryFn: async () => {
-      const res = await apiRequest("GET", `/api/mtd-it/final-declaration/${task.clientId}/2025-26`);
+      const res = await apiRequest("GET", `/api/mtd-it/final-declaration/${task.clientId}/${taxYear}`);
       return res.json();
     },
   });
@@ -38,13 +42,13 @@ export default function FinalDeclarationWorkspace({ task, onBack }: Props) {
       const res = await apiRequest("POST", "/api/mtd-it/final-declaration/submit", {
         clientId: task.clientId,
         mtdClientId: task.mtdClientId,
-        taxYear: "2025-26",
+        taxYear,
         figures,
       });
       return res.json();
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: [`/api/mtd-it/final-declaration`, task.clientId, "2025-26"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/mtd-it/final-declaration`, task.clientId, taxYear] });
       queryClient.invalidateQueries({ queryKey: ["/api/mtd-it/submissions/dashboard"] });
       toast({
         title: "Final Declaration Submitted",
@@ -76,8 +80,8 @@ export default function FinalDeclarationWorkspace({ task, onBack }: Props) {
               </span>
             </div>
             <p className="text-xs text-gray-500 mt-0.5">
-              Task: <strong>Final Declaration (replacing SA100)</strong> | Tax Year: <strong>2025-26</strong> | Due:{" "}
-              <strong>31 Jan 2027</strong> | Status:{" "}
+              Task: <strong>Final Declaration (replacing SA100)</strong> | Tax Year: <strong>{taxYear}</strong> | Due:{" "}
+              <strong>31 Jan {dueYear}</strong> | Status:{" "}
               <span className={`font-semibold ${isSubmitted ? "text-green-600" : "text-amber-600"}`}>
                 {isSubmitted ? "Submitted to HMRC" : "Draft Ready"}
               </span>
@@ -90,12 +94,12 @@ export default function FinalDeclarationWorkspace({ task, onBack }: Props) {
             onClick={() =>
               toast({
                 title: "Approval Sent",
-                description: "Final Declaration statement dispatched to Capisign for client digital signature.",
+                description: "Final Declaration statement dispatched to eSign for client digital signature.",
               })
             }
             className="px-3.5 py-2 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 flex items-center gap-1.5 transition-colors"
           >
-            <Send size={14} /> Send to Capisign for Signature
+            <Send size={14} /> Send to eSign for Signature
           </button>
           <button
             onClick={() => submitMutation.mutate()}
@@ -134,7 +138,7 @@ export default function FinalDeclarationWorkspace({ task, onBack }: Props) {
       {/* Tax Liability Computation Statement */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-4">
         <h3 className="text-sm font-bold text-gray-800 border-b border-gray-100 pb-2">
-          Statutory Tax Liability Computation (Year ended 5 April 2026)
+          Statutory Tax Liability Computation (Year ended 5 April {endYear})
         </h3>
 
         <div className="divide-y divide-gray-100 text-xs">
@@ -142,6 +146,12 @@ export default function FinalDeclarationWorkspace({ task, onBack }: Props) {
             <span className="text-gray-600">Total Net Trading & Property Profits:</span>
             <span className="font-semibold text-gray-800">£{figures?.netProfit || "0.00"}</span>
           </div>
+          {figures?.totalAllowances && parseFloat(figures.totalAllowances) > 0 && (
+            <div className="py-2.5 flex justify-between text-indigo-700">
+              <span>Less: Capital Allowances & Trading Deductions:</span>
+              <span className="font-semibold">-£{figures.totalAllowances}</span>
+            </div>
+          )}
           <div className="py-2.5 flex justify-between">
             <span className="text-gray-600">Total UK & Foreign Dividends:</span>
             <span className="font-semibold text-gray-800">£{figures?.totalDividends || "0.00"}</span>
@@ -149,7 +159,7 @@ export default function FinalDeclarationWorkspace({ task, onBack }: Props) {
           <div className="py-2.5 flex justify-between">
             <span className="text-gray-600">Total Net Income:</span>
             <span className="font-bold text-gray-900">
-              £{(parseFloat(figures?.netProfit || "0") + parseFloat(figures?.totalDividends || "0")).toFixed(2)}
+              £{(parseFloat(figures?.netProfit || "0") + parseFloat(figures?.totalDividends || "0") - (parseFloat(figures?.totalAllowances || "0"))).toFixed(2)}
             </span>
           </div>
           <div className="py-2.5 flex justify-between text-green-700">
@@ -165,7 +175,7 @@ export default function FinalDeclarationWorkspace({ task, onBack }: Props) {
             <span className="font-semibold text-gray-800">£{figures?.estimatedTaxDue || "0.00"}</span>
           </div>
           <div className="py-3 flex justify-between font-extrabold text-sm text-[#6c5ce7] bg-indigo-50/60 px-3 rounded-lg mt-2">
-            <span>Total Estimated Tax Liability Payable by 31 Jan 2027:</span>
+            <span>Total Estimated Tax Liability Payable by 31 Jan {dueYear}:</span>
             <span>£{figures?.estimatedTaxDue || "0.00"}</span>
           </div>
         </div>

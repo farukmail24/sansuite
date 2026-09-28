@@ -20,7 +20,7 @@ export default function AdjustmentsWorkspace({ task, onBack }: Props) {
 
   // Active section in far left claims navigation
   const [activeNav, setActiveNav] = useState<
-    "adjustments" | "summary_tb" | "other_income" | "other_expenses" | "losses" | "relief" | "disclosures" | "tax_calculator" | "capisign" | "final_declaration"
+    "adjustments" | "summary_tb" | "other_income" | "other_expenses" | "losses" | "relief" | "disclosures" | "tax_calculator" | "esign" | "final_declaration"
   >("adjustments");
 
   // Selected source ID
@@ -85,6 +85,12 @@ export default function AdjustmentsWorkspace({ task, onBack }: Props) {
     },
     enabled: !!selectedSourceId,
   });
+
+  useEffect(() => {
+    if (!task.sourceId && sources.length > 0 && !sources.some((s) => s.id === selectedSourceId)) {
+      setSelectedSourceId(sources[0].id);
+    }
+  }, [sources, task.sourceId, selectedSourceId]);
 
   useEffect(() => {
     if (existingData) {
@@ -260,17 +266,17 @@ export default function AdjustmentsWorkspace({ task, onBack }: Props) {
             <span className="text-[10px] leading-tight">Tax Calculator View</span>
           </button>
 
-          {/* Capisign */}
+          {/* eSign */}
           <button
-            onClick={() => setActiveNav("capisign")}
+            onClick={() => setActiveNav("esign")}
             className={`w-full flex flex-col items-center justify-center p-2.5 rounded-xl text-center transition-all ${
-              activeNav === "capisign"
+              activeNav === "esign"
                 ? "bg-[#6c5ce7] text-white shadow-sm font-semibold"
                 : "text-gray-600 hover:bg-gray-100 font-medium"
             }`}
           >
             <Send size={18} className="mb-1" />
-            <span className="text-[10px] leading-tight">Capisign</span>
+            <span className="text-[10px] leading-tight">eSign</span>
           </button>
 
           {/* Final Declaration */}

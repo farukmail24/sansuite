@@ -191,6 +191,13 @@ import { VatTransactionsPage, EcSalesListPage, CisReportsPage } from "./pages/bo
 import DocScanPage from "./pages/bookkeeping/DocScanPage";
 import SanSuitePayPage from "./pages/bookkeeping/SanSuitePayPage";
 
+// Marketing & Public Showcase Pages
+import LandingPage from "./pages/marketing/LandingPage";
+import PricingPage from "./pages/marketing/PricingPage";
+import BookDemoPage from "./pages/marketing/BookDemoPage";
+import ContactPage from "./pages/marketing/ContactPage";
+import SolutionDetailPage from "./pages/marketing/SolutionDetailPage";
+
 // ---------------------------------------------------------------------------
 // STABLE PRIVATE ROUTE FACTORY
 // Creates wrapper components ONCE at module level — never recreated on render.
@@ -473,7 +480,19 @@ function AppRoutes() {
       <Route path="/account/login" component={LoginPage} />
       <Route path="/Account/Login" component={LoginPage} />
       <Route path="/sign-in" component={LoginPage} />
-      <Route path="/" component={RootGateway} />
+
+      {/* Public Marketing & Sales Website */}
+      <Route path="/" component={LandingPage} />
+      <Route path="/home" component={LandingPage} />
+      <Route path="/pricing" component={PricingPage} />
+      <Route path="/book-demo" component={BookDemoPage} />
+      <Route path="/contact" component={ContactPage} />
+      <Route path="/solutions/:slug" component={SolutionDetailPage} />
+
+      {/* Authenticated Ecosystem Launchpad & Dashboard */}
+      <Route path="/dashboard" component={RootGateway} />
+      <Route path="/app" component={RootGateway} />
+
       <Route path="/hmrc/callback" component={HmrcCallbackPage} />
       <Route path="/practice" component={R_PracticeManagement} />
       <Route path="/practice/tasks" component={R_TasksPage} />
