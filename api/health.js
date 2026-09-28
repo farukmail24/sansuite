@@ -12,7 +12,8 @@ export default async function handler(req, res) {
 
   try {
     const mysql = await import("mysql2/promise");
-    const host = (process.env.DB_HOST || "localhost").replace(/^https?:\/\//i, "").replace(/\/.*$/, "").trim();
+    const rawHost = process.env.DB_HOST || "localhost";
+    const host = rawHost.replace(/^https?:\/\//i, "").replace(/\/.*$/, "").trim();
     const conn = await mysql.default.createConnection({
       host,
       user: process.env.DB_USERNAME || "root",
@@ -36,8 +37,9 @@ export default async function handler(req, res) {
     timestamp: new Date().toISOString(),
     database: {
       status: dbStatus,
-      host: process.env.DB_HOST ? (process.env.DB_HOST.slice(0, 3) + "***") : "localhost",
+      host: (process.env.DB_HOST || "localhost").replace(/^https?:\/\//i, "").replace(/\/.*$/, "").trim(),
       database: process.env.DB_DATABASE || "SanSuite",
+      user: process.env.DB_USERNAME || "root",
       error: dbError,
     },
     env: {
