@@ -1,7 +1,3 @@
-import mysql from "mysql2/promise";
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
-
 const sanitizeHost = (rawHost) => {
   if (!rawHost) return "localhost";
   return rawHost
@@ -12,13 +8,9 @@ const sanitizeHost = (rawHost) => {
 
 const JWT_SECRET = process.env.JWT_SECRET || "sansuite_super_secure_jwt_secret_key_2026";
 
-function signJwt(payload) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
-}
-
 export default async function handler(req, res) {
   // CORS
-  res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
+  res.setHeader("Access-Control-Allow-Origin", req.headers?.origin || "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-tenant-id");
   res.setHeader("Access-Control-Allow-Credentials", "true");
@@ -46,7 +38,20 @@ export default async function handler(req, res) {
       return res.status(400).json({ message: "Email and password are required" });
     }
 
-    // Connect to MySQL database
+    // Dynamic resilient imports
+    const mysqlMod = await import("mysql2/promise");
+    const mysql = mysqlMod.default || mysqlMod;
+
+    const bcryptMod = await import("bcryptjs");
+    const bcrypt = bcryptMod.default || bcryptMod;
+
+    const jwtMod = await import("jsonwebtoken");
+    const jwt = jwtMod.default || jwtMod;
+
+    const signJwt = (payload) => {
+      return (jwt.sign || jwtMod.sign)(payload, JWT_SECRET, { expiresIn: "7d" });
+    };
+
     const host = sanitizeHost(process.env.DB_HOST || "localhost");
     const port = parseInt(process.env.DB_PORT || "3306");
     const user = process.env.DB_USERNAME || "root";
@@ -67,16 +72,18 @@ export default async function handler(req, res) {
       console.error("[Auth API] Database connection error:", dbErr);
       let clientMsg = "Database connection error. ";
       if (dbErr.code === "ER_ACCESS_DENIED_ERROR") {
-        clientMsg += `Access denied for user '${user}' to database '${database}'. In cPanel MySQL Databases, please add '${user}' to '${database}' with ALL PRIVILEGES, and add '%' in Remote MySQL.`;
+        clientMsg = `Database Access Denied for user '${user}'. In cPanel -> MySQL Databases, please scroll down to 'Add User To Database', select user '${user}' and database '${database}', click 'Add', and check 'ALL PRIVILEGES'. Also ensure '%' is added in Remote MySQL.`;
       } else if (dbErr.code === "ECONNREFUSED" || dbErr.code === "ETIMEDOUT") {
-        clientMsg += `Connection timed out connecting to ${host}:${port}. Please verify the database host and ensure port 3306 is open.`;
+        clientMsg = `Database connection timed out connecting to ${host}:${port}. Please verify DB_HOST and remote port 3306.`;
       } else {
         clientMsg += dbErr.message || String(dbErr);
       }
-      return res.status(500).json({ message: clientMsg, code: dbErr.code });
+      return res.status(500).json({ message: clientMsg, code: dbErr.code, error: dbErr.message });
     }
 
     try {
+      const compareHash = bcrypt.compare || bcryptMod.compare;
+
       // 1. If portal user (client, 365, sme)
       if (portalType && portalType !== "accountant") {
         const [pUsers] = await conn.execute(
@@ -86,7 +93,7 @@ export default async function handler(req, res) {
         const pUser = pUsers[0];
 
         if (pUser && pUser.password_hash) {
-          const valid = await bcrypt.compare(password, pUser.password_hash);
+          const valid = await compareHash(password, pUser.password_hash);
           if (valid) {
             let clientName = "Client Company";
             if (pUser.client_id) {
@@ -150,7 +157,7 @@ export default async function handler(req, res) {
           );
           const pUser = fallbackUsers[0];
           if (pUser && pUser.password_hash) {
-            const valid = await bcrypt.compare(password, pUser.password_hash);
+            const valid = await compareHash(password, pUser.password_hash);
             if (valid) {
               let clientName = "Client Company";
               if (pUser.client_id) {
@@ -201,7 +208,7 @@ export default async function handler(req, res) {
         return res.status(401).json({ message: "Invalid email or password" });
       }
 
-      const valid = await bcrypt.compare(password, userRecord.password_hash);
+      const valid = await compareHash(password, userRecord.password_hash);
       if (!valid) {
         await conn.end();
         return res.status(401).json({ message: "Invalid email or password" });
