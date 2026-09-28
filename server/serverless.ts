@@ -36,7 +36,30 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
   next();
 });
 
-// Register all API routes synchronously onto the Express app
+// Register all API routes onto the Express app
 registerRoutes(app);
 
-export default app;
+export default function handler(req: any, res: any) {
+  return new Promise((resolve) => {
+    res.on("finish", () => resolve(undefined));
+    res.on("close", () => resolve(undefined));
+
+    try {
+      app(req, res, (err?: any) => {
+        if (err) {
+          console.error("[Serverless] Express unhandled error:", err);
+          if (!res.headersSent) {
+            res.status(500).json({ error: err.message || "Internal Server Error" });
+          }
+        }
+        resolve(undefined);
+      });
+    } catch (err: any) {
+      console.error("[Serverless] Handler error:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: err.message || "Internal Server Error" });
+      }
+      resolve(undefined);
+    }
+  });
+}

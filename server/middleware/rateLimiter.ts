@@ -155,6 +155,9 @@ export function createRateLimiter(options: {
   const keyMode = options.key || "path+ip";
 
   return async (req: Request, res: Response, next: NextFunction) => {
+    if (process.env.VERCEL) {
+      return next();
+    }
     try {
       const ip = extractIp(req);
 
