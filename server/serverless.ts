@@ -48,7 +48,7 @@ async function ensureApp() {
   await initPromise;
 }
 
-async function handler(req: any, res: any) {
+export default async function handler(req: any, res: any) {
   try {
     await ensureApp();
 
@@ -66,8 +66,3 @@ async function handler(req: any, res: any) {
     });
   }
 }
-
-// Explicit CJS export — esbuild bundle doesn't re-export 'export default'
-// Vercel's @vercel/node runtime looks for module.exports or module.exports.default
-(module as any).exports = handler;
-(module as any).exports.default = handler;

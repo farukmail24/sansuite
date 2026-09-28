@@ -32,7 +32,7 @@ async function runBuild() {
     bundle: true,
     platform: "node",
     target: "node18",
-    format: "cjs",
+    format: "esm",
     outfile: "api/index.js",
     // Keep npm packages external — Vercel installs them from package.json
     packages: "external",
@@ -43,12 +43,10 @@ async function runBuild() {
     },
   });
 
-  // Write a CJS package.json in api/ to override root "type": "module"
-  // This ensures Node.js treats api/index.js as CommonJS
-  fs.writeFileSync(
-    path.resolve(process.cwd(), "api/package.json"),
-    JSON.stringify({ type: "commonjs" }, null, 2)
-  );
+  const apiPkg = path.resolve(process.cwd(), "api/package.json");
+  if (fs.existsSync(apiPkg)) {
+    fs.unlinkSync(apiPkg);
+  }
 
   console.log("✅ Vercel Serverless API bundle complete (saved to api/index.js).");
 }
