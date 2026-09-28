@@ -21,6 +21,19 @@ async function runBuild() {
     minify: false,
   });
   console.log("✅ Server build complete (saved to dist/index.cjs).");
+
+  console.log("▶ Building Vercel Serverless API Bundle with esbuild...");
+  await buildEsbuild({
+    entryPoints: ["server/serverless.ts"],
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    outfile: "api/index.js",
+    packages: "external",
+    sourcemap: false,
+    minify: false,
+  });
+  console.log("✅ Vercel Serverless API bundle complete (saved to api/index.js).");
 }
 
 runBuild().catch((err) => {

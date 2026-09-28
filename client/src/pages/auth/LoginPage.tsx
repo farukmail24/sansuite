@@ -156,8 +156,17 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, portalType: selectedPortal || undefined }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Login failed");
+
+      let data: any = {};
+      const contentType = res.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(text || `Server error (${res.status})`);
+      }
+
+      if (!res.ok) throw new Error(data.message || data.error || "Login failed");
 
       if (data.requires2faSetup) {
         setTempToken(data.tempToken);
@@ -194,7 +203,11 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tempToken: token }),
       });
-      const data = await res.json();
+      let data: any = {};
+      const contentType = res.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        data = await res.json();
+      }
       if (res.ok) {
         setSetupSecret(data.secret);
         setSetupOtpUrl(data.otpAuthUrl);
@@ -217,7 +230,14 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tempToken, token: totpCode }),
       });
-      const data = await res.json();
+      let data: any = {};
+      const contentType = res.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(text || `Verification error (${res.status})`);
+      }
       if (!res.ok) throw new Error(data.message || "Invalid code");
       login(data.user, data.token);
       redirectPostLogin(data.user);

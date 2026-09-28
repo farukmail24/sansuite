@@ -1,5 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes } from "../server/routes";
+import { registerRoutes } from "./routes";
 
 const app = express();
 
@@ -46,6 +46,6 @@ export default async function handler(req: any, res: any) {
     return app(req, res);
   } catch (err: any) {
     console.error("Vercel Serverless Function fatal error:", err);
-    res.status(500).json({ error: "Server initialization error", message: err.message });
+    res.status(500).json({ error: "Server initialization error", message: err?.message || String(err) });
   }
 }
