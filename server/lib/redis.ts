@@ -84,8 +84,9 @@ class InMemoryRedisShim {
   quit(): Promise<"OK"> { return Promise.resolve("OK"); }
   ping(): Promise<"PONG"> { return Promise.resolve("PONG"); }
 
-  // Cleanup stale entries every 5 minutes
+  // Cleanup stale entries every 5 minutes (skip in serverless — process is short-lived)
   private startCleanup() {
+    if (process.env.VERCEL) return;
     setInterval(() => {
       const now = Date.now();
       this.store.forEach((entry, key) => {

@@ -40,9 +40,16 @@ const BAN_CACHE_TTL_SEC = 5 * 60; // 5 minutes
 // =============================================
 
 export function extractIp(req: Request): string {
-  const forwarded = req.headers["x-forwarded-for"];
-  if (typeof forwarded === "string") return forwarded.split(",")[0].trim();
-  return req.socket.remoteAddress || "unknown";
+  try {
+    const forwarded = req.headers["x-forwarded-for"];
+    if (typeof forwarded === "string") return forwarded.split(",")[0].trim();
+    if (Array.isArray(forwarded) && forwarded.length > 0) return forwarded[0].trim();
+    const sock = req.socket || (req as any).connection;
+    if (sock && sock.remoteAddress) return sock.remoteAddress;
+    return "127.0.0.1";
+  } catch {
+    return "127.0.0.1";
+  }
 }
 
 async function isIpBanned(ip: string): Promise<{ banned: boolean; permanent: boolean; until: Date | null }> {
@@ -148,60 +155,65 @@ export function createRateLimiter(options: {
   const keyMode = options.key || "path+ip";
 
   return async (req: Request, res: Response, next: NextFunction) => {
-    const ip = extractIp(req);
-
-    // 1. Check if IP is banned (Redis-cached, DB-backed)
-    const banStatus = await isIpBanned(ip);
-    if (banStatus.banned) {
-      const msg = banStatus.permanent
-        ? "Your IP address has been permanently banned due to repeated abuse."
-        : `Your IP address is temporarily banned. Try again after ${banStatus.until?.toUTCString() || "some time"}.`;
-      return res.status(403).json({ message: msg, banned: true, permanent: banStatus.permanent });
-    }
-
-    // 2. Rate limit check using Redis atomic INCR
-    const rateKey = keyMode === "ip"
-      ? `rl:${ip}`
-      : `rl:${req.path.replace(/\//g, ":")}:${ip}`;
-
     try {
-      const count = await redis.incr(rateKey);
+      const ip = extractIp(req);
 
-      // Set TTL only on first request in window
-      if (count === 1) {
-        await redis.expire(rateKey, windowSec);
+      // 1. Check if IP is banned (Redis-cached, DB-backed)
+      const banStatus = await isIpBanned(ip);
+      if (banStatus.banned) {
+        const msg = banStatus.permanent
+          ? "Your IP address has been permanently banned due to repeated abuse."
+          : `Your IP address is temporarily banned. Try again after ${banStatus.until?.toUTCString() || "some time"}.`;
+        return res.status(403).json({ message: msg, banned: true, permanent: banStatus.permanent });
       }
 
-      const ttl = await redis.ttl(rateKey);
+      // 2. Rate limit check using Redis atomic INCR
+      const rateKey = keyMode === "ip"
+        ? `rl:${ip}`
+        : `rl:${req.path.replace(/\//g, ":")}:${ip}`;
 
-      res.setHeader("X-RateLimit-Limit", max);
-      res.setHeader("X-RateLimit-Remaining", Math.max(0, max - count));
-      res.setHeader("X-RateLimit-Reset", Math.ceil(Date.now() / 1000) + (ttl > 0 ? ttl : windowSec));
+      try {
+        const count = await redis.incr(rateKey);
 
-      if (count > max) {
-        // Track abuse violations per IP (separate key, longer TTL)
-        const abuseKey = `rl:abuse:${ip}`;
-        const abuseCount = await redis.incr(abuseKey);
-        await redis.expire(abuseKey, 24 * 60 * 60); // 24h window for abuse tracking
-
-        if (abuseCount >= VIOLATIONS_TO_BAN) {
-          await recordBan(ip, `Exceeded rate limit ${abuseCount} times`);
-          await redis.del(abuseKey);
-          return res.status(403).json({
-            message: "Your IP has been banned due to repeated rate limit violations.",
-            banned: true,
-          });
+        // Set TTL only on first request in window
+        if (count === 1) {
+          await redis.expire(rateKey, windowSec);
         }
 
-        const retryAfter = ttl > 0 ? ttl : windowSec;
-        return res.status(429).json({ message, retryAfter });
-      }
+        const ttl = await redis.ttl(rateKey);
 
-      next();
-    } catch (err) {
-      // If Redis fails, allow request through (fail open — prefer availability)
-      console.error("[RateLimiter] Redis error, allowing request:", err);
-      next();
+        res.setHeader("X-RateLimit-Limit", max);
+        res.setHeader("X-RateLimit-Remaining", Math.max(0, max - count));
+        res.setHeader("X-RateLimit-Reset", Math.ceil(Date.now() / 1000) + (ttl > 0 ? ttl : windowSec));
+
+        if (count > max) {
+          // Track abuse violations per IP (separate key, longer TTL)
+          const abuseKey = `rl:abuse:${ip}`;
+          const abuseCount = await redis.incr(abuseKey);
+          await redis.expire(abuseKey, 24 * 60 * 60); // 24h window for abuse tracking
+
+          if (abuseCount >= VIOLATIONS_TO_BAN) {
+            await recordBan(ip, `Exceeded rate limit ${abuseCount} times`);
+            await redis.del(abuseKey);
+            return res.status(403).json({
+              message: "Your IP has been banned due to repeated rate limit violations.",
+              banned: true,
+            });
+          }
+
+          const retryAfter = ttl > 0 ? ttl : windowSec;
+          return res.status(429).json({ message, retryAfter });
+        }
+
+        return next();
+      } catch (err) {
+        // If Redis fails, allow request through (fail open — prefer availability)
+        console.error("[RateLimiter] Redis error, allowing request:", err);
+        return next();
+      }
+    } catch (fatalErr) {
+      console.error("[RateLimiter] Unexpected middleware error, failing open:", fatalErr);
+      return next();
     }
   };
 }
