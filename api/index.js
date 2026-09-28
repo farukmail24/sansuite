@@ -3476,12 +3476,15 @@ var init_db = __esm({
 
 // server/lib/authUtils.ts
 import jwt from "jsonwebtoken";
+function getJwtSecret() {
+  return process.env.JWT_SECRET || "sansuite_super_secure_jwt_secret_key_2026";
+}
 function signJwt(payload, expiresIn = "7d") {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn });
+  return jwt.sign(payload, getJwtSecret(), { expiresIn });
 }
 function verifyJwt(token) {
   try {
-    return jwt.verify(token, JWT_SECRET);
+    return jwt.verify(token, getJwtSecret());
   } catch {
     return null;
   }
@@ -3528,11 +3531,9 @@ function requireRole(...roles) {
     next();
   };
 }
-var JWT_SECRET;
 var init_authUtils = __esm({
   "server/lib/authUtils.ts"() {
     "use strict";
-    JWT_SECRET = process.env.JWT_SECRET || "sansuite_super_secure_jwt_secret_key_2026";
   }
 });
 

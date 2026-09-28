@@ -1,15 +1,17 @@
 import jwt from "jsonwebtoken";
 import type { Request, Response, NextFunction } from "express";
 
-const JWT_SECRET = process.env.JWT_SECRET || "sansuite_super_secure_jwt_secret_key_2026";
+export function getJwtSecret(): string {
+  return process.env.JWT_SECRET || "sansuite_super_secure_jwt_secret_key_2026";
+}
 
 export function signJwt(payload: object, expiresIn: string | number = "7d") {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn } as jwt.SignOptions);
+  return jwt.sign(payload, getJwtSecret(), { expiresIn } as jwt.SignOptions);
 }
 
 export function verifyJwt(token: string) {
   try {
-    return jwt.verify(token, JWT_SECRET);
+    return jwt.verify(token, getJwtSecret());
   } catch {
     return null;
   }
