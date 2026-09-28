@@ -15,8 +15,16 @@ import * as schema from "../shared/schema";
  * or a connection pooler like ProxySQL / PgBouncer which handles pooling
  * externally so each server can use connectionLimit: 1.
  */
+const sanitizeHost = (rawHost: string) => {
+  if (!rawHost) return "localhost";
+  return rawHost
+    .replace(/^https?:\/\//i, "") // remove http:// or https://
+    .replace(/\/.*$/, "")         // remove trailing path/slash
+    .trim();
+};
+
 export const pool = mysql.createPool({
-  host: process.env.DB_HOST || "localhost",
+  host: sanitizeHost(process.env.DB_HOST || "localhost"),
   user: process.env.DB_USERNAME || "root",
   password: process.env.DB_PASSWORD || "",
   database: process.env.DB_DATABASE || "SanSuite",
