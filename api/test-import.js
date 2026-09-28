@@ -12,10 +12,19 @@ export default async function handler(req, res) {
       apiFiles = [e.message];
     }
 
+    let indexImport = "pending";
+    try {
+      const mod = await import("./index.js");
+      indexImport = { success: true, hasDefault: !!mod.default };
+    } catch (e) {
+      indexImport = { success: false, error: e.message, stack: e.stack };
+    }
+
     return res.status(200).json({
       status: "ok",
       nodeVersion: process.version,
       cwd: process.cwd(),
+      indexImport,
       files,
       apiFiles,
       env: {

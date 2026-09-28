@@ -10,8 +10,12 @@ router.use(authMiddleware);
 
 // Multer storage for client logo uploads
 const UPLOAD_DIR = path.resolve(process.cwd(), "uploads", "company-logos");
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+try {
+  if (!fs.existsSync(UPLOAD_DIR)) {
+    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+  }
+} catch {
+  // Read-only filesystem in serverless environments (e.g. Vercel)
 }
 
 const storage = multer.diskStorage({

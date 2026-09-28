@@ -18,8 +18,12 @@ const MASTER_TEMPLATES_DIR = fs.existsSync(path.resolve(process.cwd(), "server",
 const UPLOAD_DIR = path.resolve(process.cwd(), "uploads", "invoice-templates");
 
 // Ensure upload directory exists
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+try {
+  if (!fs.existsSync(UPLOAD_DIR)) {
+    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+  }
+} catch {
+  // Read-only filesystem in serverless environments (e.g. Vercel)
 }
 
 // Multer storage for uploaded docx/zip files

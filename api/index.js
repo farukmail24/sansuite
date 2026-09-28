@@ -18286,8 +18286,11 @@ import path3 from "path";
 import fs3 from "fs";
 var router14 = Router14();
 var esignUploadsDir = path3.resolve(process.cwd(), "uploads", "esign");
-if (!fs3.existsSync(esignUploadsDir)) {
-  fs3.mkdirSync(esignUploadsDir, { recursive: true });
+try {
+  if (!fs3.existsSync(esignUploadsDir)) {
+    fs3.mkdirSync(esignUploadsDir, { recursive: true });
+  }
+} catch {
 }
 var storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
@@ -28025,8 +28028,11 @@ corporationTaxRouter.use(authMiddleware);
   }
 })();
 var ctAttachmentsDir = path4.resolve(process.cwd(), "uploads", "ct600-attachments");
-if (!fs4.existsSync(ctAttachmentsDir)) {
-  fs4.mkdirSync(ctAttachmentsDir, { recursive: true });
+try {
+  if (!fs4.existsSync(ctAttachmentsDir)) {
+    fs4.mkdirSync(ctAttachmentsDir, { recursive: true });
+  }
+} catch {
 }
 var ctAttachmentStorage = multer2.diskStorage({
   destination: (_req, _file, cb) => cb(null, ctAttachmentsDir),
@@ -33406,8 +33412,11 @@ import path5 from "path";
 import fs5 from "fs";
 import multer3 from "multer";
 var DOC_UPLOAD_DIR = path5.resolve(process.cwd(), "uploads", "client-documents");
-if (!fs5.existsSync(DOC_UPLOAD_DIR)) {
-  fs5.mkdirSync(DOC_UPLOAD_DIR, { recursive: true });
+try {
+  if (!fs5.existsSync(DOC_UPLOAD_DIR)) {
+    fs5.mkdirSync(DOC_UPLOAD_DIR, { recursive: true });
+  }
+} catch {
 }
 var docStorage = multer3.diskStorage({
   destination: (_req, _file, cb) => cb(null, DOC_UPLOAD_DIR),
@@ -40493,8 +40502,11 @@ var router34 = Router38();
 router34.use(authMiddleware);
 var MASTER_TEMPLATES_DIR = fs7.existsSync(path7.resolve(process.cwd(), "server", "templates", "sansuite-docs")) ? path7.resolve(process.cwd(), "server", "templates", "sansuite-docs") : path7.resolve(process.cwd(), "server", "templates", "capium-docs");
 var UPLOAD_DIR = path7.resolve(process.cwd(), "uploads", "invoice-templates");
-if (!fs7.existsSync(UPLOAD_DIR)) {
-  fs7.mkdirSync(UPLOAD_DIR, { recursive: true });
+try {
+  if (!fs7.existsSync(UPLOAD_DIR)) {
+    fs7.mkdirSync(UPLOAD_DIR, { recursive: true });
+  }
+} catch {
 }
 var storage2 = multer4.diskStorage({
   destination: (_req, _file, cb) => {
@@ -40917,8 +40929,11 @@ import fs8 from "fs";
 var router35 = Router39();
 router35.use(authMiddleware);
 var UPLOAD_DIR2 = path8.resolve(process.cwd(), "uploads", "company-logos");
-if (!fs8.existsSync(UPLOAD_DIR2)) {
-  fs8.mkdirSync(UPLOAD_DIR2, { recursive: true });
+try {
+  if (!fs8.existsSync(UPLOAD_DIR2)) {
+    fs8.mkdirSync(UPLOAD_DIR2, { recursive: true });
+  }
+} catch {
 }
 var storage3 = multer5.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOAD_DIR2),

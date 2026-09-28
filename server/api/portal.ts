@@ -14,8 +14,12 @@ import fs from "fs";
 import multer from "multer";
 
 const DOC_UPLOAD_DIR = path.resolve(process.cwd(), "uploads", "client-documents");
-if (!fs.existsSync(DOC_UPLOAD_DIR)) {
-  fs.mkdirSync(DOC_UPLOAD_DIR, { recursive: true });
+try {
+  if (!fs.existsSync(DOC_UPLOAD_DIR)) {
+    fs.mkdirSync(DOC_UPLOAD_DIR, { recursive: true });
+  }
+} catch {
+  // Read-only filesystem in serverless environments (e.g. Vercel)
 }
 
 const docStorage = multer.diskStorage({

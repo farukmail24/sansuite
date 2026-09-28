@@ -30,8 +30,12 @@ corporationTaxRouter.use(authMiddleware);
 
 // Storage directory for uploaded CT600 attachments & schedules
 const ctAttachmentsDir = path.resolve(process.cwd(), "uploads", "ct600-attachments");
-if (!fs.existsSync(ctAttachmentsDir)) {
-  fs.mkdirSync(ctAttachmentsDir, { recursive: true });
+try {
+  if (!fs.existsSync(ctAttachmentsDir)) {
+    fs.mkdirSync(ctAttachmentsDir, { recursive: true });
+  }
+} catch {
+  // Read-only filesystem in serverless environments (e.g. Vercel)
 }
 
 const ctAttachmentStorage = multer.diskStorage({

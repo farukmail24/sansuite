@@ -33,8 +33,12 @@ const router = Router();
 
 // Ensure upload directory exists
 const esignUploadsDir = path.resolve(process.cwd(), "uploads", "esign");
-if (!fs.existsSync(esignUploadsDir)) {
-  fs.mkdirSync(esignUploadsDir, { recursive: true });
+try {
+  if (!fs.existsSync(esignUploadsDir)) {
+    fs.mkdirSync(esignUploadsDir, { recursive: true });
+  }
+} catch {
+  // Read-only filesystem in serverless environments (e.g. Vercel)
 }
 
 const storage = multer.diskStorage({
