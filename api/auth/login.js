@@ -70,15 +70,8 @@ export default async function handler(req, res) {
       });
     } catch (dbErr) {
       console.error("[Auth API] Database connection error:", dbErr);
-      let clientMsg = "Database connection error. ";
-      if (dbErr.code === "ER_ACCESS_DENIED_ERROR" || dbErr.code === "ER_DBACCESS_DENIED_ERROR") {
-        clientMsg = `Database Access Denied for user '${user}'. In cPanel -> MySQL Databases, please scroll down to 'Add User To Database', select user '${user}' and database '${database}', click 'Add', and check 'ALL PRIVILEGES'. Also ensure '%' is added in Remote MySQL.`;
-      } else if (dbErr.code === "ECONNREFUSED" || dbErr.code === "ETIMEDOUT") {
-        clientMsg = `Database connection timed out connecting to ${host}:${port}. Please verify DB_HOST and remote port 3306.`;
-      } else {
-        clientMsg += dbErr.message || String(dbErr);
-      }
-      return res.status(500).json({ message: clientMsg, code: dbErr.code, error: dbErr.message });
+      let clientMsg = "Database connection error. Please contact system administrator or check server status.";
+      return res.status(500).json({ message: clientMsg });
     }
 
     try {

@@ -7,8 +7,7 @@ export default async function handler(req, res) {
     return res.status(204).end();
   }
 
-  let dbStatus = "untested";
-  let dbError = null;
+  let dbStatus = "connected";
 
   try {
     const mysql = await import("mysql2/promise");
@@ -24,29 +23,17 @@ export default async function handler(req, res) {
     });
     await conn.query("SELECT 1");
     await conn.end();
-    dbStatus = "connected";
   } catch (err) {
-    dbStatus = "error";
-    dbError = err?.message || String(err);
+    dbStatus = "disconnected";
   }
 
   res.status(200).json({
-    status: "ok",
+    status: dbStatus === "connected" ? "ok" : "degraded",
     service: "SanSuite Cloud Accounting API",
     version: "1.0.0",
     timestamp: new Date().toISOString(),
     database: {
       status: dbStatus,
-      host: (process.env.DB_HOST || "localhost").replace(/^https?:\/\//i, "").replace(/\/.*$/, "").trim(),
-      database: process.env.DB_DATABASE || "SanSuite",
-      user: process.env.DB_USERNAME || "root",
-      error: dbError,
-    },
-    env: {
-      hasDbHost: !!process.env.DB_HOST,
-      hasDbUser: !!process.env.DB_USERNAME,
-      hasDbPass: !!process.env.DB_PASSWORD,
-      hasJwtSecret: !!process.env.JWT_SECRET,
     }
   });
 }
