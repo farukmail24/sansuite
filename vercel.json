@@ -22,10 +22,6 @@
       "destination": "/api/auth/login"
     },
     {
-      "source": "/api/test-import",
-      "destination": "/api/test-import"
-    },
-    {
       "source": "/api/(.*)",
       "destination": "/api"
     },

@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken";
 import type { Request, Response, NextFunction } from "express";
 
-const JWT_SECRET = process.env.JWT_SECRET || "SanSuite-dev-secret";
+const JWT_SECRET = process.env.JWT_SECRET || "sansuite_super_secure_jwt_secret_key_2026";
 
 export function signJwt(payload: object, expiresIn: string | number = "7d") {
   return jwt.sign(payload, JWT_SECRET, { expiresIn } as jwt.SignOptions);

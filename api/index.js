@@ -3532,7 +3532,7 @@ var JWT_SECRET;
 var init_authUtils = __esm({
   "server/lib/authUtils.ts"() {
     "use strict";
-    JWT_SECRET = process.env.JWT_SECRET || "SanSuite-dev-secret";
+    JWT_SECRET = process.env.JWT_SECRET || "sansuite_super_secure_jwt_secret_key_2026";
   }
 });
 
