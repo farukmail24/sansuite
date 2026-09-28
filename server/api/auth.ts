@@ -180,9 +180,15 @@ router.post("/login", async (req, res) => {
         twoFactorEnabled: !!user.twoFactorEnabled,
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Login error:", error);
-    res.status(500).json({ message: "Login failed" });
+    let msg = error?.message || "Login failed";
+    if (error?.code === "ER_ACCESS_DENIED_ERROR") {
+      msg = "Database connection rejected (Access Denied). Please add '%' in cPanel -> Remote MySQL, and re-save DB_PASSWORD in Vercel.";
+    } else if (error?.code === "ECONNREFUSED" || error?.code === "ETIMEDOUT") {
+      msg = "Database connection timed out. Please check DB_HOST and remote port 3306.";
+    }
+    res.status(500).json({ message: msg });
   }
 });
 
