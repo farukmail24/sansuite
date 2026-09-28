@@ -42469,37 +42469,18 @@ app.use((req, res, next) => {
 });
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: false }));
-var isReady = false;
-var initPromise = null;
-async function ensureApp() {
-  if (isReady) return;
-  if (!initPromise) {
-    initPromise = (async () => {
-      try {
-        await registerRoutes(app);
-      } catch (err) {
-        console.error("[Serverless] registerRoutes error:", err?.message || err);
-      }
-      isReady = true;
-    })();
-  }
-  await initPromise;
-}
-async function handler(req, res) {
-  try {
-    await ensureApp();
-    if (req.url && !req.url.startsWith("/api")) {
+app.use((req, _res, next) => {
+  if (req.url) {
+    if (req.url.startsWith("/api/index.js")) {
+      req.url = req.url.replace(/^\/api\/index\.js/, "/api") || "/api";
+    } else if (!req.url.startsWith("/api")) {
       req.url = "/api" + (req.url.startsWith("/") ? req.url : "/" + req.url);
     }
-    return app(req, res);
-  } catch (err) {
-    console.error("[Serverless] Fatal handler error:", err);
-    res.status(500).json({
-      error: "Internal server error",
-      message: "An unexpected error occurred. Please try again later."
-    });
   }
-}
+  next();
+});
+registerRoutes(app);
+var serverless_default = app;
 export {
-  handler as default
+  serverless_default as default
 };
