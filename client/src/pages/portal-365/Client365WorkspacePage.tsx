@@ -243,9 +243,14 @@ export default function Client365WorkspacePage() {
         <div className="px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-purple-600 flex items-center justify-center text-white shadow-sm">
-                <Sparkles size={18} />
-              </div>
+              <img
+                src="/logo.svg"
+                alt="SanSuite Logo"
+                className="w-9 h-9 rounded-xl shadow-sm object-contain"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = "/uploads/media/sansuite-logo.svg";
+                }}
+              />
               <div>
                 <span className="text-lg font-bold text-gray-900 tracking-tight">SanSuite</span>
                 <span className="text-[10px] ml-1.5 px-2 py-0.5 rounded font-bold uppercase tracking-wider bg-purple-100 text-purple-800 border border-purple-200">

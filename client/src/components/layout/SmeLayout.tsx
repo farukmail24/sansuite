@@ -35,9 +35,14 @@ export default function SmeLayout({ children, module = "SME Portal" }: SmeLayout
               onClick={() => navigate("/sme/dashboard")}
               className="flex items-center gap-2.5 cursor-pointer group"
             >
-              <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-sm group-hover:bg-blue-700 transition">
-                <Users size={18} />
-              </div>
+              <img
+                src="/logo.svg"
+                alt="SanSuite Logo"
+                className="w-9 h-9 rounded-xl shadow-sm object-contain group-hover:scale-105 transition"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = "/uploads/media/sansuite-logo.svg";
+                }}
+              />
               <div>
                 <span className="text-lg font-bold text-gray-900 tracking-tight">SanSuite</span>
                 <span className="text-[10px] ml-1.5 px-2 py-0.5 rounded font-bold uppercase tracking-wider bg-blue-100 text-blue-800 border border-blue-200">

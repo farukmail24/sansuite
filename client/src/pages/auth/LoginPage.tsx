@@ -265,9 +265,14 @@ export default function LoginPage() {
         {/* Top Header */}
         <div className="max-w-6xl mx-auto w-full flex items-center justify-between py-4 border-b border-gray-200">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-600 flex items-center justify-center text-white shadow-md">
-              <Building2 size={22} />
-            </div>
+            <img
+              src="/logo.svg"
+              alt="SanSuite Logo"
+              className="w-10 h-10 rounded-xl shadow-md object-contain"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = "/uploads/media/sansuite-logo.svg";
+              }}
+            />
             <div>
               <span className="text-2xl font-black tracking-tight text-gray-900">SanSuite</span>
               <span className="text-xs ml-2 px-2 py-0.5 rounded font-semibold bg-purple-100 text-purple-700">Account Panel</span>
@@ -369,9 +374,14 @@ export default function LoginPage() {
       <div className="hidden lg:flex flex-col justify-center items-center w-1/2 p-12 text-white">
         <div className="max-w-md">
           <div className="flex items-center gap-3 mb-8">
-            <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-[#6c5ce7]">
-              <Building2 size={24} />
-            </div>
+            <img
+              src="/logo.svg"
+              alt="SanSuite Logo"
+              className="w-12 h-12 rounded-xl shadow-lg object-contain"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = "/uploads/media/sansuite-logo.svg";
+              }}
+            />
             <span className="text-3xl font-bold tracking-tight">SanSuite</span>
           </div>
 

@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 80" width="100%" height="100%">
+  <defs>
+    <linearGradient id="fullMarkRibbon1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#a855f7" />
+      <stop offset="50%" stop-color="#6366f1" />
+      <stop offset="100%" stop-color="#38bdf8" />
+    </linearGradient>
+    <linearGradient id="fullMarkRibbon2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5" />
+      <stop offset="50%" stop-color="#7c3aed" />
+      <stop offset="100%" stop-color="#ec4899" />
+    </linearGradient>
+    <linearGradient id="textGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#7c3aed" />
+      <stop offset="100%" stop-color="#4f46e5" />
+    </linearGradient>
+  </defs>
+
+  <!-- Left Icon Mark (60x60 centered at x=10, y=10) -->
+  <g transform="translate(10, 10)">
+    <!-- Container -->
+    <rect x="0" y="0" width="60" height="60" rx="15" fill="#1e1b4b" />
+    <rect x="0" y="0" width="60" height="60" rx="15" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" />
+
+    <!-- S Ribbon 1 -->
+    <path d="M 43 18
+             C 43 13, 38 10, 31 10
+             L 23 10
+             C 16 10, 12 15, 12 21
+             C 12 27, 17 30, 25 32
+             L 33 34
+             C 39 36, 42 39, 42 44
+             C 42 47, 40 49, 37 51
+             L 42 54
+             C 46 51, 49 47, 49 42
+             C 49 33, 42 29, 33 27
+             L 27 25
+             C 21 23, 18 21, 18 18
+             C 18 15, 21 14, 25 14
+             L 33 14
+             C 37 14, 39 15, 41 17
+             Z"
+          fill="url(#fullMarkRibbon1)" />
+
+    <!-- S Ribbon 2 -->
+    <path d="M 17 42
+             C 17 47, 22 50, 29 50
+             L 37 50
+             C 44 50, 48 45, 48 39
+             C 48 33, 43 30, 35 28
+             L 27 26
+             C 21 24, 18 21, 18 16
+             C 18 13, 20 11, 23 9
+             L 18 6
+             C 14 9, 11 13, 11 18
+             C 11 27, 18 31, 27 33
+             L 34 35
+             C 40 37, 43 39, 43 42
+             C 43 45, 40 46, 36 46
+             L 27 46
+             C 23 46, 21 45, 19 43
+             Z"
+          fill="url(#fullMarkRibbon2)" />
+
+    <!-- Center node -->
+    <circle cx="30" cy="30" r="3" fill="#38bdf8" />
+  </g>
+
+  <!-- Typography -->
+  <g transform="translate(82, 45)">
+    <!-- "San" -->
+    <text x="0" y="0" font-family="'Plus Jakarta Sans', 'Inter', system-ui, sans-serif" font-weight="900" font-size="28" fill="#0f172a" letter-spacing="-0.5">San<tspan fill="url(#textGrad)">Suite</tspan></text>
+
+    <!-- UK Badge -->
+    <rect x="135" y="-19" width="28" height="18" rx="4" fill="#ede9fe" stroke="#c4b5fd" stroke-width="1" />
+    <text x="149" y="-6" font-family="'Inter', system-ui, sans-serif" font-weight="800" font-size="10" fill="#6d28d9" text-anchor="middle">UK</text>
+  </g>
+
+  <!-- Subtitle -->
+  <text x="82" y="63" font-family="'Inter', system-ui, sans-serif" font-weight="700" font-size="9" fill="#64748b" letter-spacing="1.8">CLOUD ACCOUNTING PLATFORM</text>
+</svg>

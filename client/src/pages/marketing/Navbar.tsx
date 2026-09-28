@@ -104,9 +104,14 @@ export default function Navbar({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2.5 group">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#6c5ce7] to-indigo-500 flex items-center justify-center text-white shadow-md shadow-purple-500/25 group-hover:scale-105 transition-transform">
-              <Building2 size={22} className="text-white" />
-            </div>
+            <img
+              src="/logo.svg"
+              alt="SanSuite Logo"
+              className="w-10 h-10 rounded-xl shadow-md shadow-purple-500/25 group-hover:scale-105 transition-transform object-contain"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = "/uploads/media/sansuite-logo.svg";
+              }}
+            />
             <div className="flex flex-col">
               <div className="flex items-center gap-1.5">
                 <span className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
