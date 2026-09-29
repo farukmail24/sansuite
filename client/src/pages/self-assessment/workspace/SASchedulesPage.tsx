@@ -1,15 +1,19 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import SAWorkspaceLayout, { useSAWorkspace } from "./SAWorkspaceLayout";
 import { apiRequest } from "../../../lib/queryClient";
 import { useToast } from "../../../hooks/useToast";
 import {
   Layers, Plus, Trash2, Save, Calculator, RefreshCw,
   Building2, Briefcase, Home, TrendingUp, Globe, CheckCircle2, AlertCircle,
-  Users, Link2, ExternalLink, FileText, Info, HelpCircle, Shield
+  Users, Link2, ExternalLink, FileText, Info, HelpCircle, Shield, ArrowRight,
+  Compass
 } from "lucide-react";
+import { Link } from "wouter";
+import HMRCHelpTooltip from "../../../components/common/HMRCHelpTooltip";
 
-type ScheduleTab = "employment" | "selfEmployment" | "partnership" | "property" | "capitalGains" | "foreign";
+type ScheduleTab = "employment" | "selfEmployment" | "partnership" | "property" | "capitalGains" | "foreign" | "residence";
 
 export default function SASchedulesPage() {
   return (
@@ -20,6 +24,7 @@ export default function SASchedulesPage() {
 }
 
 function SASchedulesContent() {
+  const [, setLocation] = useLocation();
   const { clientId, client, currentReturn, selectedTaxYear, refetchReturns } = useSAWorkspace();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -36,6 +41,45 @@ function SASchedulesContent() {
   const [cgtBox54Notes, setCgtBox54Notes] = useState("");
   const [cgtHasAttachment, setCgtHasAttachment] = useState(false);
   const [selectedPartnershipToLink, setSelectedPartnershipToLink] = useState("");
+
+  // SA109 Residence & Remittance Basis State (ITA 2007 s809)
+  const [sa109, setSa109] = useState({
+    isUkResident: true,
+    daysInUk: "183",
+    meetsSrtAutomaticOverseasTest: false,
+    meetsSrtAutomaticUkTest: true,
+    meetsSrtSufficientTiesTest: false,
+    ukTiesCount: "0",
+    claimSplitYear: false,
+    splitYearDate: "",
+    isDomiciledInUk: true,
+    claimRemittanceBasis: false,
+    remittanceBasisChargeTier: "none", // "none" | "7_of_9" (£30k) | "12_of_14" (£60k)
+    remittedForeignIncome: "0.00",
+    unremittedForeignIncome: "0.00",
+    claimDoubleTaxRelief: false,
+    doubleTaxReliefCountry: "",
+    doubleTaxReliefAmount: "0.00",
+    additionalNotes: "",
+  });
+
+  // Basis Period Reform Profit Calculator (Finance Act 2022)
+  const calcBizProfit = (biz: any) => {
+    const t = parseFloat(biz.turnover || "0");
+    const exp = parseFloat(biz.allowableExpenses || "0");
+    const ca = parseFloat(biz.capitalAllowancesClaimed || "0");
+    const standard = Math.max(0, t - exp - ca);
+
+    if (biz.hasAdditionalPeriod) {
+      const addProfit = parseFloat(biz.additionalPeriodProfit || "0");
+      const overlap = parseFloat(biz.overlapReliefUsed || "0");
+      const spreadDeduction = parseFloat(biz.transitionalProfitSpreadDeduction || "0");
+      return Math.max(0, standard + addProfit - overlap - spreadDeduction).toFixed(2);
+    }
+
+    const overlap = parseFloat(biz.overlapReliefUsed || "0");
+    return Math.max(0, standard - overlap).toFixed(2);
+  };
 
   // Fetch Available SA800 Partnerships for 1-Click Link
   const { data: availablePartnerships = [] } = useQuery<any[]>({
@@ -63,6 +107,9 @@ function SASchedulesContent() {
         if (parsed.foreignItems) setForeignItems(parsed.foreignItems);
         if (parsed.cgtBox54Notes) setCgtBox54Notes(parsed.cgtBox54Notes);
         if (parsed.cgtHasAttachment !== undefined) setCgtHasAttachment(parsed.cgtHasAttachment);
+        if (parsed.sa109) {
+          setSa109((prev) => ({ ...prev, ...parsed.sa109 }));
+        }
       } catch {}
     } else {
       // Default initial states if return exists with figures
@@ -155,6 +202,7 @@ function SASchedulesContent() {
         cgtBox54Notes,
         cgtHasAttachment,
         partnershipProfit: totalPartnershipProfit.toFixed(2),
+        sa109,
       };
 
       // 1. Save schedules payload and update main return numbers
@@ -180,6 +228,8 @@ function SASchedulesContent() {
         giftAidDonations: currentReturn?.giftAidDonations || "0.00",
         tradingLossesRelieved: currentReturn?.tradingLossesRelieved || "0.00",
         taxPaidAtSource: totalEmploymentTax.toFixed(2),
+        claimRemittanceBasis: sa109.claimRemittanceBasis,
+        remittanceBasisChargeTier: sa109.remittanceBasisChargeTier,
         schedulesData,
       };
 
@@ -209,12 +259,18 @@ function SASchedulesContent() {
       {/* Header and Save */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs">
         <div>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+              Step 2 of 6
+            </span>
+            <span className="text-[11px] text-slate-500 font-medium">Supplementary Schedules & Statutory Worksheets</span>
+          </div>
           <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
             <Layers size={16} className="text-purple-600" />
-            Supplementary Schedules (SA102, SA103, SA104, SA105, SA108, SA106)
+            Supplementary Schedules (SA102, SA103, SA104, SA105, SA108, SA106, SA109)
           </h2>
           <p className="text-[11px] text-slate-500 mt-0.5">
-            Record detailed employments, sole trader profits, partnership shares, rental properties, and capital gains.
+            Record detailed employments, sole trader profits, partnership shares, rental properties, capital gains, and residence status.
           </p>
         </div>
 
@@ -248,7 +304,10 @@ function SASchedulesContent() {
           }`}
         >
           <Briefcase size={13} />
-          SA102 Employment ({employments.length})
+          <span>SA102 Employment ({employments.length})</span>
+          <span onClick={(e) => e.stopPropagation()}>
+            <HMRCHelpTooltip code="SA102" showBadge={false} inline={true} />
+          </span>
         </button>
 
         <button
@@ -260,7 +319,10 @@ function SASchedulesContent() {
           }`}
         >
           <Building2 size={13} />
-          SA103 Sole Trader ({selfEmployments.length})
+          <span>SA103 Sole Trader ({selfEmployments.length})</span>
+          <span onClick={(e) => e.stopPropagation()}>
+            <HMRCHelpTooltip code="SA103F" showBadge={false} inline={true} />
+          </span>
         </button>
 
         <button
@@ -272,7 +334,10 @@ function SASchedulesContent() {
           }`}
         >
           <Users size={13} />
-          SA104 Partnership ({partnerships.length})
+          <span>SA104 Partnership ({partnerships.length})</span>
+          <span onClick={(e) => e.stopPropagation()}>
+            <HMRCHelpTooltip code="SA104" showBadge={false} inline={true} />
+          </span>
         </button>
 
         <button
@@ -284,7 +349,10 @@ function SASchedulesContent() {
           }`}
         >
           <Home size={13} />
-          SA105 UK Property ({properties.length})
+          <span>SA105 UK Property ({properties.length})</span>
+          <span onClick={(e) => e.stopPropagation()}>
+            <HMRCHelpTooltip code="SA105" showBadge={false} inline={true} />
+          </span>
         </button>
 
         <button
@@ -296,7 +364,10 @@ function SASchedulesContent() {
           }`}
         >
           <TrendingUp size={13} />
-          SA108 Capital Gains ({capitalGainsAssets.length})
+          <span>SA108 Capital Gains ({capitalGainsAssets.length})</span>
+          <span onClick={(e) => e.stopPropagation()}>
+            <HMRCHelpTooltip code="SA108" showBadge={false} inline={true} />
+          </span>
         </button>
 
         <button
@@ -308,7 +379,25 @@ function SASchedulesContent() {
           }`}
         >
           <Globe size={13} />
-          SA106 Foreign ({foreignItems.length})
+          <span>SA106 Foreign ({foreignItems.length})</span>
+          <span onClick={(e) => e.stopPropagation()}>
+            <HMRCHelpTooltip code="SA106" showBadge={false} inline={true} />
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("residence")}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap ${
+            activeTab === "residence"
+              ? "bg-purple-600 text-white shadow-xs"
+              : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+          }`}
+        >
+          <Compass size={13} />
+          <span>SA109 Residence {sa109.claimRemittanceBasis ? "(Remittance)" : ""}</span>
+          <span onClick={(e) => e.stopPropagation()}>
+            <HMRCHelpTooltip code="SA109" showBadge={false} inline={true} />
+          </span>
         </button>
       </div>
 
@@ -488,6 +577,11 @@ function SASchedulesContent() {
                     allowableExpenses: "0.00",
                     capitalAllowancesClaimed: "0.00",
                     overlapReliefUsed: "0.00",
+                    hasAdditionalPeriod: false,
+                    additionalPeriodStart: "",
+                    additionalPeriodEnd: "",
+                    additionalPeriodProfit: "0.00",
+                    transitionalProfitSpreadDeduction: "0.00",
                     netProfit: "0.00",
                   },
                 ]);
@@ -543,10 +637,7 @@ function SASchedulesContent() {
                         onChange={(e) => {
                           const updated = [...selfEmployments];
                           updated[index].turnover = e.target.value;
-                          const t = parseFloat(e.target.value || "0");
-                          const exp = parseFloat(updated[index].allowableExpenses || "0");
-                          const ca = parseFloat(updated[index].capitalAllowancesClaimed || "0");
-                          updated[index].netProfit = Math.max(0, t - exp - ca).toFixed(2);
+                          updated[index].netProfit = calcBizProfit(updated[index]);
                           setSelfEmployments(updated);
                         }}
                         className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs font-mono"
@@ -562,10 +653,7 @@ function SASchedulesContent() {
                         onChange={(e) => {
                           const updated = [...selfEmployments];
                           updated[index].allowableExpenses = e.target.value;
-                          const t = parseFloat(updated[index].turnover || "0");
-                          const exp = parseFloat(e.target.value || "0");
-                          const ca = parseFloat(updated[index].capitalAllowancesClaimed || "0");
-                          updated[index].netProfit = Math.max(0, t - exp - ca).toFixed(2);
+                          updated[index].netProfit = calcBizProfit(updated[index]);
                           setSelfEmployments(updated);
                         }}
                         className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs font-mono"
@@ -581,10 +669,7 @@ function SASchedulesContent() {
                         onChange={(e) => {
                           const updated = [...selfEmployments];
                           updated[index].capitalAllowancesClaimed = e.target.value;
-                          const t = parseFloat(updated[index].turnover || "0");
-                          const exp = parseFloat(updated[index].allowableExpenses || "0");
-                          const ca = parseFloat(e.target.value || "0");
-                          updated[index].netProfit = Math.max(0, t - exp - ca).toFixed(2);
+                          updated[index].netProfit = calcBizProfit(updated[index]);
                           setSelfEmployments(updated);
                         }}
                         className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs font-mono"
@@ -600,6 +685,7 @@ function SASchedulesContent() {
                         onChange={(e) => {
                           const updated = [...selfEmployments];
                           updated[index].overlapReliefUsed = e.target.value;
+                          updated[index].netProfit = calcBizProfit(updated[index]);
                           setSelfEmployments(updated);
                         }}
                         className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs font-mono"
@@ -620,6 +706,123 @@ function SASchedulesContent() {
                         className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs font-mono font-bold text-purple-600"
                       />
                     </div>
+                  </div>
+
+                  {/* Basis Period Reform: Finance Act 2022 Transitional Rules */}
+                  <div className="p-3.5 bg-white dark:bg-slate-900/90 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <span className="font-bold text-xs text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                          <Calculator size={14} className="text-purple-600" />
+                          Basis Period Reform: Additional Period & Overlap Spreading (FA 2022)
+                        </span>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          Apply statutory tax-year basis rules if accounting year-end differs from 31 March / 5 April.
+                        </p>
+                      </div>
+
+                      <label className="flex items-center gap-2 cursor-pointer text-xs">
+                        <input
+                          type="checkbox"
+                          checked={!!biz.hasAdditionalPeriod}
+                          onChange={(e) => {
+                            const updated = [...selfEmployments];
+                            updated[index].hasAdditionalPeriod = e.target.checked;
+                            updated[index].netProfit = calcBizProfit(updated[index]);
+                            setSelfEmployments(updated);
+                          }}
+                          className="rounded text-purple-600 focus:ring-purple-500 cursor-pointer"
+                        />
+                        <span className="text-[11px] font-semibold text-purple-700 dark:text-purple-300">
+                          Enable Basis Period Reform
+                        </span>
+                      </label>
+                    </div>
+
+                    {biz.hasAdditionalPeriod && (
+                      <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                          <div>
+                            <label className="block text-[10px] font-semibold text-slate-500 uppercase">
+                              Additional Period Start
+                            </label>
+                            <input
+                              type="date"
+                              value={biz.additionalPeriodStart || ""}
+                              onChange={(e) => {
+                                const updated = [...selfEmployments];
+                                updated[index].additionalPeriodStart = e.target.value;
+                                setSelfEmployments(updated);
+                              }}
+                              className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-semibold text-slate-500 uppercase">
+                              Additional Period End (5 April)
+                            </label>
+                            <input
+                              type="date"
+                              value={biz.additionalPeriodEnd || ""}
+                              onChange={(e) => {
+                                const updated = [...selfEmployments];
+                                updated[index].additionalPeriodEnd = e.target.value;
+                                setSelfEmployments(updated);
+                              }}
+                              className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-semibold text-slate-500 uppercase">
+                              Additional Period Profit (£)
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={biz.additionalPeriodProfit || "0.00"}
+                              onChange={(e) => {
+                                const updated = [...selfEmployments];
+                                updated[index].additionalPeriodProfit = e.target.value;
+                                updated[index].netProfit = calcBizProfit(updated[index]);
+                                setSelfEmployments(updated);
+                              }}
+                              placeholder="0.00"
+                              className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs font-mono"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-semibold text-slate-500 uppercase">
+                              Transitional Spread Deduction (£)
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={biz.transitionalProfitSpreadDeduction || "0.00"}
+                              onChange={(e) => {
+                                const updated = [...selfEmployments];
+                                updated[index].transitionalProfitSpreadDeduction = e.target.value;
+                                updated[index].netProfit = calcBizProfit(updated[index]);
+                                setSelfEmployments(updated);
+                              }}
+                              placeholder="0.00"
+                              className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs font-mono"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="p-2.5 bg-purple-50/60 dark:bg-purple-950/20 border border-purple-200/60 dark:border-purple-800/60 rounded-lg text-[10px] text-purple-800 dark:text-purple-300 flex items-center justify-between">
+                          <span>
+                            <strong>FA 2022 Schedule 1 Statutory Formula</strong>: Standard Profit + Additional Period Profit - Overlap Relief - 5-Year Transitional Spread = <strong>Taxable Net Profit</strong>
+                          </span>
+                          <span className="font-mono font-bold text-xs bg-purple-100 dark:bg-purple-900/60 px-2 py-0.5 rounded text-purple-900 dark:text-purple-100">
+                            Net: £{biz.netProfit}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Statutory Relief Toggles: Class 4 NIC Exemption (Art 50) & Foster Care (Art 49) */}
@@ -1406,6 +1609,488 @@ function SASchedulesContent() {
           )}
         </div>
       )}
+
+      {/* TAB 7: SA109 RESIDENCE & REMITTANCE BASIS */}
+      {activeTab === "residence" && (
+        <div className="space-y-6">
+          {/* Header Banner */}
+          <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h3 className="font-bold text-xs text-slate-900 dark:text-slate-100 uppercase tracking-wider flex items-center gap-2">
+                <Compass size={16} className="text-purple-600" />
+                SA109 Residence, Remittance Basis & Statutory Residence Test (SRT)
+              </h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Statutory residence determination under Finance Act 2013 Sch 45, Domicile election & Remittance Basis Charge under ITA 2007 s809.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                sa109.isUkResident
+                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800"
+                  : "bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-800"
+              }`}>
+                {sa109.isUkResident ? "UK Resident" : "Non-UK Resident"}
+              </span>
+              {sa109.claimRemittanceBasis && (
+                <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-950/40 dark:text-purple-400 dark:border-purple-800">
+                  Remittance Basis Active
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Section 1: Statutory Residence Test (SRT) */}
+          <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+            <div className="border-b border-slate-100 dark:border-slate-800 pb-3">
+              <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Shield size={14} className="text-purple-600" />
+                1. Statutory Residence Status (Boxes 1 – 14)
+              </h4>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Determine UK residence status under the 3-tier Statutory Residence Test (Automatic Overseas, Automatic UK, Sufficient Ties).
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">
+                  Box 1: Were you resident in the UK?
+                </label>
+                <select
+                  value={sa109.isUkResident ? "yes" : "no"}
+                  onChange={(e) => setSa109({ ...sa109, isUkResident: e.target.value === "yes" })}
+                  className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs"
+                >
+                  <option value="yes">Yes — UK Resident</option>
+                  <option value="no">No — Non-UK Resident</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">
+                  Box 2: Days spent in the UK
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="366"
+                  value={sa109.daysInUk}
+                  onChange={(e) => setSa109({ ...sa109, daysInUk: e.target.value })}
+                  placeholder="183"
+                  className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">
+                  Box 3: Claim Split Year Treatment?
+                </label>
+                <div className="flex items-center gap-2 mt-2">
+                  <input
+                    type="checkbox"
+                    id="claimSplitYear"
+                    checked={sa109.claimSplitYear}
+                    onChange={(e) => setSa109({ ...sa109, claimSplitYear: e.target.checked })}
+                    className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                  />
+                  <label htmlFor="claimSplitYear" className="text-xs text-slate-700 dark:text-slate-300">
+                    Case 1-8 Split Year Applies
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {sa109.claimSplitYear && (
+              <div className="p-3 bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+                <label className="block text-[10px] font-semibold text-purple-900 dark:text-purple-300 uppercase mb-1">
+                  Box 4: Date Split Year Treatment Commenced / Ended (YYYY-MM-DD)
+                </label>
+                <input
+                  type="date"
+                  value={sa109.splitYearDate}
+                  onChange={(e) => setSa109({ ...sa109, splitYearDate: e.target.value })}
+                  className="w-full max-w-xs px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs font-mono"
+                />
+              </div>
+            )}
+
+            {/* SRT 3-Tier Checklist */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/40 rounded-lg border border-slate-200 dark:border-slate-700/60 space-y-3">
+              <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider block">
+                Statutory Residence Test (SRT) Criteria Breakdown
+              </span>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <label className="flex items-start gap-2.5 p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg cursor-pointer hover:border-purple-300 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={sa109.meetsSrtAutomaticOverseasTest}
+                    onChange={(e) => setSa109({ ...sa109, meetsSrtAutomaticOverseasTest: e.target.checked })}
+                    className="mt-0.5 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                  />
+                  <div>
+                    <span className="font-semibold text-xs text-slate-800 dark:text-slate-200 block">Box 5: Automatic Overseas Test</span>
+                    <span className="text-[10px] text-slate-500 block leading-tight mt-0.5">
+                      &lt;16 days in UK (or &lt;46 days if non-resident 3 prior yrs), or full-time work abroad.
+                    </span>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-2.5 p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg cursor-pointer hover:border-purple-300 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={sa109.meetsSrtAutomaticUkTest}
+                    onChange={(e) => setSa109({ ...sa109, meetsSrtAutomaticUkTest: e.target.checked })}
+                    className="mt-0.5 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                  />
+                  <div>
+                    <span className="font-semibold text-xs text-slate-800 dark:text-slate-200 block">Box 6: Automatic UK Test</span>
+                    <span className="text-[10px] text-slate-500 block leading-tight mt-0.5">
+                      183+ days in UK, or only home in UK for 91+ continuous days, or full-time UK work.
+                    </span>
+                  </div>
+                </label>
+
+                <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-xs text-slate-800 dark:text-slate-200 block">Box 7: Sufficient Ties Test</span>
+                    <select
+                      value={sa109.ukTiesCount}
+                      onChange={(e) => setSa109({ ...sa109, ukTiesCount: e.target.value })}
+                      className="px-2 py-0.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs font-mono"
+                    >
+                      <option value="0">0 Ties</option>
+                      <option value="1">1 Tie</option>
+                      <option value="2">2 Ties</option>
+                      <option value="3">3 Ties</option>
+                      <option value="4">4 Ties</option>
+                      <option value="5">5 Ties</option>
+                    </select>
+                  </div>
+                  <span className="text-[10px] text-slate-500 block leading-tight">
+                    UK ties: Family tie, Accommodation tie, Work tie, 90-day tie, Country tie.
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2: Domicile & Remittance Basis Election (ITA 2007 Part 14 Chapter A1) */}
+          <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+            <div className="border-b border-slate-100 dark:border-slate-800 pb-3">
+              <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Globe size={14} className="text-purple-600" />
+                2. Domicile & Remittance Basis Election (ITA 2007 s809)
+              </h4>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Taxpayers not domiciled in the UK may elect for the Remittance Basis of taxation on unremitted foreign income and gains.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">
+                  Box 23: Domiciled in the UK?
+                </label>
+                <select
+                  value={sa109.isDomiciledInUk ? "yes" : "no"}
+                  onChange={(e) => {
+                    const isDom = e.target.value === "yes";
+                    setSa109({
+                      ...sa109,
+                      isDomiciledInUk: isDom,
+                      claimRemittanceBasis: isDom ? false : sa109.claimRemittanceBasis,
+                      remittanceBasisChargeTier: isDom ? "none" : sa109.remittanceBasisChargeTier,
+                    });
+                  }}
+                  className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs"
+                >
+                  <option value="yes">Yes — UK Domiciled (Taxable on Arising Basis)</option>
+                  <option value="no">No — Non-UK Domiciled (Eligible for Remittance Basis)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">
+                  Box 28: Elect for Remittance Basis?
+                </label>
+                <div className="flex items-center gap-2 mt-2">
+                  <input
+                    type="checkbox"
+                    id="claimRemittanceBasis"
+                    disabled={sa109.isDomiciledInUk}
+                    checked={sa109.claimRemittanceBasis}
+                    onChange={(e) => setSa109({ ...sa109, claimRemittanceBasis: e.target.checked })}
+                    className="rounded border-slate-300 text-purple-600 focus:ring-purple-500 disabled:opacity-50"
+                  />
+                  <label
+                    htmlFor="claimRemittanceBasis"
+                    className={`text-xs font-semibold ${
+                      sa109.isDomiciledInUk ? "text-slate-400" : "text-slate-700 dark:text-slate-300"
+                    }`}
+                  >
+                    Claim Remittance Basis of Taxation for {selectedTaxYear}
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Remittance Basis Statutory Impact Alert */}
+            {sa109.claimRemittanceBasis && (
+              <div className="space-y-4">
+                <div className="p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl space-y-2">
+                  <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 font-bold text-xs">
+                    <AlertCircle size={15} className="shrink-0" />
+                    <span>Statutory Impact of Remittance Basis Election (ITA 2007 s809G)</span>
+                  </div>
+                  <ul className="text-[11px] text-amber-700 dark:text-amber-400 space-y-1 pl-5 list-disc">
+                    <li>
+                      <strong>Zero Personal Allowance:</strong> Under ITA 2007 s809G, electing the remittance basis forfeits the statutory UK Personal Allowance (£12,570 for 2024/25).
+                    </li>
+                    <li>
+                      <strong>Zero Capital Gains AEA:</strong> Entitlement to the Capital Gains Tax Annual Exempt Amount (£3,000 for 2024/25) is fully surrendered.
+                    </li>
+                    <li>
+                      <strong>UK Income Taxable:</strong> All UK employment, sole trader, partnership, dividend, and rental income remains fully taxable at arising rates.
+                    </li>
+                  </ul>
+                </div>
+
+                {/* Remittance Basis Charge Tier Selector (ITA 2007 s809C/s809H) */}
+                <div className="p-4 bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="font-bold text-xs text-purple-900 dark:text-purple-200 block">
+                        Box 31: Remittance Basis Charge (RBC) Tier
+                      </span>
+                      <span className="text-[10px] text-purple-700 dark:text-purple-400">
+                        Based on UK residence history in previous tax years (ITA 2007 s809H).
+                      </span>
+                    </div>
+
+                    {sa109.remittanceBasisChargeTier === "7_of_9" && (
+                      <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-600 text-white">
+                        +£30,000 RBC Applied
+                      </span>
+                    )}
+                    {sa109.remittanceBasisChargeTier === "12_of_14" && (
+                      <span className="px-3 py-1 rounded-full text-xs font-bold bg-rose-600 text-white">
+                        +£60,000 RBC Applied
+                      </span>
+                    )}
+                    {sa109.remittanceBasisChargeTier === "none" && (
+                      <span className="px-3 py-1 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300">
+                        No RBC Charge (&lt;7 Years)
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <label
+                      onClick={() => setSa109({ ...sa109, remittanceBasisChargeTier: "none" })}
+                      className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                        sa109.remittanceBasisChargeTier === "none"
+                          ? "bg-purple-600 text-white border-purple-600"
+                          : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-purple-300"
+                      }`}
+                    >
+                      <div className="font-bold text-xs">Resident &lt; 7 of 9 Yrs</div>
+                      <div className={`text-[10px] mt-0.5 ${sa109.remittanceBasisChargeTier === "none" ? "text-purple-100" : "text-slate-500"}`}>
+                        No Remittance Charge
+                      </div>
+                      <div className="text-sm font-bold font-mono mt-1">£0.00</div>
+                    </label>
+
+                    <label
+                      onClick={() => setSa109({ ...sa109, remittanceBasisChargeTier: "7_of_9" })}
+                      className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                        sa109.remittanceBasisChargeTier === "7_of_9"
+                          ? "bg-purple-600 text-white border-purple-600"
+                          : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-purple-300"
+                      }`}
+                    >
+                      <div className="font-bold text-xs">Resident 7 of 9 Yrs</div>
+                      <div className={`text-[10px] mt-0.5 ${sa109.remittanceBasisChargeTier === "7_of_9" ? "text-purple-100" : "text-slate-500"}`}>
+                        Statutory Long-Term Tier 1
+                      </div>
+                      <div className="text-sm font-bold font-mono mt-1">£30,000.00</div>
+                    </label>
+
+                    <label
+                      onClick={() => setSa109({ ...sa109, remittanceBasisChargeTier: "12_of_14" })}
+                      className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                        sa109.remittanceBasisChargeTier === "12_of_14"
+                          ? "bg-purple-600 text-white border-purple-600"
+                          : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-purple-300"
+                      }`}
+                    >
+                      <div className="font-bold text-xs">Resident 12 of 14 Yrs</div>
+                      <div className={`text-[10px] mt-0.5 ${sa109.remittanceBasisChargeTier === "12_of_14" ? "text-purple-100" : "text-slate-500"}`}>
+                        Statutory Long-Term Tier 2
+                      </div>
+                      <div className="text-sm font-bold font-mono mt-1">£60,000.00</div>
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">
+                        Box 34: Nominated Foreign Income (£)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={sa109.unremittedForeignIncome}
+                        onChange={(e) => setSa109({ ...sa109, unremittedForeignIncome: e.target.value })}
+                        placeholder="0.00"
+                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">
+                        Box 35: Foreign Income Remitted to UK (£)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={sa109.remittedForeignIncome}
+                        onChange={(e) => setSa109({ ...sa109, remittedForeignIncome: e.target.value })}
+                        placeholder="0.00"
+                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Section 3: Double Taxation Relief & Whitespace Notes (Boxes 37 - 40) */}
+          <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+            <div className="border-b border-slate-100 dark:border-slate-800 pb-3">
+              <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <FileText size={14} className="text-purple-600" />
+                3. Double Taxation Treaty & Whitespace Disclosures (Boxes 37 – 40)
+              </h4>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Record claims under double taxation treaties and formal disclosures to HMRC.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">
+                  Box 37: Double Taxation Relief Claim?
+                </label>
+                <div className="flex items-center gap-2 mt-2">
+                  <input
+                    type="checkbox"
+                    id="claimDoubleTaxRelief"
+                    checked={sa109.claimDoubleTaxRelief}
+                    onChange={(e) => setSa109({ ...sa109, claimDoubleTaxRelief: e.target.checked })}
+                    className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                  />
+                  <label htmlFor="claimDoubleTaxRelief" className="text-xs text-slate-700 dark:text-slate-300">
+                    Claim DTR Treaty Relief
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">
+                  Box 38: Treaty Partner Country
+                </label>
+                <input
+                  type="text"
+                  disabled={!sa109.claimDoubleTaxRelief}
+                  value={sa109.doubleTaxReliefCountry}
+                  onChange={(e) => setSa109({ ...sa109, doubleTaxReliefCountry: e.target.value })}
+                  placeholder="e.g. United States"
+                  className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs disabled:opacity-50"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">
+                  Box 39: Relief Claimed Amount (£)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  disabled={!sa109.claimDoubleTaxRelief}
+                  value={sa109.doubleTaxReliefAmount}
+                  onChange={(e) => setSa109({ ...sa109, doubleTaxReliefAmount: e.target.value })}
+                  placeholder="0.00"
+                  className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs font-mono disabled:opacity-50"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">
+                Box 40: Additional Disclosures & Residence Whitespace Notes
+              </label>
+              <textarea
+                rows={3}
+                value={sa109.additionalNotes}
+                onChange={(e) => setSa109({ ...sa109, additionalNotes: e.target.value })}
+                placeholder="Disclose relevant background regarding ties, overseas work days, domicile status, or remittance basis tracking..."
+                className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Step 2 Guided Footer Navigation */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 font-bold flex items-center justify-center text-xs">
+            2
+          </div>
+          <div>
+            <span className="font-bold text-xs text-slate-800 dark:text-slate-200 block">Step 2: Supplementary Schedules Recorded</span>
+            <span className="text-[10px] text-slate-400">Next: Step 3 — Statutory Tax Calculation & SA302 Summary</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2.5 self-end sm:self-auto">
+          <Link
+            href={`/self-assessment/${clientId}/forms`}
+            className="px-3 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors cursor-pointer"
+          >
+            ← Back to Step 1
+          </Link>
+
+          <button
+            type="button"
+            onClick={() => saveSchedulesMutation.mutate()}
+            disabled={saveSchedulesMutation.isPending}
+            className="px-4 py-2 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+          >
+            <Save size={13} />
+            <span>{saveSchedulesMutation.isPending ? "Saving..." : "Save Schedules"}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await saveSchedulesMutation.mutateAsync();
+                setLocation(`/self-assessment/${clientId}/calculation`);
+              } catch {}
+            }}
+            disabled={saveSchedulesMutation.isPending}
+            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+          >
+            <span>Save & Proceed to Step 3: SA302</span>
+            <ArrowRight size={13} />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

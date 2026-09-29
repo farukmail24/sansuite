@@ -97,6 +97,7 @@ import SATaxDuePage from "./pages/self-assessment/workspace/SATaxDuePage";
 import SAQuestionnairePage from "./pages/self-assessment/workspace/SAQuestionnairePage";
 import SAeSignPage from "./pages/self-assessment/workspace/SAeSignPage";
 import SASubmitPage from "./pages/self-assessment/workspace/SASubmitPage";
+import SAReportsPage from "./pages/self-assessment/workspace/SAReportsPage";
 import SelfAssessmentSettingsPage from "./pages/self-assessment/SelfAssessmentSettingsPage";
 import BookkeepingSettingsPage from "./pages/bookkeeping/BookkeepingSettingsPage";
 import CompanyInfoPage from "./pages/bookkeeping/settings/CompanyInfoPage";
@@ -385,6 +386,7 @@ const R_SATaxDuePage = makePrivate(SATaxDuePage);
 const R_SAQuestionnairePage = makePrivate(SAQuestionnairePage);
 const R_SAeSignPage = makePrivate(SAeSignPage);
 const R_SASubmitPage = makePrivate(SASubmitPage);
+const R_SAReportsPage = makePrivate(SAReportsPage);
 const R_SelfAssessmentSettingsPage = makePrivate(SelfAssessmentSettingsPage);
 
 // Other modules
@@ -714,6 +716,10 @@ function AppRoutes() {
       <Route path="/self-assessment/:clientId/questionnaire" component={R_SAQuestionnairePage} />
       <Route path="/self-assessment/:clientId/esign" component={R_SAeSignPage} />
       <Route path="/self-assessment/:clientId/submit" component={R_SASubmitPage} />
+      <Route path="/self-assessment/:clientId/reports" component={R_SAReportsPage} />
+      <Route path="/self-assessment/:clientId/report" component={R_SAReportsPage} />
+      <Route path="/self-assessment/:clientId/sa100" component={R_SAReportsPage} />
+      <Route path="/self-assessment/:clientId/sa302" component={R_SAReportsPage} />
       <Route path="/self-assessment/:clientId" component={R_SAClientWorkspacePage} />
       <Route path="/charity-accounts" component={R_CharityAccountsHome} />
       <Route path="/charity-accounts/:charityId/dashboard" component={R_CharityDashboardPage} />

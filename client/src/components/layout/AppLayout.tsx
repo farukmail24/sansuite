@@ -16,6 +16,7 @@ import SupportTicketWidget from "./SupportTicketWidget";
 
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "../../lib/queryClient";
+import type { HMRCFormCode } from "../common/HMRCHelpTooltip";
 
 export interface NavItem {
   label: string;
@@ -23,6 +24,7 @@ export interface NavItem {
   route?: string;
   children?: { label: string; route: string }[];
   isHeader?: boolean;
+  hmrcCode?: HMRCFormCode;
 }
 
 interface AppLayoutProps {

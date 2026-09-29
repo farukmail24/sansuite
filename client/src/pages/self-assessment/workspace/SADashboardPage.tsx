@@ -15,7 +15,16 @@ export default function SADashboardPage() {
 }
 
 function SADashboardContent() {
-  const { clientId, client, currentReturn, selectedTaxYear, setOpenNewReturnModal, handleDuplicateAmended, isDuplicatingAmended } = useSAWorkspace();
+  const {
+    clientId,
+    client,
+    currentReturn,
+    selectedTaxYear,
+    setOpenNewReturnModal,
+    handleDuplicateAmended,
+    isDuplicatingAmended,
+    openSA100Modal,
+  } = useSAWorkspace();
 
   // Calculate deadline days
   const now = new Date();
@@ -173,14 +182,25 @@ function SADashboardContent() {
             </p>
           </div>
 
-          <Link
-            href={`/self-assessment/${clientId}/calculation`}
-            className="px-3 py-1.5 bg-purple-50 dark:bg-purple-950/50 hover:bg-purple-100 dark:hover:bg-purple-900/50 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
-          >
-            <FileSpreadsheet size={13} />
-            Full SA302 Breakdown
-            <ArrowRight size={12} />
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => openSA100Modal("sa100")}
+              className="px-3 py-1.5 bg-teal-700 hover:bg-teal-800 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+              title="Open official 10-page HMRC SA100 form view"
+            >
+              <FileText size={13} />
+              SA100 Form
+            </button>
+            <Link
+              href={`/self-assessment/${clientId}/sa302`}
+              className="px-3 py-1.5 bg-purple-50 dark:bg-purple-950/50 hover:bg-purple-100 dark:hover:bg-purple-900/50 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <FileSpreadsheet size={13} />
+              Full SA302 Breakdown
+              <ArrowRight size={12} />
+            </Link>
+          </div>
         </div>
 
         {/* Figures Metric Grid */}
@@ -329,6 +349,38 @@ function SADashboardContent() {
             <h4 className="font-bold text-xs text-slate-900 dark:text-slate-100">6. HMRC Submit Gateway</h4>
             <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
               Canonical 4-step electronic filing wizard, IR Mark generation, and live HMRC GovTalk XML submission.
+            </p>
+          </Link>
+
+          <Link
+            href={`/self-assessment/${clientId}/sa100`}
+            className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-teal-200 dark:border-teal-800/80 hover:border-teal-400 dark:hover:border-teal-600 hover:shadow-md transition-all group cursor-pointer block"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="p-2.5 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 rounded-lg">
+                <FileText size={18} />
+              </div>
+              <ArrowRight size={14} className="text-slate-400 group-hover:text-teal-600 transition-colors" />
+            </div>
+            <h4 className="font-bold text-xs text-slate-900 dark:text-slate-100">7. SA100 (All forms)</h4>
+            <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+              Official 10-page statutory return form (TR 1 to TR 8) and SA110 tax calculation summary (TC 1 to TC 2).
+            </p>
+          </Link>
+
+          <Link
+            href={`/self-assessment/${clientId}/sa302`}
+            className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-emerald-200 dark:border-emerald-800/80 hover:border-emerald-400 dark:hover:border-emerald-600 hover:shadow-md transition-all group cursor-pointer block"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="p-2.5 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 rounded-lg">
+                <FileSpreadsheet size={18} />
+              </div>
+              <ArrowRight size={14} className="text-slate-400 group-hover:text-emerald-600 transition-colors" />
+            </div>
+            <h4 className="font-bold text-xs text-slate-900 dark:text-slate-100">8. SA302 Computation</h4>
+            <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+              Official HMRC statement of income received, tax calculation, NIC breakdown, and payments on account.
             </p>
           </Link>
         </div>

@@ -1,12 +1,15 @@
 import { useState, useEffect } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import SAWorkspaceLayout, { useSAWorkspace } from "./SAWorkspaceLayout";
 import { apiRequest } from "../../../lib/queryClient";
 import { useToast } from "../../../hooks/useToast";
 import {
   FileSignature, Send, CheckCircle2, Clock, AlertCircle,
-  ExternalLink, Copy, RefreshCw, User, Mail, Shield, Check
+  ExternalLink, Copy, RefreshCw, User, Mail, Shield, Check,
+  ArrowRight, ArrowLeft
 } from "lucide-react";
+import { Link } from "wouter";
+import HMRCHelpTooltip from "../../../components/common/HMRCHelpTooltip";
 
 export default function SAeSignPage() {
   return (
@@ -33,17 +36,30 @@ function SAeSignContent() {
   }, [client]);
 
 
-  const isSigned = currentReturn.status === "Signed" || currentReturn.status === "Accepted";
-  const isSent = currentReturn.status === "SentToCapisign" || isSigned;
+  const { data: capisignData, refetch: refetchCapisignStatus, isFetching: isCheckingStatus } = useQuery<any>({
+    queryKey: [`/api/self-assessment/${clientId}/returns/${currentReturn?.id}/capisign-status`],
+    queryFn: async () => {
+      if (!clientId || !currentReturn?.id) return null;
+      const res = await apiRequest("GET", `/api/self-assessment/${clientId}/returns/${currentReturn.id}/capisign-status`);
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!clientId && !!currentReturn?.id,
+  });
+
+  const capisignDoc = capisignData?.capisignStatus;
+  const isSigned = currentReturn.status === "Signed" || currentReturn.status === "Accepted" || capisignDoc?.isSigned;
+  const isSent = currentReturn.status === "SentToCapisign" || isSigned || !!capisignDoc;
   const netTaxDue = parseFloat(currentReturn.netTaxDue || "0");
   const signUrl = `${window.location.origin}/portal/sign/sa100/${currentReturn.id}`;
 
   // 1. Dispatch to eSign Mutation
   const sendToEsignMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/self-assessment/${clientId}/returns`, {
-        ...currentReturn,
-        status: "SentToCapisign",
+      const res = await apiRequest("POST", `/api/self-assessment/${clientId}/returns/${currentReturn.id}/send-to-capisign`, {
+        signerName,
+        signerEmail,
+        notes: "Self Assessment SA100 client approval and e-signature declaration.",
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Dispatch failed" }));
@@ -51,11 +67,12 @@ function SAeSignContent() {
       }
       return res.json();
     },
-    onSuccess: async () => {
+    onSuccess: async (data: any) => {
       await refetchReturns();
+      await refetchCapisignStatus();
       toast({
-        title: "SA100 Dispatched for eSign",
-        description: `Electronic signature invitation sent to ${signerEmail}.`,
+        title: "eSign Invitation Dispatched",
+        description: data.message || `Electronic signature invitation sent to ${signerEmail}.`,
         type: "success",
       });
     },
@@ -83,6 +100,7 @@ function SAeSignContent() {
     },
     onSuccess: async () => {
       await refetchReturns();
+      await refetchCapisignStatus();
       toast({
         title: "Status Updated: Approved & Signed",
         description: "Return marked as electronically signed and approved for HMRC submission.",
@@ -107,30 +125,119 @@ function SAeSignContent() {
       {/* Header */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300">
+              Step 5 of 6
+            </span>
+            <HMRCHelpTooltip code="SA100" showLabel />
+          </div>
           <h2 className="font-bold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
             <FileSignature size={16} className="text-emerald-600" />
-            Client eSign & Return Approval
+            Client Electronic Signature & Return Approval (eSign)
           </h2>
           <p className="text-[11px] text-slate-500 mt-0.5">
             Obtain legally binding digital approval and statutory declaration from the taxpayer prior to HMRC filing.
           </p>
         </div>
 
-        <span
-          className={`px-2.5 py-1 rounded-full text-xs font-semibold self-start sm:self-auto ${
-            isSigned
-              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-              : isSent
-              ? "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300"
-              : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
-          }`}
-        >
-          {isSigned ? "Approved & Signed" : isSent ? "Awaiting Signature" : "Draft (Not Sent)"}
-        </span>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={() => refetchCapisignStatus()}
+            disabled={isCheckingStatus}
+            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw size={12} className={isCheckingStatus ? "animate-spin text-purple-600" : ""} />
+            <span>Sync eSign Status</span>
+          </button>
+
+          <span
+            className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+              isSigned
+                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                : isSent
+                ? "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300"
+                : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+            }`}
+          >
+            {isSigned ? "Approved & Signed" : isSent ? "Awaiting Signature" : "Draft (Not Sent)"}
+          </span>
+        </div>
       </div>
 
+      {/* Live Document Status Card */}
+      {capisignDoc && (
+        <div className="bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-800/60 rounded-xl p-6 shadow-xs space-y-4 w-full">
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+            <div>
+              <span className="font-bold text-xs uppercase tracking-wider text-purple-600 block">
+                Active eSign Document #{capisignDoc.documentId}
+              </span>
+              <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100 mt-0.5">
+                {capisignDoc.title || `SA100 Tax Return — ${currentReturn.taxYear}`}
+              </h4>
+            </div>
+
+            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+              capisignDoc.isSigned
+                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                : "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300"
+            }`}>
+              {capisignDoc.status}
+            </span>
+          </div>
+
+          {/* Signers list */}
+          {capisignDoc.signers && capisignDoc.signers.length > 0 && (
+            <div className="space-y-2">
+              <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block">
+                Designated Signatories
+              </span>
+              <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                {capisignDoc.signers.map((s: any, idx: number) => (
+                  <div key={idx} className="py-2 flex items-center justify-between text-xs">
+                    <div>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200 block">{s.name}</span>
+                      <span className="text-[11px] text-slate-400 font-mono">{s.email}</span>
+                    </div>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                      s.status === "Signed"
+                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                        : "bg-amber-50 text-amber-700 border border-amber-200"
+                    }`}>
+                      {s.status || "Pending"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Audit trail */}
+          {capisignDoc.auditTrail && capisignDoc.auditTrail.length > 0 && (
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-lg border border-slate-200 dark:border-slate-700/60 space-y-1.5">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                Digital Signature Audit Trail
+              </span>
+              <div className="space-y-1">
+                {capisignDoc.auditTrail.slice(0, 3).map((log: any, idx: number) => (
+                  <div key={idx} className="text-[10px] text-slate-600 dark:text-slate-400 flex items-center gap-2">
+                    <span className="font-mono text-slate-400">
+                      {new Date(log.timestamp || log.createdAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                    <span>•</span>
+                    <span className="font-medium text-slate-700 dark:text-slate-300">{log.action || log.event}</span>
+                    {log.ipAddress && <span className="font-mono text-slate-400">({log.ipAddress})</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Main Dispatch Card */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-xs space-y-6 max-w-2xl mx-auto">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-xs space-y-6 w-full">
         <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
           <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-950/40 text-purple-600 flex items-center justify-center shrink-0">
             <Shield size={20} />
@@ -228,6 +335,36 @@ function SAeSignContent() {
               <span>Mark as Signed (Offline/Paper)</span>
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* Step 5 Guided Footer Navigation */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full print:hidden">
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 font-bold flex items-center justify-center text-xs">
+            5
+          </div>
+          <div>
+            <span className="font-bold text-xs text-slate-800 dark:text-slate-200 block">Step 5: Client Approval & eSign</span>
+            <span className="text-[10px] text-slate-400">Next: Step 6 — HMRC Gateway Submission & Final Pre-Flight Validation</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2.5 self-end sm:self-auto">
+          <Link
+            href={`/self-assessment/${clientId}/tax-due`}
+            className="px-3.5 py-2 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+          >
+            <ArrowLeft size={13} />
+            <span>Back to Step 4: Tax Due</span>
+          </Link>
+          <Link
+            href={`/self-assessment/${clientId}/submit`}
+            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+          >
+            <span>Proceed to Step 6: HMRC Submission</span>
+            <ArrowRight size={13} />
+          </Link>
         </div>
       </div>
     </div>

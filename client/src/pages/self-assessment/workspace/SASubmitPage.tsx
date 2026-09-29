@@ -5,9 +5,11 @@ import { apiRequest } from "../../../lib/queryClient";
 import { useToast } from "../../../hooks/useToast";
 import {
   Shield, CheckCircle2, AlertCircle, RefreshCw, Send,
-  ArrowRight, ArrowLeft, Code, FileText, Download, User, X, ExternalLink
+  ArrowRight, ArrowLeft, Code, FileText, Download, User, X, ExternalLink,
+  Info, Lock
 } from "lucide-react";
 import { Link } from "wouter";
+import HMRCHelpTooltip from "../../../components/common/HMRCHelpTooltip";
 
 export default function SASubmitPage() {
   return (
@@ -24,9 +26,18 @@ function SASubmitContent() {
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [validationWarnings, setValidationWarnings] = useState<string[]>([]);
   const [isValidated, setIsValidated] = useState(false);
   const [irMark, setIrMark] = useState<string | null>(currentReturn?.irMark || null);
   const [showXmlModal, setShowXmlModal] = useState(false);
+
+  // Parse schedules data for pre-flight checklist verification
+  let sched: any = {};
+  if (currentReturn?.schedulesData) {
+    try {
+      sched = typeof currentReturn.schedulesData === "string" ? JSON.parse(currentReturn.schedulesData) : currentReturn.schedulesData;
+    } catch {}
+  }
 
   // Fetch Practice HMRC Agent Services Account (ASA) Details
   const { data: firmDetails } = useQuery<any>({
@@ -69,6 +80,7 @@ function SASubmitContent() {
       return res.json();
     },
     onSuccess: async (data: any) => {
+      setValidationWarnings(data.warnings || []);
       if (data.isValid) {
         setIsValidated(true);
         setValidationErrors([]);
@@ -79,7 +91,6 @@ function SASubmitContent() {
           description: `IR Mark generated: ${data.irMark}`,
           type: "success",
         });
-        setStep(2);
       } else {
         setIsValidated(false);
         setValidationErrors(data.errors || ["Validation failed"]);
@@ -139,12 +150,18 @@ function SASubmitContent() {
       {/* Header */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300">
+              Step 6 of 6
+            </span>
+            <HMRCHelpTooltip code="SA100" showLabel />
+          </div>
           <h2 className="font-bold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
             <Shield size={16} className="text-emerald-600" />
             HMRC GovTalk Electronic Submission Gateway (SA100)
           </h2>
           <p className="text-[11px] text-slate-500 mt-0.5">
-            4-step statutory filing wizard for submitting Self Assessment tax returns directly to HMRC.
+            Final stage: Pre-flight statutory validation, return verification, gateway authorization, and direct live filing to HMRC.
           </p>
         </div>
 
@@ -253,6 +270,19 @@ function SASubmitContent() {
             </div>
           )}
 
+          {validationWarnings.length > 0 && (
+            <div className="p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl space-y-2">
+              <span className="text-xs font-bold text-amber-800 dark:text-amber-200 flex items-center gap-1.5">
+                <AlertCircle size={14} /> Advisory Gateway Warnings ({validationWarnings.length})
+              </span>
+              <ul className="list-disc list-inside text-xs text-amber-700 dark:text-amber-300 space-y-1">
+                {validationWarnings.map((warn, i) => (
+                  <li key={i}>{warn}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {isValidated && (
             <div className="p-4 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl space-y-2">
               <span className="text-xs font-bold text-emerald-800 dark:text-emerald-200 flex items-center gap-1.5">
@@ -262,8 +292,8 @@ function SASubmitContent() {
                 The SA100 return is compliant with HMRC online filing schema specifications.
               </p>
               {irMark && (
-                <div className="mt-2 text-xs">
-                  <span className="text-slate-500">Cryptographic IR Mark: </span>
+                <div className="mt-2 text-xs flex items-center gap-2">
+                  <span className="text-slate-500 font-semibold">Cryptographic IR Mark:</span>
                   <code className="font-mono bg-white dark:bg-slate-900 px-2 py-0.5 rounded border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200">
                     {irMark}
                   </code>
@@ -272,19 +302,174 @@ function SASubmitContent() {
             </div>
           )}
 
+          {/* Categorized HMRC Statutory Pre-Flight Checklist */}
+          <div className="space-y-3 pt-2">
+            <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+              Statutory HMRC Pre-Flight Verification Checklist
+            </h4>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+              {/* Card 1: Identity & Gateway Authorization */}
+              <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-2">
+                <span className="font-bold text-[11px] text-slate-700 dark:text-slate-300 uppercase tracking-wider block">
+                  1. Taxpayer Identity & Registration
+                </span>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-600 dark:text-slate-400">10-Digit UTR:</span>
+                    <span className="font-mono font-semibold flex items-center gap-1">
+                      {/^\d{10}$/.test((currentReturn.utrNumber || client?.utrNumber || "").replace(/\s/g, "")) ? (
+                        <CheckCircle2 size={13} className="text-emerald-600" />
+                      ) : (
+                        <AlertCircle size={13} className="text-rose-500" />
+                      )}
+                      {currentReturn.utrNumber || client?.utrNumber || "Missing"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-600 dark:text-slate-400">UK NINO:</span>
+                    <span className="font-mono font-semibold flex items-center gap-1">
+                      {(currentReturn.niNumber || client?.niNumber) ? (
+                        <CheckCircle2 size={13} className="text-emerald-600" />
+                      ) : (
+                        <Info size={13} className="text-amber-500" />
+                      )}
+                      {currentReturn.niNumber || client?.niNumber || "Unrecorded"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 2: Supplementary Schedules & Disclosures */}
+              <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-2">
+                <span className="font-bold text-[11px] text-slate-700 dark:text-slate-300 uppercase tracking-wider block">
+                  2. Supplementary Schedules & Whitespace
+                </span>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-600 dark:text-slate-400">SA108 CGT Box 54 / PDF:</span>
+                    <span className="font-semibold flex items-center gap-1">
+                      {parseFloat(currentReturn.capitalGainsNet || "0") > 0 ? (
+                        (sched.cgtBox54Notes || sched.cgtHasAttachment) ? (
+                          <span className="text-emerald-600 flex items-center gap-1">
+                            <CheckCircle2 size={13} /> Disclosed
+                          </span>
+                        ) : (
+                          <span className="text-rose-600 flex items-center gap-1">
+                            <AlertCircle size={13} /> Action Required
+                          </span>
+                        )
+                      ) : (
+                        <span className="text-slate-400">Not Applicable</span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-600 dark:text-slate-400">SA104 Partnership Business Name:</span>
+                    <span className="font-semibold flex items-center gap-1">
+                      {Array.isArray(sched.partnerships) && sched.partnerships.length > 0 ? (
+                        sched.partnerships.every((p: any) => p.partnershipName?.trim()) ? (
+                          <span className="text-emerald-600 flex items-center gap-1">
+                            <CheckCircle2 size={13} /> Verified
+                          </span>
+                        ) : (
+                          <span className="text-rose-600 flex items-center gap-1">
+                            <AlertCircle size={13} /> Name Missing
+                          </span>
+                        )
+                      ) : (
+                        <span className="text-slate-400">Not Applicable</span>
+                      )}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 3: Statutory Rules & High Income Child Benefit */}
+              <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-2">
+                <span className="font-bold text-[11px] text-slate-700 dark:text-slate-300 uppercase tracking-wider block">
+                  3. Statutory Exemptions & Reliefs
+                </span>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-600 dark:text-slate-400">Marriage Allowance (s55A):</span>
+                    <span className="font-semibold flex items-center gap-1">
+                      {sched.claimMarriageAllowanceRecipient ? (
+                        <span className="text-emerald-600 flex items-center gap-1">
+                          <CheckCircle2 size={13} /> Recipient (-£251.40)
+                        </span>
+                      ) : sched.claimMarriageAllowanceTransferor ? (
+                        <span className="text-purple-600 flex items-center gap-1">
+                          <CheckCircle2 size={13} /> Transferor (-£1,257 PA)
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">Not Claimed</span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-600 dark:text-slate-400">PAYE Coding Out (s59B):</span>
+                    <span className="font-semibold flex items-center gap-1">
+                      {(currentReturn.canCodeOut || sched.canCodeOut) ? (
+                        <span className="text-emerald-600 flex items-center gap-1">
+                          <CheckCircle2 size={13} /> Elected via PAYE
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">Direct Settle 31 Jan</span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-600 dark:text-slate-400">HICBC (Finance Act 2024):</span>
+                    <span className="font-semibold flex items-center gap-1">
+                      {parseFloat(currentReturn.hicbcDue || sched.hicbcDue || "0") > 0 ? (
+                        <span className="text-purple-600 flex items-center gap-1">
+                          <CheckCircle2 size={13} /> Assessed (£{parseFloat(currentReturn.hicbcDue || sched.hicbcDue).toFixed(2)})
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">Nil Charge / Below Threshold</span>
+                      )}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 4: Repayments & Cryptographic IR Mark */}
+              <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-2">
+                <span className="font-bold text-[11px] text-slate-700 dark:text-slate-300 uppercase tracking-wider block">
+                  4. Direct Repayment & Security
+                </span>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-600 dark:text-slate-400">Direct BACS Repayment Account:</span>
+                    <span className="font-semibold flex items-center gap-1">
+                      {sched.bankRefundDetails?.bankSortCode ? (
+                        <span className="text-emerald-600 flex items-center gap-1">
+                          <CheckCircle2 size={13} /> Recorded ({sched.bankRefundDetails.bankSortCode})
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">Payable Order (Default)</span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-600 dark:text-slate-400">GovTalk IR Mark:</span>
+                    <span className="font-mono font-semibold flex items-center gap-1">
+                      {irMark ? (
+                        <span className="text-emerald-600 flex items-center gap-1">
+                          <CheckCircle2 size={13} /> Ready
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">Run Validation</span>
+                      )}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-            <div className="py-2.5 flex justify-between items-center">
-              <span className="text-slate-600 dark:text-slate-400">10-Digit Unique Taxpayer Reference (UTR)</span>
-              <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
-                {currentReturn.utrNumber || client?.utrNumber || "Missing"}
-              </span>
-            </div>
-            <div className="py-2.5 flex justify-between items-center">
-              <span className="text-slate-600 dark:text-slate-400">National Insurance Number (NINO)</span>
-              <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
-                {currentReturn.niNumber || client?.niNumber || "Missing"}
-              </span>
-            </div>
             <div className="py-2.5 flex justify-between items-center">
               <span className="text-slate-600 dark:text-slate-400">Tax Year</span>
               <span className="font-semibold text-slate-800 dark:text-slate-200">{currentReturn.taxYear}</span>
@@ -297,7 +482,15 @@ function SASubmitContent() {
             </div>
           </div>
 
-          <div className="flex justify-end pt-2">
+          <div className="flex justify-between items-center pt-2">
+            <Link
+              href={`/self-assessment/${clientId}/esign`}
+              className="px-3.5 py-2 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <ArrowLeft size={13} />
+              <span>Back to Step 5: Client Approval (eSign)</span>
+            </Link>
+
             <button
               type="button"
               onClick={() => setStep(2)}
@@ -364,12 +557,24 @@ function SASubmitContent() {
                 <span className="text-slate-500">Personal Allowance:</span>
                 <span className="font-mono">£{parseFloat(currentReturn.personalAllowance || "0").toFixed(2)}</span>
               </div>
+              {sched.claimMarriageAllowanceRecipient && (
+                <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
+                  <span>Marriage Allowance Reducer:</span>
+                  <span className="font-mono font-semibold">-£251.40</span>
+                </div>
+              )}
               <div className="flex justify-between">
-                <span className="text-slate-500">Net Tax Due:</span>
+                <span className="text-slate-500">Balancing SA Tax Due:</span>
                 <span className="font-mono font-bold text-emerald-600">
                   £{netTaxDue.toLocaleString("en-GB", { minimumFractionDigits: 2 })}
                 </span>
               </div>
+              {(currentReturn.canCodeOut || sched.canCodeOut) && (
+                <div className="flex justify-between text-purple-600 dark:text-purple-300">
+                  <span>Settlement Route:</span>
+                  <span className="font-semibold text-[11px]">PAYE Coding Out (s59B)</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-slate-500">1st Payment on Account:</span>
                 <span className="font-mono">£{parseFloat(currentReturn.firstPaymentOnAccount || "0").toFixed(2)}</span>
@@ -548,7 +753,7 @@ function SASubmitContent() {
 
       {/* STEP 4: SUBMISSION CONFIRMATION */}
       {step === 4 && (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-8 shadow-xs space-y-6 text-center max-w-2xl mx-auto">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-8 shadow-xs space-y-6 text-center w-full">
           <div className="w-14 h-14 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 mx-auto flex items-center justify-center">
             <CheckCircle2 size={32} />
           </div>

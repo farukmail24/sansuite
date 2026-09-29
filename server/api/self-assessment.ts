@@ -2,10 +2,13 @@ import { Router } from "express";
 import { db } from "../db";
 import {
   sa100Returns, sa800Returns, selfAssessmentClients, clients, practices,
-  insertSa100ReturnSchema, insertSa800ReturnSchema
+  insertSa100ReturnSchema, insertSa800ReturnSchema,
+  esignDocuments, esignSigners, esignAuditLogs,
+  employees, payeSchemes, cisReturnLines
 } from "@shared/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { authMiddleware } from "../lib/authUtils";
+import { nanoid } from "nanoid";
 import crypto from "crypto";
 
 const router = Router();
@@ -36,19 +39,33 @@ export function calculateStatutorySA100Tax(data: {
   studentLoanPlan?: string;
   isAbovePensionAge?: boolean;
   isClass2Voluntary?: boolean;
+  taxYear?: string;
+  childBenefitReceived?: string | number;
+  childBenefitChildrenCount?: string | number;
+  childBenefitDateStopped?: string;
   seisReliefClaimed?: string | number;
   eisReliefClaimed?: string | number;
   vctReliefClaimed?: string | number;
   capitalGainsNet?: string | number;
   capitalGainsTaxDue?: string | number;
   cgtAdjustmentBox51?: string | number;
+  claimRemittanceBasis?: boolean;
+  remittanceBasisChargeTier?: string;
+  claimMarriageAllowanceRecipient?: boolean;
+  claimMarriageAllowanceTransferor?: boolean;
+  marriageAllowanceSpouseNino?: string;
+  marriageAllowanceSpouseFirstName?: string;
+  marriageAllowanceSpouseLastName?: string;
+  marriageAllowanceSpouseDob?: string;
+  electPayeCodingOut?: boolean;
+  employmentTaxDeducted?: string | number;
   schedulesData?: any;
 }) {
   const schedules = data.schedulesData || {};
 
   // Aggregate employments
   let empInc = Math.max(0, parseFloat(String(data.employmentIncome || "0")));
-  let taxPaid = Math.max(0, parseFloat(String(data.taxPaidAtSource || "0")));
+  let taxPaid = Math.max(0, parseFloat(String(data.taxPaidAtSource || data.employmentTaxDeducted || "0")));
   if (Array.isArray(schedules.employments) && schedules.employments.length > 0) {
     let schedEmp = 0;
     let schedTax = 0;
@@ -60,11 +77,22 @@ export function calculateStatutorySA100Tax(data: {
     if (schedTax > 0) taxPaid = schedTax;
   }
 
-  // Aggregate self-employment profits
+  // Include CIS subcontractor deductions suffered (Box 2 / SA103 Box 38)
+  if (Array.isArray(schedules.cisDeductions) && schedules.cisDeductions.length > 0) {
+    for (const c of schedules.cisDeductions) {
+      taxPaid += parseFloat(String(c.cisTaxDeducted || c.deductionAmount || "0"));
+    }
+  }
+
+  // Aggregate self-employment profits (including Basis Period Reform - FA 2022 / Capium Art 47)
   let seProf = Math.max(0, parseFloat(String(data.selfEmploymentProfit || "0")));
-  if (Array.isArray(schedules.soleTraders) && schedules.soleTraders.length > 0) {
+  const soleTraderList = Array.isArray(schedules.selfEmployments) && schedules.selfEmployments.length > 0
+    ? schedules.selfEmployments
+    : (Array.isArray(schedules.soleTraders) ? schedules.soleTraders : []);
+
+  if (soleTraderList.length > 0) {
     let schedSe = 0;
-    for (const st of schedules.soleTraders) {
+    for (const st of soleTraderList) {
       // Check for Foster Care simplified relief (Capium Art 49: 9000271495)
       if (st.isFosterCarer) {
         const qReceipts = parseFloat(String(st.qualifyingReceipts || "0"));
@@ -75,9 +103,20 @@ export function calculateStatutorySA100Tax(data: {
           st.netProfit = Math.max(0, qReceipts - qAmount).toFixed(2);
         }
       }
-      schedSe += parseFloat(String(st.netProfit || "0"));
+
+      let businessProfit = parseFloat(String(st.netProfit || "0"));
+
+      // Basis Period Reform: additional period profit, overlap relief deduction, transitional profit spreading
+      if (st.hasAdditionalPeriod) {
+        const addPeriodProfit = parseFloat(String(st.additionalPeriodProfit || "0"));
+        const overlapRelief = parseFloat(String(st.overlapReliefUsed || st.overlapReliefDeducted || "0"));
+        const transitionalSpreadDeduction = parseFloat(String(st.transitionalProfitSpreadDeduction || "0"));
+        businessProfit = Math.max(0, businessProfit + addPeriodProfit - overlapRelief - transitionalSpreadDeduction);
+      }
+
+      schedSe += businessProfit;
     }
-    if (schedSe > 0 || schedules.soleTraders.length > 0) seProf = schedSe;
+    if (schedSe > 0 || soleTraderList.length > 0) seProf = schedSe;
   }
 
   // Aggregate partnership profit shares (SA104 - Capium Art 21, 26)
@@ -117,12 +156,36 @@ export function calculateStatutorySA100Tax(data: {
   const nonSavingsGross = Math.max(0, empInc + totalEarnedProfits + propInc + penInc + forInc + othInc);
   const totalIncome = nonSavingsGross + savInt + divInc;
 
+  // SA109: Residence, Remittance Basis (ITA 2007 s809B / FA 2008)
+  const sa109Data = schedules.sa109 || {};
+  const isClaimingRemittanceBasis = !!(data.claimRemittanceBasis || sa109Data.claimRemittanceBasis);
+  const remittanceBasisChargeTier = String(data.remittanceBasisChargeTier || sa109Data.remittanceBasisChargeTier || "none");
+  let remittanceBasisCharge = 0;
+  if (isClaimingRemittanceBasis) {
+    if (remittanceBasisChargeTier === "7_of_9_years") {
+      remittanceBasisCharge = 30000.0;
+    } else if (remittanceBasisChargeTier === "12_of_14_years") {
+      remittanceBasisCharge = 60000.0;
+    }
+  }
+
   // Personal Allowance taper: £12,570 reduced by £1 for every £2 of income above £100,000
   const adjustedNetIncome = Math.max(0, totalIncome - penCont - giftAid);
   let personalAllowance = 12570.0;
-  if (adjustedNetIncome > 100000) {
+
+  // Marriage Allowance (ITA 2007 s55A / Boxes 8-10):
+  const isMarriageAllowanceTransferor = Boolean(data.claimMarriageAllowanceTransferor || schedules.claimMarriageAllowanceTransferor);
+  const isMarriageAllowanceRecipient = Boolean(data.claimMarriageAllowanceRecipient || schedules.claimMarriageAllowanceRecipient);
+
+  // ITA 2007 s809G: If Remittance Basis is claimed, taxpayer loses entitlement to Personal Allowance
+  if (isClaimingRemittanceBasis) {
+    personalAllowance = 0.0;
+  } else if (adjustedNetIncome > 100000) {
     const reduction = (adjustedNetIncome - 100000) / 2;
     personalAllowance = Math.max(0, 12570.0 - reduction);
+  } else if (isMarriageAllowanceTransferor) {
+    // Transferor surrenders 10% of Personal Allowance (£1,257)
+    personalAllowance = Math.max(0, personalAllowance - 1257.0);
   }
 
   // Allocate personal allowance: first against non-savings, then savings, then dividends
@@ -211,6 +274,11 @@ export function calculateStatutorySA100Tax(data: {
   const totalInvestmentReliefs = seisTaxReducer + eisTaxReducer + vctTaxReducer;
   totalIncomeTax = Math.max(0, totalIncomeTax - totalInvestmentReliefs);
 
+  // Marriage Allowance Recipient Tax Reducer (ITA 2007 s55A / Boxes 8-10):
+  // 10% of standard Personal Allowance (£1,257) × basic rate (20%) = £251.40 tax reduction
+  const marriageAllowanceTaxReducer = isMarriageAllowanceRecipient ? Math.min(totalIncomeTax, 251.40) : 0;
+  totalIncomeTax = Math.max(0, totalIncomeTax - marriageAllowanceTaxReducer);
+
   // 4. National Insurance (Self-Employed & Partnerships)
   let class2Nic = 0;
   let class4Nic = 0;
@@ -264,8 +332,8 @@ export function calculateStatutorySA100Tax(data: {
       }
     }
 
-    // AEA £3,000 applied first to before budget, then after budget
-    let remainingAea = 3000.0;
+    // AEA £3,000 applied first to before budget, then after budget (ITA 2007 s809G: 0 if Remittance Basis claimed)
+    let remainingAea = isClaimingRemittanceBasis ? 0.0 : 3000.0;
     const taxableBefore = Math.max(0, totGainsBeforeBudget - remainingAea);
     remainingAea = Math.max(0, remainingAea - totGainsBeforeBudget);
     const taxableAfter = Math.max(0, totGainsAfterBudget - remainingAea);
@@ -282,11 +350,53 @@ export function calculateStatutorySA100Tax(data: {
 
   const totalCgtTaxDue = cgtStandardDue + cgtBox51Adjustment;
 
+  // 6B. High Income Child Benefit Charge (HICBC) - Finance Act 2024 / ITEPA 2003 s681B
+  const cbReceived = Math.max(
+    0,
+    parseFloat(
+      String(
+        data.childBenefitReceived ||
+        schedules.childBenefitReceived ||
+        schedules.childBenefit?.amountReceived ||
+        "0"
+      )
+    )
+  );
+  let hicbcDue = 0;
+  let hicbcPercentage = 0;
+
+  // Tax year thresholds: FA 2024 reform sets threshold to £60k - £80k (1% per £200) from 2024/25 onward.
+  // Pre-2024/25: £50k - £60k (1% per £100).
+  const taxYearStr = String(data.taxYear || schedules.taxYear || "2025/2026");
+  const is2024OrLater = !taxYearStr.includes("2023/2024") && !taxYearStr.includes("2022/2023") && !taxYearStr.includes("2021/2022");
+  const hicbcLowerThreshold = is2024OrLater ? 60000.0 : 50000.0;
+  const hicbcUpperThreshold = is2024OrLater ? 80000.0 : 60000.0;
+  const hicbcStep = is2024OrLater ? 200.0 : 100.0;
+
+  if (cbReceived > 0 && adjustedNetIncome > hicbcLowerThreshold) {
+    if (adjustedNetIncome >= hicbcUpperThreshold) {
+      hicbcPercentage = 100;
+      hicbcDue = cbReceived;
+    } else {
+      const excessIncome = adjustedNetIncome - hicbcLowerThreshold;
+      hicbcPercentage = Math.min(100, Math.floor(excessIncome / hicbcStep));
+      hicbcDue = Math.round((cbReceived * (hicbcPercentage / 100.0)) * 100) / 100;
+    }
+  }
+
   const taxableIncome = Math.max(0, totalIncome - personalAllowance);
-  const totalTaxLiability = totalIncomeTax + class2Nic + class4Nic + studentLoan + totalCgtTaxDue;
+  const totalTaxLiability = totalIncomeTax + hicbcDue + class2Nic + class4Nic + studentLoan + totalCgtTaxDue + remittanceBasisCharge;
   const netTaxDue = Math.max(0, totalTaxLiability - taxPaid);
 
-  // 7. Payments on Account (PoA):
+  // 7. PAYE Coding Out Election (TMA 1970 s59B / Box 2 on SA100)
+  // Taxpayer can elect to collect balancing tax < £3,000 via PAYE tax code starting 6 April if filed by 30 Dec
+  const electPayeCodingOut = Boolean(data.electPayeCodingOut || schedules.electPayeCodingOut);
+  const hasPayeSource = empInc > 0 || penInc > 0;
+  const canCodeOut = electPayeCodingOut && netTaxDue > 0 && netTaxDue < 3000.0 && hasPayeSource;
+  const codedOutAmount = canCodeOut ? netTaxDue : 0;
+  const balancingPaymentDueJan31 = canCodeOut ? 0 : netTaxDue;
+
+  // 8. Payments on Account (PoA):
   // TMA 1970 s59A: Capital Gains is excluded from Payments on Account.
   const poaAssessingTax = totalIncomeTax + class4Nic;
   const poaNetAssessing = Math.max(0, poaAssessingTax - taxPaid);
@@ -303,6 +413,11 @@ export function calculateStatutorySA100Tax(data: {
     taxableIncome,
     totalTaxableIncome: taxableIncome,
     incomeTaxDue: totalIncomeTax,
+    hicbcDue,
+    hicbcPercentage,
+    childBenefitReceived: cbReceived,
+    hicbcLowerThreshold,
+    hicbcUpperThreshold,
     nonSavingsTax,
     savingsTax,
     dividendTax,
@@ -311,6 +426,13 @@ export function calculateStatutorySA100Tax(data: {
     eisTaxReducer,
     vctTaxReducer,
     totalInvestmentReliefs,
+    marriageAllowanceTaxReducer,
+    isMarriageAllowanceRecipient,
+    isMarriageAllowanceTransferor,
+    electPayeCodingOut,
+    canCodeOut,
+    codedOutAmount,
+    balancingPaymentDueJan31,
     class2Nic,
     class2NicDue: class2Nic,
     class4Nic,
@@ -319,6 +441,8 @@ export function calculateStatutorySA100Tax(data: {
     capitalGainsTaxDue: cgtStandardDue,
     cgtBox51Adjustment,
     totalCgtTaxDue,
+    remittanceBasisCharge,
+    isClaimingRemittanceBasis,
     totalTaxLiability,
     totalTaxAndNic: totalTaxLiability,
     taxPaidAtSource: taxPaid,
@@ -366,11 +490,90 @@ function formatReturnRecord(ret: any) {
     seisTaxReducer: parsedSchedules?.seisTaxReducer || "0.00",
     eisTaxReducer: parsedSchedules?.eisTaxReducer || "0.00",
     vctTaxReducer: parsedSchedules?.vctTaxReducer || "0.00",
+    hicbcDue: parsedSchedules?.hicbcDue || "0.00",
+    hicbcPercentage: parsedSchedules?.hicbcPercentage || 0,
+    childBenefitReceived: parsedSchedules?.childBenefitReceived || parsedSchedules?.childBenefit?.amountReceived || "0.00",
+    childBenefitChildrenCount: parsedSchedules?.childBenefitChildrenCount || parsedSchedules?.childBenefit?.childrenCount || 0,
+    remittanceBasisCharge: parsedSchedules?.sa109?.remittanceBasisCharge || (parsedSchedules?.remittanceBasisCharge ? String(parsedSchedules.remittanceBasisCharge) : "0.00"),
+    sa109: parsedSchedules?.sa109 || null,
     partnerships: parsedSchedules?.partnerships || [],
     isAmended: parsedSchedules?.isAmended || ret.taxYear?.includes("(Amended)") || false,
     submissionCorrelationId: ret.hmrcCorrelationId,
   };
 }
+
+// In-memory / practice settings cache
+const saSettingsStore: Record<number, any> = {};
+
+// ====================================================
+// 0. SELF ASSESSMENT SETTINGS, TEMPLATES & LETTERHEAD
+// ====================================================
+router.get("/settings", async (req: any, res) => {
+  try {
+    const practiceId = req.user?.practiceId || 1;
+    const current = saSettingsStore[practiceId] || {
+      senderId: "HMRC-AGENT-7781",
+      testMode: true,
+      defaultTaxYear: "2025/2026",
+      enablePasswordProtection: true,
+      passwordFormat: "nino_dob",
+      emailNotificationSender: "tax-filings@sansuite.co.uk",
+      taxDueLetterhead: {
+        practiceName: "SanSuite Practice Tax Services",
+        headerText: "Statutory Self Assessment Tax Payment Notice",
+        introNotice: "Please find below the calculation of your statutory Self Assessment liability and official payment instructions.",
+        signoffText: "Should you have any questions or require an adjustment to your Payments on Account, please contact our tax department.",
+        includeFirmBankDetails: false,
+        firmBankName: "Barclays Bank UK PLC",
+        firmSortCode: "20-04-15",
+        firmAccountNo: "29104756",
+      },
+      emailTemplates: [
+        {
+          id: "sa100_approval",
+          name: "SA100 Draft Ready for Client Approval",
+          subject: "Action Required: Your {TaxYear} Self Assessment Return is Ready for Review",
+          body: "Dear {ClientName},\n\nWe have prepared your Self Assessment tax return for the tax year {TaxYear}. Before we can submit this to HMRC, please review your calculation and confirm your approval.\n\nYour Unique Taxpayer Reference (UTR): {UTR}\nTotal Tax Due by 31 January: £{TotalDueBy31Jan}\n\nPlease click the link below to review and digitally sign your return.\n\nKind regards,\n{FirmName}",
+        },
+        {
+          id: "hmrc_accepted",
+          name: "HMRC Submission Accepted Confirmation",
+          subject: "Confirmed: Your {TaxYear} Self Assessment Return Filed Successfully",
+          body: "Dear {ClientName},\n\nGood news! Your Self Assessment return for {TaxYear} has been officially received and accepted by HM Revenue & Customs.\n\nHMRC Reference / Payment Ref: {PaymentReference}\nAmount Payable by 31 January: £{TotalDueBy31Jan}\n\nPlease ensure your payment is made quoting your reference to avoid HMRC interest.\n\nKind regards,\n{FirmName}",
+        },
+        {
+          id: "payment_reminder_jan",
+          name: "31 January Balancing Payment & 1st PoA Reminder",
+          subject: "Urgent Tax Reminder: HMRC Payment Due by 31 January",
+          body: "Dear {ClientName},\n\nThis is a reminder that your Self Assessment tax payment of £{TotalDueBy31Jan} for {TaxYear} is due to HMRC by midnight on 31 January.\n\nPayment Reference: {PaymentReference}\nHMRC Sort Code: 08-32-10 | Account No: 12001039\n\nPlease quote your reference {PaymentReference} on your bank transfer.\n\nKind regards,\n{FirmName}",
+        },
+        {
+          id: "payment_reminder_july",
+          name: "31 July Second Payment on Account Reminder",
+          subject: "Tax Reminder: Second Payment on Account Due by 31 July",
+          body: "Dear {ClientName},\n\nThis is a reminder that your second Payment on Account of £{SecondPoADue} for the upcoming tax year is due to HMRC by 31 July.\n\nPayment Reference: {PaymentReference}\nHMRC Sort Code: 08-32-10 | Account No: 12001039\n\nKind regards,\n{FirmName}",
+        },
+      ],
+    };
+    res.json(current);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/settings", async (req: any, res) => {
+  try {
+    const practiceId = req.user?.practiceId || 1;
+    saSettingsStore[practiceId] = {
+      ...(saSettingsStore[practiceId] || {}),
+      ...req.body,
+      updatedAt: new Date().toISOString(),
+    };
+    res.json({ success: true, message: "Self Assessment settings updated successfully." });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // ====================================================
 // 1. LIST SA100 RETURNS FOR CLIENT
@@ -468,6 +671,12 @@ router.post("/:clientId/returns", async (req: any, res) => {
       capitalGainsNet: body.capitalGainsNet,
       capitalGainsTaxDue: body.capitalGainsTaxDue,
       cgtAdjustmentBox51: body.cgtAdjustmentBox51 || parsedSchedules.cgtBox51Adjustment,
+      taxYear,
+      childBenefitReceived: body.childBenefitReceived || parsedSchedules.childBenefitReceived || parsedSchedules.childBenefit?.amountReceived,
+      childBenefitChildrenCount: body.childBenefitChildrenCount || parsedSchedules.childBenefitChildrenCount || parsedSchedules.childBenefit?.childrenCount,
+      claimMarriageAllowanceRecipient: body.claimMarriageAllowanceRecipient ?? parsedSchedules.claimMarriageAllowanceRecipient,
+      claimMarriageAllowanceTransferor: body.claimMarriageAllowanceTransferor ?? parsedSchedules.claimMarriageAllowanceTransferor,
+      electPayeCodingOut: body.electPayeCodingOut ?? parsedSchedules.electPayeCodingOut,
       schedulesData: parsedSchedules,
     });
 
@@ -491,6 +700,25 @@ router.post("/:clientId/returns", async (req: any, res) => {
       eisTaxReducer: calc.eisTaxReducer.toFixed(2),
       vctTaxReducer: calc.vctTaxReducer.toFixed(2),
       totalInvestmentReliefs: calc.totalInvestmentReliefs.toFixed(2),
+      claimMarriageAllowanceRecipient: Boolean(body.claimMarriageAllowanceRecipient ?? parsedSchedules.claimMarriageAllowanceRecipient),
+      claimMarriageAllowanceTransferor: Boolean(body.claimMarriageAllowanceTransferor ?? parsedSchedules.claimMarriageAllowanceTransferor),
+      marriageAllowanceSpouseNino: body.marriageAllowanceSpouseNino || parsedSchedules.marriageAllowanceSpouseNino || "",
+      marriageAllowanceSpouseFirstName: body.marriageAllowanceSpouseFirstName || parsedSchedules.marriageAllowanceSpouseFirstName || "",
+      marriageAllowanceSpouseLastName: body.marriageAllowanceSpouseLastName || parsedSchedules.marriageAllowanceSpouseLastName || "",
+      marriageAllowanceSpouseDob: body.marriageAllowanceSpouseDob || parsedSchedules.marriageAllowanceSpouseDob || "",
+      marriageAllowanceTaxReducer: calc.marriageAllowanceTaxReducer.toFixed(2),
+      electPayeCodingOut: Boolean(body.electPayeCodingOut ?? parsedSchedules.electPayeCodingOut),
+      canCodeOut: calc.canCodeOut,
+      codedOutAmount: calc.codedOutAmount.toFixed(2),
+      balancingPaymentDueJan31: calc.balancingPaymentDueJan31.toFixed(2),
+      childBenefitReceived: String(body.childBenefitReceived ?? parsedSchedules.childBenefitReceived ?? "0.00"),
+      childBenefitChildrenCount: Number(body.childBenefitChildrenCount ?? parsedSchedules.childBenefitChildrenCount ?? 0),
+      hicbcDue: calc.hicbcDue.toFixed(2),
+      hicbcPercentage: calc.hicbcPercentage,
+      hicbcLowerThreshold: calc.hicbcLowerThreshold,
+      hicbcUpperThreshold: calc.hicbcUpperThreshold,
+      sa109: body.sa109 ?? parsedSchedules.sa109 ?? null,
+      remittanceBasisCharge: calc.remittanceBasisCharge.toFixed(2),
     };
 
     const returnValues = {
@@ -690,14 +918,51 @@ router.post("/:clientId/returns/:id/schedules", async (req: any, res) => {
     }
 
     const { schedulesData } = req.body;
+    const parsedSchedules = typeof schedulesData === "string" ? JSON.parse(schedulesData) : (schedulesData || {});
 
-    await db
-      .update(sa100Returns)
-      .set({
-        schedulesData: typeof schedulesData === "string" ? schedulesData : JSON.stringify(schedulesData),
-        updatedAt: new Date(),
-      })
+    // Fetch existing return to perform immediate statutory recalculation
+    const [existing] = await db
+      .select()
+      .from(sa100Returns)
       .where(and(eq(sa100Returns.id, returnId), eq(sa100Returns.clientId, clientId)));
+
+    if (existing) {
+      const calc = calculateStatutorySA100Tax({
+        ...(existing as any),
+        schedulesData: parsedSchedules,
+      });
+
+      await db
+        .update(sa100Returns)
+        .set({
+          netIncome: calc.totalIncome.toFixed(2),
+          personalAllowance: calc.personalAllowance.toFixed(2),
+          taxableIncome: calc.taxableIncome.toFixed(2),
+          incomeTaxDue: calc.incomeTaxDue.toFixed(2),
+          class2NicDue: calc.class2NicDue.toFixed(2),
+          class4NicDue: calc.class4NicDue.toFixed(2),
+          studentLoanDue: calc.studentLoanDue.toFixed(2),
+          capitalGainsTaxDue: calc.totalCgtTaxDue.toFixed(2),
+          totalTaxLiability: calc.totalTaxLiability.toFixed(2),
+          taxPaidAtSource: calc.taxPaidAtSource.toFixed(2),
+          taxDue: calc.netTaxDue.toFixed(2),
+          netTaxDue: calc.netTaxDue.toFixed(2),
+          poaDue: calc.poaDue,
+          poaFirstPayment: calc.poaFirstPayment.toFixed(2),
+          poaSecondPayment: calc.poaSecondPayment.toFixed(2),
+          schedulesData: JSON.stringify(parsedSchedules),
+          updatedAt: new Date(),
+        })
+        .where(and(eq(sa100Returns.id, returnId), eq(sa100Returns.clientId, clientId)));
+    } else {
+      await db
+        .update(sa100Returns)
+        .set({
+          schedulesData: typeof schedulesData === "string" ? schedulesData : JSON.stringify(schedulesData),
+          updatedAt: new Date(),
+        })
+        .where(and(eq(sa100Returns.id, returnId), eq(sa100Returns.clientId, clientId)));
+    }
 
     res.json({ success: true, message: "Supplementary schedules saved successfully." });
   } catch (error: any) {
@@ -724,14 +989,16 @@ router.post("/:clientId/returns/:id/validate", async (req: any, res) => {
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    const utr = ret.utrNumber || client.utrNumber || "";
-    if (!utr || !/^\d{10}$/.test(utr.replace(/\s/g, ""))) {
-      errors.push("Taxpayer UTR must be a valid 10-digit number.");
+    const utr = (ret.utrNumber || client.utrNumber || "").replace(/\s/g, "");
+    if (!utr || !/^\d{10}$/.test(utr)) {
+      errors.push("Taxpayer UTR must be a valid 10-digit number [HMRC Error: InvalidUTR].");
     }
 
-    const nino = ret.niNumber || client.niNumber || "";
-    if (!nino) {
-      warnings.push("National Insurance Number is missing.");
+    const nino = (ret.niNumber || client.niNumber || "").replace(/\s/g, "").toUpperCase();
+    if (nino && !/^[A-CEGHJ-PR-TW-Z]{1}[A-CEGHJ-NPR-TW-Z]{1}[0-9]{6}[A-D]{1}$/.test(nino)) {
+      errors.push("National Insurance Number format is invalid. Must match UK format (e.g. QQ123456A) [HMRC Error: InvalidNINO].");
+    } else if (!nino) {
+      warnings.push("National Insurance Number is missing from return record.");
     }
 
     if (parseFloat(ret.netIncome || "0") <= 0 && parseFloat(ret.taxDue || "0") <= 0) {
@@ -746,17 +1013,17 @@ router.post("/:clientId/returns/:id/validate", async (req: any, res) => {
       } catch {}
     }
 
-    // Statutory Rule (Capium Art 48: 9000271813): CGT Attachment or Whitespace Box 54 required if Capital Gains present
+    // 1. Statutory Rule (Capium Art 48: 9000271813): CGT Attachment or Whitespace Box 54 required if Capital Gains present
     const hasCapitalGains = parseFloat(ret.capitalGainsNet || "0") > 0 || parseFloat(ret.capitalGainsTaxDue || "0") > 0 || (Array.isArray(sched.capitalGainsAssets) && sched.capitalGainsAssets.length > 0);
     if (hasCapitalGains) {
       const hasWhitespaceNotes = !!(sched.cgtBox54Notes && sched.cgtBox54Notes.trim().length > 0);
       const hasAttachment = !!sched.cgtHasAttachment;
       if (!hasWhitespaceNotes && !hasAttachment) {
-        errors.push("Submission must contain at least one attachment or an entry in the whitespace (Box 54) if Capital Gains Summary is present.");
+        errors.push("Capital Gains Summary: Submission must contain at least one attachment or an entry in the whitespace (Box 54) if Capital Gains disposals are present [HMRC Error: CGT_AttachmentRequired].");
       }
     }
 
-    // Statutory Rule (Capium Art 50: 9000271805): Class 4 NIC Exemption for age 66+
+    // 2. Statutory Rule (Capium Art 50: 9000271805): Class 4 NIC Exemption for age 66+
     const clientDob = (client as any)?.dateOfBirth;
     if (clientDob) {
       const dob = new Date(clientDob);
@@ -770,20 +1037,64 @@ router.post("/:clientId/returns/:id/validate", async (req: any, res) => {
         // Taxpayer reached 66 before or on start of tax year
         const hasClass4ExemptionTicked = !!(sched.class4Excepted || sched.isAbovePensionAge);
         if (!hasClass4ExemptionTicked) {
-          warnings.push("Taxpayer reached State Pension Age (66+). Ensure Box 37 / Box 101 ('Excepted from paying Class 4 NICs') is ticked on Self Employment (SA103) to avoid HMRC error [SSE37] / [FSE101].");
+          warnings.push("Taxpayer reached State Pension Age (66+). Ensure Box 37 / Box 101 ('Excepted from paying Class 4 NICs') is ticked on Self Employment (SA103) to prevent HMRC Gateway rejection [SSE37] / [FSE101].");
+        }
+      }
+    }
+
+    // 3. Direct BACS Bank Repayment Validation (Capium FAQ 9000165597)
+    if (sched.bankRefundDetails) {
+      const { bankSortCode, bankAccountNumber, repaymentOption, nomineeDeclaration } = sched.bankRefundDetails;
+      if (bankSortCode || bankAccountNumber) {
+        const cleanedSort = (bankSortCode || "").replace(/[^0-9]/g, "");
+        const cleanedAcc = (bankAccountNumber || "").replace(/[^0-9]/g, "");
+        if (cleanedSort.length !== 6) {
+          errors.push("Direct BACS Repayment: Sort code must be exactly 6 digits (XX-XX-XX) [HMRC Error: InvalidSortCode].");
+        }
+        if (cleanedAcc.length !== 8) {
+          errors.push("Direct BACS Repayment: Bank account number must be exactly 8 digits [HMRC Error: InvalidAccountNumber].");
+        }
+        if (repaymentOption !== "taxpayer" && !nomineeDeclaration) {
+          errors.push("Direct BACS Repayment: Nominee / Agent Authorization declaration must be confirmed when refund is directed to a third party [TMA 1970 s59E].");
+        }
+      }
+    }
+
+    // 4. High Income Child Benefit Charge (HICBC) Check (Finance Act 2024)
+    const netInc = parseFloat(ret.netIncome || "0");
+    const is2024OrLater = !(ret.taxYear || "").includes("2023/2024") && !(ret.taxYear || "").includes("2022/2023");
+    const hicbcThreshold = is2024OrLater ? 60000 : 50000;
+    const cbReceived = parseFloat(String(sched.childBenefitReceived || sched.childBenefit?.amountReceived || "0"));
+    if (netInc > hicbcThreshold && cbReceived > 0) {
+      const hicbcDue = parseFloat(String(sched.hicbcDue || "0"));
+      if (hicbcDue <= 0) {
+        warnings.push(`Adjusted Net Income exceeds £${hicbcThreshold.toLocaleString()} and Child Benefit of £${cbReceived} was received. High Income Child Benefit Charge (HICBC) should be verified.`);
+      }
+    }
+
+    // 5. Partnership SA104 Validation
+    if (Array.isArray(sched.partnerships) && sched.partnerships.length > 0) {
+      for (const p of sched.partnerships) {
+        if (!p.partnershipName || p.partnershipName.trim().length === 0) {
+          errors.push("Partnership Schedule (SA104): Partnership business name is required [HMRC Box 1 Error].");
         }
       }
     }
 
     const isValid = errors.length === 0;
+    const irMark = isValid
+      ? crypto.createHash("sha256").update(`${utr}-${ret.taxYear}-${ret.netTaxDue}`).digest("base64")
+      : null;
+
     if (isValid && ret.status === "Draft") {
-      await db.update(sa100Returns).set({ status: "Validated" }).where(eq(sa100Returns.id, returnId));
+      await db.update(sa100Returns).set({ status: "Validated", irMark }).where(eq(sa100Returns.id, returnId));
     }
 
     res.json({
       isValid,
       errors,
       warnings,
+      irMark,
       status: isValid ? "Validated" : "ValidationFailed",
     });
   } catch (error: any) {
@@ -1074,6 +1385,71 @@ router.post("/:clientId/returns/:id/submit", async (req: any, res) => {
 });
 
 // ====================================================
+// 8B. MARK AS SUBMITTED EXTERNALLY (Capium Art 34: 9000222186)
+// ====================================================
+router.post("/:clientId/returns/:id/mark-external", async (req: any, res) => {
+  try {
+    const returnId = parseInt(req.params.id);
+    const clientId = parseInt(req.params.clientId);
+    if (isNaN(returnId) || isNaN(clientId)) {
+      return res.status(400).json({ error: "Invalid client ID or return ID" });
+    }
+
+    const { submissionDate, filingMethod, hmrcReference, notes } = req.body;
+
+    const [existing] = await db
+      .select()
+      .from(sa100Returns)
+      .where(and(eq(sa100Returns.id, returnId), eq(sa100Returns.clientId, clientId)));
+
+    if (!existing) return res.status(404).json({ error: "Return not found" });
+
+    let sched: any = {};
+    if (existing.schedulesData) {
+      try {
+        sched = typeof existing.schedulesData === "string" ? JSON.parse(existing.schedulesData) : existing.schedulesData;
+      } catch {}
+    }
+
+    sched = {
+      ...sched,
+      externalFiling: {
+        isExternal: true,
+        filingMethod: filingMethod || "HMRC Online Services Portal",
+        submissionDate: submissionDate || new Date().toISOString().split("T")[0],
+        hmrcReference: hmrcReference || "",
+        notes: notes || "",
+        markedBy: req.user?.username || req.user?.name || "Accountant",
+        markedAt: new Date().toISOString(),
+      },
+    };
+
+    const externalIrMark = hmrcReference ? `EXT-${hmrcReference}` : `EXT-${Date.now()}`;
+    const subDate = submissionDate ? new Date(submissionDate) : new Date();
+
+    await db
+      .update(sa100Returns)
+      .set({
+        status: "Submitted",
+        irMark: externalIrMark,
+        hmrcCorrelationId: hmrcReference || `EXT-${Date.now()}`,
+        submittedAt: subDate,
+        schedulesData: JSON.stringify(sched),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(sa100Returns.id, returnId), eq(sa100Returns.clientId, clientId)));
+
+    res.json({
+      success: true,
+      status: "Submitted",
+      message: "Return successfully recorded as Submitted Externally.",
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ====================================================
 // 9. DELETE DRAFT SA100 RETURN
 // ====================================================
 router.delete("/:clientId/returns/:id", async (req: any, res) => {
@@ -1186,6 +1562,350 @@ router.patch("/sa800/:id", async (req: any, res) => {
     res.json({ success: true, message: "SA800 return updated successfully." });
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Failed to update SA800 return" });
+  }
+});
+
+// ====================================================
+// CAPISIGN E-SIGNATURE DISPATCH FOR SELF ASSESSMENT
+// ====================================================
+router.post("/:clientId/returns/:id/send-to-capisign", async (req: any, res) => {
+  try {
+    const returnId = parseInt(req.params.id);
+    const clientId = parseInt(req.params.clientId);
+    const practiceId = req.user?.practiceId || 1;
+
+    const [ret] = await db.select().from(sa100Returns).where(and(eq(sa100Returns.id, returnId), eq(sa100Returns.clientId, clientId)));
+    const [client] = await db.select().from(clients).where(eq(clients.id, clientId));
+
+    if (!ret || !client) return res.status(404).json({ error: "Return or client not found." });
+
+    const recipientName = req.body.recipientName || req.body.signerName || client.clientName;
+    const recipientEmail = req.body.recipientEmail || req.body.signerEmail || client.email || "";
+    const message = req.body.message || req.body.notes;
+
+    const verificationToken = nanoid(32);
+    const docTitle = `SA100 Tax Return & SA302 Computation (${ret.taxYear || "2025/2026"}) - ${client.clientName}`;
+
+    // 1. Create Capisign eSign Document
+    const [doc] = await db.insert(esignDocuments).values({
+      practiceId,
+      clientId,
+      title: docTitle,
+      sourceModule: "SelfAssessment",
+      status: "AwaitingApproval",
+      message: message || `Please review and digitally approve your official Self Assessment Tax Return (SA100) and SA302 Tax Computation for ${client.clientName} (Total Balancing Tax Due: £${ret.netTaxDue}).`,
+      attachmentsJson: [],
+      fileSize: 0,
+      createdByUserId: req.user?.id,
+    } as any);
+
+    const docId = (doc as any).insertId;
+
+    // 2. Create Signer record with unique verification token
+    await db.insert(esignSigners).values({
+      documentId: docId,
+      signerName: recipientName,
+      signerEmail: recipientEmail,
+      signerRole: "Taxpayer",
+      status: "Awaiting",
+      verificationToken,
+    });
+
+    // 3. Create Audit Trail event
+    await db.insert(esignAuditLogs).values({
+      documentId: docId,
+      action: "Created",
+      details: `SA100 Self Assessment return approval request dispatched to ${recipientName} (${recipientEmail}) for electronic signature (eSign).`,
+    });
+
+    // 4. Update SA100 return status
+    await db.update(sa100Returns).set({ status: "SentToCapisign", updatedAt: new Date() }).where(eq(sa100Returns.id, returnId));
+
+    res.json({
+      success: true,
+      documentId: docId,
+      token: verificationToken,
+      signUrl: `/esign/public/${verificationToken}`,
+      message: `SA100 return dispatched to ${recipientName} for electronic signature (eSign).`,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get("/:clientId/returns/:id/capisign-status", async (req: any, res) => {
+  try {
+    const returnId = parseInt(req.params.id);
+    const clientId = parseInt(req.params.clientId);
+
+    const [ret] = await db.select().from(sa100Returns).where(and(eq(sa100Returns.id, returnId), eq(sa100Returns.clientId, clientId)));
+    if (!ret) return res.status(404).json({ error: "Return not found." });
+
+    // Look for Capisign document created for this client and SelfAssessment module
+    const docs = await db.select().from(esignDocuments)
+      .where(and(eq(esignDocuments.clientId, clientId), eq(esignDocuments.sourceModule, "SelfAssessment")))
+      .orderBy(desc(esignDocuments.createdAt));
+
+    if (docs.length === 0) {
+      return res.json({ hasCapisignDoc: false, status: ret.status, capisignStatus: null });
+    }
+
+    const latestDoc = docs[0];
+    const signers = await db.select().from(esignSigners).where(eq(esignSigners.documentId, latestDoc.id));
+    const primarySigner = signers[0] || null;
+    const auditLogs = await db.select().from(esignAuditLogs).where(eq(esignAuditLogs.documentId, latestDoc.id)).orderBy(desc(esignAuditLogs.id));
+
+    // Check if doc was signed
+    if (latestDoc.status === "Signed" && ret.status !== "Accepted" && ret.status !== "Submitted" && ret.status !== "ApprovedByClient") {
+      await db.update(sa100Returns).set({ status: "ApprovedByClient", updatedAt: new Date() }).where(eq(sa100Returns.id, returnId));
+      ret.status = "ApprovedByClient";
+    }
+
+    const statusObj = {
+      hasCapisignDoc: true,
+      documentId: latestDoc.id,
+      title: latestDoc.title,
+      docStatus: latestDoc.status,
+      status: latestDoc.status,
+      isSigned: latestDoc.status === "Signed",
+      returnStatus: ret.status,
+      signer: primarySigner ? {
+        name: primarySigner.signerName,
+        email: primarySigner.signerEmail,
+        status: primarySigner.status,
+        signedAt: primarySigner.signedAt,
+      } : null,
+      signers: signers.map((s: any) => ({
+        id: s.id,
+        name: s.signerName,
+        email: s.signerEmail,
+        status: s.status,
+        signedAt: s.signedAt,
+      })),
+      auditTrail: auditLogs.map((l: any) => ({
+        id: l.id,
+        action: l.action,
+        details: l.details,
+        timestamp: l.timestamp,
+        createdAt: l.timestamp,
+      })),
+      verificationToken: primarySigner?.verificationToken || null,
+      signUrl: primarySigner?.verificationToken ? `/esign/public/${primarySigner.verificationToken}` : null,
+    };
+
+    res.json({
+      ...statusObj,
+      capisignStatus: statusObj,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ====================================================
+// HMRC DIGITAL DATA PRE-POPULATION (Capium Art 53)
+// ====================================================
+router.get("/:clientId/returns/:id/hmrc-prepop-data", async (req: any, res) => {
+  try {
+    const returnId = parseInt(req.params.id);
+    const clientId = parseInt(req.params.clientId);
+
+    const [ret] = await db.select().from(sa100Returns).where(and(eq(sa100Returns.id, returnId), eq(sa100Returns.clientId, clientId)));
+    const [client] = await db.select().from(clients).where(eq(clients.id, clientId));
+
+    if (!ret || !client) return res.status(404).json({ error: "Return or client not found." });
+
+    const clientNino = (ret.niNumber || client.niNumber || "").replace(/\s/g, "").toUpperCase();
+    const clientUtr = (ret.utrNumber || client.utrNumber || "").replace(/\s/g, "");
+
+    // 1. Search for PAYE payroll employment records matching client NINO
+    let payeRecords: any[] = [];
+    if (clientNino) {
+      const matchingEmployees = await db.select({
+        employeeId: employees.id,
+        firstName: employees.firstName,
+        lastName: employees.lastName,
+        ytdGrossPay: employees.ytdGrossPay,
+        ytdTaxPaid: employees.ytdTaxPaid,
+        taxCode: employees.taxCode,
+        payeSchemeId: employees.payeSchemeId,
+      }).from(employees).where(eq(employees.niNumber, clientNino));
+
+      for (const emp of matchingEmployees) {
+        const [scheme] = await db.select().from(payeSchemes).where(eq(payeSchemes.id, emp.payeSchemeId));
+        payeRecords.push({
+          employerName: scheme?.employerName || `${emp.firstName} ${emp.lastName}'s Employer`,
+          payeReference: scheme?.payeReference || "120/AB12345",
+          grossPay: emp.ytdGrossPay || "0.00",
+          taxDeducted: emp.ytdTaxPaid || "0.00",
+          taxCode: emp.taxCode || "1257L",
+          source: "RTI Payroll Record",
+        });
+      }
+    }
+
+    // 2. Search for CIS deduction lines matching client UTR
+    let totalCisGross = 0;
+    let totalCisDeductions = 0;
+    let cisLines: any[] = [];
+    if (clientUtr) {
+      cisLines = await db.select().from(cisReturnLines).where(eq(cisReturnLines.utrNumber, clientUtr));
+      for (const line of cisLines) {
+        totalCisGross += parseFloat(String(line.grossAmount || "0"));
+        totalCisDeductions += parseFloat(String(line.deductionAmount || "0"));
+      }
+    }
+
+    // 3. State Pension statutory estimation
+    const clientDob = (client as any)?.dateOfBirth;
+    let statePensionEstimate = "0.00";
+    if (clientDob) {
+      const dob = new Date(clientDob);
+      const age = new Date().getFullYear() - dob.getFullYear();
+      if (age >= 66) {
+        // Standard full new state pension for 2025/26 is £221.20/week * 52 = £11,502.40
+        statePensionEstimate = "11502.40";
+      }
+    }
+
+    const formattedCis = cisLines.map((line: any) => ({
+      contractorName: line.contractorName || "Principal Contractor",
+      taxMonth: line.taxMonth || "Current Year",
+      grossAmount: line.grossAmount || "0.00",
+      cisTaxDeducted: line.deductionAmount || line.cisTaxDeducted || "0.00",
+    }));
+
+    const totalPayeGross = payeRecords.reduce((sum, p) => sum + parseFloat(p.grossPay || "0"), 0).toFixed(2);
+    const totalPayeTax = payeRecords.reduce((sum, p) => sum + parseFloat(p.taxDeducted || "0"), 0).toFixed(2);
+
+    res.json({
+      success: true,
+      hasPrepopData: payeRecords.length > 0 || totalCisDeductions > 0 || parseFloat(statePensionEstimate) > 0,
+      clientName: client.clientName,
+      nino: clientNino || "Unrecorded",
+      utr: clientUtr || "Unrecorded",
+      taxYear: ret.taxYear,
+      employments: payeRecords,
+      payeEmployments: payeRecords,
+      cisDeductions: formattedCis,
+      totalPayeGross,
+      totalPayeTax,
+      cisGross: totalCisGross.toFixed(2),
+      cisDeductionsTotal: totalCisDeductions.toFixed(2),
+      statePensionEstimate,
+      summary: {
+        totalEmploymentGross: totalPayeGross,
+        totalEmploymentTax: totalPayeTax,
+        totalCisGross: totalCisGross.toFixed(2),
+        totalCisDeducted: totalCisDeductions.toFixed(2),
+      },
+      prepopData: {
+        employments: payeRecords,
+        cisDeductions: formattedCis,
+        summary: {
+          totalEmploymentGross: totalPayeGross,
+          totalCisDeducted: totalCisDeductions.toFixed(2),
+        },
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/:clientId/returns/:id/apply-prepop", async (req: any, res) => {
+  try {
+    const returnId = parseInt(req.params.id);
+    const clientId = parseInt(req.params.clientId);
+    const applyPaye = req.body.applyPaye ?? req.body.includeEmployments ?? true;
+    const applyCis = req.body.applyCis ?? req.body.includeCis ?? true;
+    const applyStatePension = req.body.applyStatePension ?? false;
+    const payeEmployments = req.body.selectedEmployments || req.body.payeEmployments || [];
+    const cisDeductions = req.body.selectedCis || req.body.cisDeductions || [];
+    const statePensionAmount = req.body.statePensionAmount;
+
+    const [ret] = await db.select().from(sa100Returns).where(and(eq(sa100Returns.id, returnId), eq(sa100Returns.clientId, clientId)));
+    if (!ret) return res.status(404).json({ error: "Return not found." });
+
+    let sched: any = {};
+    if (ret.schedulesData) {
+      try {
+        sched = typeof ret.schedulesData === "string" ? JSON.parse(ret.schedulesData) : ret.schedulesData;
+      } catch {}
+    }
+
+    let updatedEmploymentIncome = parseFloat(ret.employmentIncome || "0");
+    let updatedEmploymentTax = parseFloat(ret.employmentTaxDeducted || "0");
+    let updatedPensionIncome = parseFloat(ret.pensionIncome || "0");
+
+    if (applyPaye && Array.isArray(payeEmployments) && payeEmployments.length > 0) {
+      sched.employments = payeEmployments.map((p: any, idx: number) => ({
+        id: Date.now() + idx,
+        employerName: p.employerName,
+        payeReference: p.payeReference,
+        grossPay: p.grossPay,
+        taxDeducted: p.taxDeducted,
+        benefitsInKind: "0.00",
+        flatRateExpenses: "0.00",
+      }));
+      updatedEmploymentIncome = payeEmployments.reduce((sum: number, p: any) => sum + parseFloat(p.grossPay || "0"), 0);
+      updatedEmploymentTax = payeEmployments.reduce((sum: number, p: any) => sum + parseFloat(p.taxDeducted || "0"), 0);
+    }
+
+    if (applyCis && Array.isArray(cisDeductions) && cisDeductions.length > 0) {
+      sched.cisDeductions = cisDeductions.map((c: any, idx: number) => ({
+        id: Date.now() + 100 + idx,
+        contractorName: c.contractorName,
+        taxMonth: c.taxMonth,
+        grossAmount: c.grossAmount,
+        cisTaxDeducted: c.cisTaxDeducted,
+      }));
+    }
+
+    if (applyStatePension && parseFloat(statePensionAmount || "0") > 0) {
+      updatedPensionIncome = parseFloat(statePensionAmount);
+    }
+
+    const calc = calculateStatutorySA100Tax({
+      taxYear: ret.taxYear || "2025/2026",
+      employmentIncome: updatedEmploymentIncome,
+      employmentTaxDeducted: updatedEmploymentTax,
+      selfEmploymentProfit: ret.selfEmploymentProfit || "0",
+      propertyIncome: ret.propertyIncome || "0",
+      savingsInterest: ret.savingsInterest || "0",
+      dividendIncome: ret.dividendIncome || "0",
+      pensionIncome: updatedPensionIncome,
+      otherIncome: ret.otherIncome || "0",
+      foreignIncome: ret.foreignIncome || "0",
+      capitalGainsNet: ret.capitalGainsNet || "0",
+      pensionContributions: ret.pensionContributions || "0",
+      giftAidDonations: ret.giftAidDonations || "0",
+      schedulesData: sched,
+    });
+
+    await db.update(sa100Returns).set({
+      employmentIncome: updatedEmploymentIncome.toFixed(2),
+      employmentTaxDeducted: updatedEmploymentTax.toFixed(2),
+      pensionIncome: updatedPensionIncome.toFixed(2),
+      netIncome: calc.totalIncome.toFixed(2),
+      taxableIncome: calc.taxableIncome.toFixed(2),
+      incomeTaxDue: calc.incomeTaxDue.toFixed(2),
+      totalTaxLiability: calc.totalTaxLiability.toFixed(2),
+      taxPaidAtSource: calc.taxPaidAtSource.toFixed(2),
+      netTaxDue: calc.netTaxDue.toFixed(2),
+      schedulesData: JSON.stringify(sched),
+      updatedAt: new Date(),
+    }).where(eq(sa100Returns.id, returnId));
+
+    res.json({
+      success: true,
+      message: "HMRC digital pre-population data merged successfully into return draft.",
+      employmentIncome: updatedEmploymentIncome.toFixed(2),
+      employmentTaxDeducted: updatedEmploymentTax.toFixed(2),
+      netTaxDue: calc.netTaxDue.toFixed(2),
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 

@@ -236,19 +236,20 @@
    ============================================ */
 @media print {
 
-  /* A4 Portrait — accounting standard margins */
+  /* A4 Portrait — accounting & HMRC statutory form standard margins */
   @page {
     size: A4 portrait;
-    margin: 15mm 20mm 20mm 20mm;
-  }
-
-  /* First page (cover) — extra top breathing room */
-  @page :first {
-    margin-top: 25mm;
+    margin: 10mm 12mm 12mm 12mm;
   }
 
   /* ---- Hide all UI chrome ---- */
   .no-print,
+  .sa100-no-print,
+  .sa100-top-client-bar,
+  .sa100-stepper-bar,
+  .ct600-no-print,
+  .ct600-top-client-bar,
+  .ct600-stepper-bar,
   nav,
   aside,
   header,
@@ -259,6 +260,10 @@
   [data-sidebar],
   .border-b.shrink-0 {
     display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   /* ---- Reset base layout & kill ALL ancestor backgrounds ---- */
@@ -587,12 +592,14 @@
   }
 
   /* ========================================================
-     CT600 FORM DEDICATED PRINT ENGINE
-     When CT600 modal is open or printed, ONLY the form prints!
+     CT600 & SA100 FORM DEDICATED PRINT ENGINE
+     When CT600 or SA100 modal is open or printed, ONLY the form prints!
      Completely eliminates background dashboard, cards, and UI.
      ======================================================== */
   body.ct600-modal-open,
-  body:has(#ct600-modal-overlay) {
+  body.sa100-modal-open,
+  body:has(#ct600-modal-overlay),
+  body:has(#sa100-modal-overlay) {
     background: #ffffff !important;
     background-color: #ffffff !important;
     color: #000000 !important;
@@ -602,11 +609,15 @@
     min-width: 100% !important;
   }
 
-  /* Reset main container when CT600 modal is open so modal displays at the top with zero offset */
+  /* Reset main container when CT600 or SA100 modal is open so modal displays at the top with zero offset */
   body.ct600-modal-open main,
   body.ct600-modal-open [role="main"],
+  body.sa100-modal-open main,
+  body.sa100-modal-open [role="main"],
   body:has(#ct600-modal-overlay) main,
-  body:has(#ct600-modal-overlay) [role="main"] {
+  body:has(#ct600-modal-overlay) [role="main"],
+  body:has(#sa100-modal-overlay) main,
+  body:has(#sa100-modal-overlay) [role="main"] {
     display: block !important;
     position: static !important;
     margin: 0 !important;
@@ -619,27 +630,52 @@
 
   /* Completely HIDE all background UI: dashboard, tables, sidebar, top navbar, headers */
   body.ct600-modal-open .ct600-workspace-shell,
+  body.sa100-modal-open .ct600-workspace-shell,
+  body.sa100-modal-open .sa100-workspace-shell,
   body.ct600-modal-open header,
+  body.sa100-modal-open header,
   body.ct600-modal-open aside,
+  body.sa100-modal-open aside,
   body.ct600-modal-open nav,
+  body.sa100-modal-open nav,
   body.ct600-modal-open .SanSuite-navbar,
+  body.sa100-modal-open .SanSuite-navbar,
   body.ct600-modal-open .SanSuite-sidebar,
+  body.sa100-modal-open .SanSuite-sidebar,
   body.ct600-modal-open [data-sidebar],
+  body.sa100-modal-open [data-sidebar],
   body.ct600-modal-open [role="navigation"],
+  body.sa100-modal-open [role="navigation"],
   body.ct600-modal-open .ct600-no-print,
+  body.sa100-modal-open .sa100-no-print,
+  body.sa100-modal-open .ct600-no-print,
   body.ct600-modal-open [class*="SupportTicket"],
+  body.sa100-modal-open [class*="SupportTicket"],
   body.ct600-modal-open [class*="SystemAnnouncements"],
+  body.sa100-modal-open [class*="SystemAnnouncements"],
   body:has(#ct600-modal-overlay) .ct600-workspace-shell,
+  body:has(#sa100-modal-overlay) .ct600-workspace-shell,
+  body:has(#sa100-modal-overlay) .sa100-workspace-shell,
   body:has(#ct600-modal-overlay) header,
+  body:has(#sa100-modal-overlay) header,
   body:has(#ct600-modal-overlay) aside,
+  body:has(#sa100-modal-overlay) aside,
   body:has(#ct600-modal-overlay) nav,
+  body:has(#sa100-modal-overlay) nav,
   body:has(#ct600-modal-overlay) .SanSuite-navbar,
+  body:has(#sa100-modal-overlay) .SanSuite-navbar,
   body:has(#ct600-modal-overlay) .SanSuite-sidebar,
+  body:has(#sa100-modal-overlay) .SanSuite-sidebar,
   body:has(#ct600-modal-overlay) [data-sidebar],
+  body:has(#sa100-modal-overlay) [data-sidebar],
   body:has(#ct600-modal-overlay) [role="navigation"],
+  body:has(#sa100-modal-overlay) [role="navigation"],
   body:has(#ct600-modal-overlay) .ct600-no-print,
+  body:has(#sa100-modal-overlay) .sa100-no-print,
   body:has(#ct600-modal-overlay) [class*="SupportTicket"],
-  body:has(#ct600-modal-overlay) [class*="SystemAnnouncements"] {
+  body:has(#sa100-modal-overlay) [class*="SupportTicket"],
+  body:has(#ct600-modal-overlay) [class*="SystemAnnouncements"],
+  body:has(#sa100-modal-overlay) [class*="SystemAnnouncements"] {
     display: none !important;
     visibility: hidden !important;
     height: 0 !important;
@@ -650,7 +686,8 @@
   }
 
   /* Reset modal overlay container to flow naturally in print */
-  #ct600-modal-overlay {
+  #ct600-modal-overlay,
+  #sa100-modal-overlay {
     position: static !important;
     display: block !important;
     background: transparent !important;
@@ -666,7 +703,8 @@
   }
 
   /* Reset modal dialog container */
-  #ct600-modal-dialog {
+  #ct600-modal-dialog,
+  #sa100-modal-dialog {
     position: static !important;
     display: block !important;
     border: none !important;
@@ -683,17 +721,25 @@
     overflow: visible !important;
   }
 
-  /* Hide modal toolbars, sidebars, buttons, stepping bar, and footers */
+  /* Hide modal toolbars, headers, sidebars, buttons, stepping bar, and footers */
+  .ct600-modal-header,
   .ct600-modal-toolbar,
   .ct600-modal-sidebar,
   .ct600-modal-footer,
-  .ct600-stepping-bar {
+  .ct600-stepping-bar,
+  .sa100-modal-header,
+  .sa100-modal-toolbar,
+  .sa100-modal-sidebar,
+  .sa100-modal-footer,
+  .sa100-no-print {
     display: none !important;
   }
 
   /* Ensure modal body and scroll area flow without scrollbars or fixed heights */
   #ct600-modal-body,
-  .ct600-form-scroll-area {
+  .ct600-form-scroll-area,
+  #sa100-modal-body,
+  .sa100-form-scroll-area {
     display: block !important;
     overflow: visible !important;
     height: auto !important;
@@ -706,8 +752,11 @@
 
   /* Clean paper page styling: A4 sized paper layout with clear page breaks */
   body.ct600-modal-open [class*="print:break-after-page"],
+  body.sa100-modal-open [class*="print:break-after-page"],
   body:has(#ct600-modal-overlay) [class*="print:break-after-page"],
-  .ct600-paper-page {
+  body:has(#sa100-modal-overlay) [class*="print:break-after-page"],
+  .ct600-paper-page,
+  .sa100-paper-page {
     border: none !important;
     box-shadow: none !important;
     border-radius: 0 !important;
@@ -721,20 +770,49 @@
   }
 
   body.ct600-modal-open [class*="print:break-after-page"]:last-child,
+  body.sa100-modal-open [class*="print:break-after-page"]:last-child,
   body:has(#ct600-modal-overlay) [class*="print:break-after-page"]:last-child,
-  .ct600-paper-page:last-child {
+  body:has(#sa100-modal-overlay) [class*="print:break-after-page"]:last-child,
+  .ct600-paper-page:last-child,
+  .sa100-paper-page:last-child,
+  #sa100-page-10 {
     page-break-after: auto !important;
     break-after: auto !important;
     margin-bottom: 0 !important;
+  }
+
+  /* SA302 Computation Schedule — Single Page Isolated Print */
+  #sa302-document,
+  .sa302-paper-page {
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    background: #ffffff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    page-break-after: auto !important;
+    break-after: auto !important;
+    page-break-before: auto !important;
+    break-before: auto !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 
   /* Form input & select elements print clean and sharp like paper forms */
   body.ct600-modal-open input,
   body.ct600-modal-open select,
   body.ct600-modal-open textarea,
+  body.sa100-modal-open input,
+  body.sa100-modal-open select,
+  body.sa100-modal-open textarea,
   body:has(#ct600-modal-overlay) input,
   body:has(#ct600-modal-overlay) select,
-  body:has(#ct600-modal-overlay) textarea {
+  body:has(#ct600-modal-overlay) textarea,
+  body:has(#sa100-modal-overlay) input,
+  body:has(#sa100-modal-overlay) select,
+  body:has(#sa100-modal-overlay) textarea {
     border: 1px solid #94a3b8 !important;
     background: transparent !important;
     color: #0f172a !important;

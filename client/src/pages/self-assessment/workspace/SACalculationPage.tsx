@@ -2,10 +2,11 @@ import { useState } from "react";
 import SAWorkspaceLayout, { useSAWorkspace } from "./SAWorkspaceLayout";
 import {
   FileSpreadsheet, Printer, Download, Calculator, CheckCircle2,
-  AlertCircle, RefreshCw, ArrowRight, Shield, CreditCard, ChevronRight, HelpCircle
+  AlertCircle, RefreshCw, ArrowRight, Shield, CreditCard, ChevronRight, HelpCircle, Heart
 } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "../../../hooks/useToast";
+import HMRCHelpTooltip from "../../../components/common/HMRCHelpTooltip";
 
 export default function SACalculationPage() {
   return (
@@ -55,6 +56,26 @@ function SACalculationContent() {
   const vctTaxReducer = parseFloat(currentReturn.vctTaxReducer || schedules.vctTaxReducer || "0");
   const totalInvestmentReliefs = parseFloat(currentReturn.totalInvestmentReliefs || schedules.totalInvestmentReliefs || "0") || (seisTaxReducer + eisTaxReducer + vctTaxReducer);
 
+  // Marriage Allowance (ITA 2007 s55A)
+  const marriageAllowanceTaxReducer = parseFloat(currentReturn.marriageAllowanceTaxReducer || schedules.marriageAllowanceTaxReducer || "0");
+  const isMarriageAllowanceRecipient = Boolean(currentReturn.claimMarriageAllowanceRecipient || schedules.claimMarriageAllowanceRecipient);
+  const isMarriageAllowanceTransferor = Boolean(currentReturn.claimMarriageAllowanceTransferor || schedules.claimMarriageAllowanceTransferor);
+
+  // PAYE Coding Out Election (TMA 1970 s59B / Box 2)
+  const electPayeCodingOut = Boolean(currentReturn.electPayeCodingOut || schedules.electPayeCodingOut);
+  const canCodeOut = Boolean(currentReturn.canCodeOut || schedules.canCodeOut || (electPayeCodingOut && netTaxDue > 0 && netTaxDue < 3000));
+  const codedOutAmount = parseFloat(currentReturn.codedOutAmount || schedules.codedOutAmount || (canCodeOut ? String(netTaxDue) : "0"));
+  const balancingPaymentDueJan31 = canCodeOut ? 0 : netTaxDue;
+
+  // High Income Child Benefit Charge (HICBC)
+  const hicbcDue = parseFloat(currentReturn.hicbcDue || schedules.hicbcDue || "0");
+  const hicbcPercentage = parseFloat(currentReturn.hicbcPercentage || schedules.hicbcPercentage || "0");
+  const childBenefitReceived = parseFloat(currentReturn.childBenefitReceived || schedules.childBenefitReceived || schedules.childBenefit?.amountReceived || "0");
+
+  // SA109 Remittance Basis Charge (ITA 2007 s809)
+  const remittanceBasisCharge = parseFloat(currentReturn.remittanceBasisCharge || schedules.remittanceBasisCharge || "0");
+  const claimRemittanceBasis = Boolean(currentReturn.claimRemittanceBasis || schedules.sa109?.claimRemittanceBasis);
+
   const handlePrint = () => {
     window.print();
   };
@@ -75,8 +96,14 @@ function SACalculationContent() {
   return (
     <div className="space-y-6">
       {/* Action Toolbar */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 print:hidden">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 print:hidden no-print sa100-no-print">
         <div>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+              Step 3 of 6
+            </span>
+            <HMRCHelpTooltip code="SA302" showBadge={true} inline={true} />
+          </div>
           <h2 className="font-bold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
             <FileSpreadsheet size={16} className="text-emerald-600" />
             HMRC Statutory Tax Calculation (SA302 Overview)
@@ -109,7 +136,7 @@ function SACalculationContent() {
       </div>
 
       {/* Summary KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 print:hidden">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 print:hidden no-print sa100-no-print">
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-xs">
           <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">
             Total Income Received
@@ -154,7 +181,7 @@ function SACalculationContent() {
       </div>
 
       {/* Official SA302 Computation Document */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-8 shadow-xs max-w-4xl mx-auto space-y-6 print:border-none print:shadow-none print:p-0">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-8 shadow-xs w-full space-y-6 print:border-none print:shadow-none print:p-0">
         {/* Document Header */}
         <div className="flex flex-col sm:flex-row sm:items-start justify-between border-b border-slate-200 dark:border-slate-800 pb-5 gap-4">
           <div>
@@ -316,11 +343,15 @@ function SACalculationContent() {
             <div className="py-2 flex justify-between">
               <div>
                 <span className="text-slate-600 dark:text-slate-400 block">Personal Allowance</span>
-                {totalIncome > 100000 && (
+                {claimRemittanceBasis ? (
+                  <span className="text-[10px] text-rose-600 dark:text-rose-400 font-medium block">
+                    Forfeited under ITA 2007 s809G (Remittance Basis Claim active)
+                  </span>
+                ) : totalIncome > 100000 ? (
                   <span className="text-[10px] text-amber-600 block">
                     Income exceeds £100,000; tapered by £1 for every £2 over £100,000
                   </span>
-                )}
+                ) : null}
               </div>
               <span className="font-mono font-medium text-slate-900 dark:text-slate-100">
                 - £{personalAllowance.toLocaleString("en-GB", { minimumFractionDigits: 2 })}
@@ -474,6 +505,24 @@ function SACalculationContent() {
               </div>
             )}
 
+            {/* Marriage Allowance Recipient Tax Reducer (ITA 2007 s55A) */}
+            {marriageAllowanceTaxReducer > 0 && (
+              <div className="py-2 flex justify-between text-emerald-700 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/30 px-2.5 rounded">
+                <div>
+                  <span className="font-medium block flex items-center gap-1.5">
+                    <span>Less: Marriage Allowance Transfer Tax Reduction (ITA 2007 s55A)</span>
+                    <HMRCHelpTooltip code="MARRIAGE_ALLOWANCE" showBadge={false} inline={true} />
+                  </span>
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-500">
+                    10% of Personal Allowance (£1,257) transferred from spouse @ 20% basic rate
+                  </span>
+                </div>
+                <span className="font-mono font-semibold">
+                  - £{marriageAllowanceTaxReducer.toLocaleString("en-GB", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
+
             {/* Student Loan */}
             {studentLoanDue > 0 && (
               <div className="py-2 flex justify-between">
@@ -483,6 +532,40 @@ function SACalculationContent() {
                 </div>
                 <span className="font-mono font-medium text-slate-900 dark:text-slate-100">
                   £{studentLoanDue.toLocaleString("en-GB", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
+
+            {/* High Income Child Benefit Charge (HICBC) */}
+            {hicbcDue > 0 && (
+              <div className="py-2 flex justify-between bg-amber-50/70 dark:bg-amber-950/30 px-2.5 rounded text-amber-900 dark:text-amber-200">
+                <div>
+                  <span className="font-medium block text-xs">
+                    High Income Child Benefit Charge (HICBC)
+                  </span>
+                  <span className="text-[10px] text-amber-700 dark:text-amber-400">
+                    Finance Act {currentReturn.taxYear >= "2024/25" ? "2024" : "2012"} clawback ({hicbcPercentage}% of £{childBenefitReceived.toFixed(2)} Child Benefit received)
+                  </span>
+                </div>
+                <span className="font-mono font-bold text-amber-900 dark:text-amber-100 text-xs">
+                  + £{hicbcDue.toLocaleString("en-GB", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
+
+            {/* Remittance Basis Charge (ITA 2007 s809H) */}
+            {remittanceBasisCharge > 0 && (
+              <div className="py-2 flex justify-between bg-purple-50/70 dark:bg-purple-950/30 px-2.5 rounded text-purple-900 dark:text-purple-200">
+                <div>
+                  <span className="font-medium block text-xs">
+                    Remittance Basis Charge (SA109 — ITA 2007 s809H)
+                  </span>
+                  <span className="text-[10px] text-purple-700 dark:text-purple-400">
+                    Statutory charge on unremitted foreign income & capital gains
+                  </span>
+                </div>
+                <span className="font-mono font-bold text-purple-900 dark:text-purple-100 text-xs">
+                  + £{remittanceBasisCharge.toLocaleString("en-GB", { minimumFractionDigits: 2 })}
                 </span>
               </div>
             )}
@@ -510,6 +593,31 @@ function SACalculationContent() {
                 £{netTaxDue.toLocaleString("en-GB", { minimumFractionDigits: 2 })}
               </span>
             </div>
+
+            {/* PAYE Coding Out Settlement Notice */}
+            {canCodeOut && (
+              <div className="p-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-lg space-y-1.5 mt-2">
+                <div className="flex items-center justify-between text-blue-900 dark:text-blue-200 font-bold text-xs">
+                  <span className="flex items-center gap-1.5">
+                    <CreditCard size={14} className="text-blue-600" />
+                    <span>PAYE Coding Out Active: Tax Collected via Monthly Salary (TMA 1970 s59B)</span>
+                    <HMRCHelpTooltip code="CODING_OUT" showBadge={false} inline={true} />
+                  </span>
+                  <span className="font-mono text-emerald-600 dark:text-emerald-400">
+                    - £{codedOutAmount.toLocaleString("en-GB", { minimumFractionDigits: 2 })} (Coded Out)
+                  </span>
+                </div>
+                <p className="text-[11px] text-blue-700 dark:text-blue-300 leading-relaxed">
+                  Because this return is submitted online by 30 December and total balancing tax is less than £3,000, HMRC will collect £{codedOutAmount.toFixed(2)} automatically through your monthly PAYE tax code across the 12-month payroll cycle starting 6 April.
+                </p>
+                <div className="pt-1.5 border-t border-blue-200/60 dark:border-blue-800/60 flex items-center justify-between font-bold text-xs text-blue-950 dark:text-blue-100">
+                  <span>Balancing Payment Due on 31 January:</span>
+                  <span className="font-mono text-emerald-700 dark:text-emerald-300 font-bold">
+                    £{balancingPaymentDueJan31.toLocaleString("en-GB", { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -550,28 +658,28 @@ function SACalculationContent() {
       </div>
 
       {/* Quick Navigation Footer */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl print:hidden">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl print:hidden no-print sa100-no-print">
         <Link
-          to={`/self-assessment/${clientId}/calculators`}
-          className="text-xs font-semibold text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white flex items-center gap-1.5"
+          href={`/self-assessment/${clientId}/schedules`}
+          className="text-xs font-semibold text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white flex items-center gap-1.5 cursor-pointer"
         >
-          <span>Back to Statutory Calculators</span>
+          <span>← Back to Step 2: Schedules</span>
         </Link>
 
         <div className="flex items-center gap-3">
           <Link
-            to={`/self-assessment/${clientId}/poa`}
-            className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
+            href={`/self-assessment/${clientId}/poa`}
+            className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <CreditCard size={13} />
             <span>Payments on Account</span>
           </Link>
 
           <Link
-            to={`/self-assessment/${clientId}/tax-due`}
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
+            href={`/self-assessment/${clientId}/tax-due`}
+            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
           >
-            <span>View Tax Due Slip</span>
+            <span>Proceed to Step 4: Tax Due Slip</span>
             <ArrowRight size={13} />
           </Link>
         </div>

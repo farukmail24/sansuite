@@ -11,6 +11,7 @@ import { Link } from "wouter";
 import SendToeSignModal from "../../components/esign/SendToeSignModal";
 import TablePagination from "../../components/common/TablePagination";
 import NewClientModal from "../../components/modals/NewClientModal";
+import HMRCHelpTooltip from "../../components/common/HMRCHelpTooltip";
 
 const sidebar = [
   { label: "SA100 Returns", icon: <LayoutDashboard size={15} />, route: "/self-assessment" },
@@ -225,15 +226,22 @@ export default function SelfAssessmentHome() {
                           {c.clientCode || "—"}
                         </td>
                         <td className="py-3 px-4">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold ${
-                            c.clientType === "Partnership"
-                              ? "bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800"
-                              : c.clientType === "SoleTrader"
-                              ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800"
-                              : "bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-800"
-                          }`}>
-                            {c.clientType || "Individual"}
-                          </span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold ${
+                              c.clientType === "Partnership"
+                                ? "bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800"
+                                : c.clientType === "SoleTrader"
+                                ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800"
+                                : "bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-800"
+                            }`}>
+                              {c.clientType || "Individual"}
+                            </span>
+                            <HMRCHelpTooltip
+                              code={isPartnership ? "SA800" : "SA100"}
+                              showBadge={true}
+                              inline={true}
+                            />
+                          </div>
                         </td>
                         <td className="py-3 px-4 font-mono text-[11px]">
                           {c.utrNumber ? (

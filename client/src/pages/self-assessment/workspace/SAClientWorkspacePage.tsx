@@ -63,6 +63,11 @@ export default function SAClientWorkspacePage(props?: SAClientWorkspacePageProps
       case "filing":
         setLocation(`/self-assessment/${clientId}/submit`, { replace: true });
         break;
+      case "reports":
+      case "report":
+      case "sa100-report":
+        setLocation(`/self-assessment/${clientId}/reports`, { replace: true });
+        break;
       case "dashboard":
       default:
         setLocation(`/self-assessment/${clientId}/dashboard`, { replace: true });
