@@ -554,7 +554,15 @@ router.get(["/pensions/schemes/:clientId", "/pension-schemes/:clientId"], async 
   try {
     const clientId = parseInt(req.params.clientId);
     const schemes = await db.select().from(payrollPensionSchemes).where(eq(payrollPensionSchemes.clientId, clientId));
-    res.json(schemes);
+    const normalized = schemes.map(s => ({
+      ...s,
+      providerName: s.schemeName || s.provider || "NEST",
+      schemeReference: s.employerRef || "—",
+      employeeContributionPercent: s.employeeRate || "5.00",
+      employerContributionPercent: s.employerRate || "3.00",
+      taxReliefType: s.earningsBasis || "Qualifying Earnings",
+    }));
+    res.json(normalized);
   } catch (e: any) {
     res.status(500).json({ message: "Failed to fetch pension schemes" });
   }
@@ -563,11 +571,32 @@ router.get(["/pensions/schemes/:clientId", "/pension-schemes/:clientId"], async 
 router.post(["/pensions/schemes", "/pension-schemes/:clientId", "/pensions/schemes/:clientId"], async (req: any, res) => {
   try {
     const clientId = req.params.clientId ? parseInt(req.params.clientId) : parseInt(req.body.clientId);
-    const data = { ...req.body, clientId };
+    const body = req.body;
+    const data: any = {
+      clientId,
+      provider: body.providerName || body.provider || "Nest",
+      schemeName: body.schemeName || body.providerName || "NEST Workplace Pension",
+      employerRef: body.schemeReference || body.employerRef || "",
+      employerRate: body.employerContributionPercent ? String(body.employerContributionPercent) : (body.employerRate ? String(body.employerRate) : "3.00"),
+      employeeRate: body.employeeContributionPercent ? String(body.employeeContributionPercent) : (body.employeeRate ? String(body.employeeRate) : "5.00"),
+      earningsBasis: body.taxReliefType || body.earningsBasis || "Qualifying Earnings",
+      stagingDate: body.stagingDate || null,
+      reEnrolmentDate: body.reEnrolmentDate || null,
+      papdisEnabled: body.papdisEnabled !== undefined ? body.papdisEnabled : true,
+      status: body.status || "Active",
+    };
     const [r] = await db.insert(payrollPensionSchemes).values(data);
-    res.json({ id: r.insertId, ...data });
+    res.json({
+      id: r.insertId,
+      ...data,
+      providerName: data.schemeName,
+      schemeReference: data.employerRef,
+      employeeContributionPercent: data.employeeRate,
+      employerContributionPercent: data.employerRate,
+      taxReliefType: data.earningsBasis
+    });
   } catch (e: any) {
-    res.status(500).json({ message: "Failed to create pension scheme" });
+    res.status(500).json({ message: "Failed to create pension scheme", error: e.message });
   }
 });
 
@@ -677,25 +706,100 @@ router.post("/pensions/letters", async (req: any, res) => {
   }
 });
 
-router.get("/pensions/papdis/:schemeId", async (req: any, res) => {
+router.get(["/pensions/papdis/:schemeId", "/pensions/papdis/run/:runId"], async (req: any, res) => {
   try {
-    const schemeId = parseInt(req.params.schemeId);
-    const [scheme] = await db.select().from(payrollPensionSchemes).where(eq(payrollPensionSchemes.id, schemeId));
-    if (!scheme) return res.status(404).json({ message: "Scheme not found" });
+    const schemeId = req.params.schemeId ? parseInt(req.params.schemeId) : null;
+    const runId = req.params.runId ? parseInt(req.params.runId) : null;
 
-    // Generate CSV in PAPDIS standard
-    const csvContent = [
-      "Header,PAPDIS,Version 1.1",
-      `EmployerRef,${scheme.employerRef || "SCH-001"},Provider,${scheme.provider}`,
-      "EmployeeID,FirstName,LastName,NINumber,EarningsBasis,EmployerContribution,EmployeeContribution",
-      `EMP001,John,Doe,QQ123456A,QualifyingEarnings,${scheme.employerRate}%,${scheme.employeeRate}%`,
-    ].join("\n");
+    let scheme: any = null;
+    if (schemeId) {
+      [scheme] = await db.select().from(payrollPensionSchemes).where(eq(payrollPensionSchemes.id, schemeId));
+    } else if (runId) {
+      const [run] = await db.select().from(payRuns).where(eq(payRuns.id, runId));
+      if (run) {
+        const [paye] = await db.select().from(payeSchemes).where(eq(payeSchemes.id, run.payeSchemeId));
+        if (paye) {
+          [scheme] = await db.select().from(payrollPensionSchemes).where(eq(payrollPensionSchemes.clientId, paye.clientId));
+        }
+      }
+    }
+
+    const provider = scheme?.provider || "NEST";
+    const employerRef = scheme?.employerRef || "SCH-NEST-001";
+    const employerRate = parseFloat(scheme?.employerRate || "3.00");
+    const employeeRate = parseFloat(scheme?.employeeRate || "5.00");
+
+    // Fetch real employees and payslips
+    let empList: any[] = [];
+    if (scheme) {
+      const [paye] = await db.select().from(payeSchemes).where(eq(payeSchemes.clientId, scheme.clientId));
+      if (paye) {
+        empList = await db.select().from(employees).where(and(eq(employees.payeSchemeId, paye.id), eq(employees.status, "Active")));
+      }
+    }
+
+    const rows: string[] = [];
+    rows.push("Header,PAPDIS,Version 1.1");
+    rows.push(`Employer,${scheme?.schemeName || "Employer Workplace Pension"},${employerRef},${provider}`);
+    rows.push("EmployeeID,NationalInsuranceNumber,FirstName,LastName,BirthDate,Gender,WorkerCategory,QualifyingEarnings,PensionablePay,EmployerContributionPercent,EmployerContributionAmount,EmployeeContributionPercent,EmployeeContributionAmount,EarningsBasis");
+
+    if (empList.length === 0) {
+      // Clean zero state header only
+    } else {
+      for (const emp of empList) {
+        const annualGross = parseFloat(emp.grossRate || "0") * (emp.salaryType === "AnnualSalary" ? 1 : 12);
+        const monthlyGross = annualGross / 12;
+        // Qualifying earnings band for 2024/25: between £520/month and £4,189/month
+        const qualifyingEarnings = Math.max(0, Math.min(monthlyGross, 4189) - 520);
+        const erContrib = (qualifyingEarnings * (employerRate / 100)).toFixed(2);
+        const eeContrib = (qualifyingEarnings * (employeeRate / 100)).toFixed(2);
+        const workerCategory = annualGross >= 10000 ? "Eligible Jobholder" : (annualGross >= 6240 ? "Non-eligible Jobholder" : "Entitled Worker");
+
+        rows.push([
+          `EMP${String(emp.id).padStart(4, "0")}`,
+          emp.niNumber || "QQ123456A",
+          `"${emp.firstName}"`,
+          `"${emp.lastName}"`,
+          emp.birthDate ? new Date(emp.birthDate).toISOString().split("T")[0] : "",
+          emp.gender || "U",
+          `"${workerCategory}"`,
+          qualifyingEarnings.toFixed(2),
+          monthlyGross.toFixed(2),
+          employerRate.toFixed(2),
+          erContrib,
+          employeeRate.toFixed(2),
+          eeContrib,
+          scheme?.earningsBasis || "Qualifying Earnings"
+        ].join(","));
+      }
+    }
 
     res.setHeader("Content-Type", "text/csv");
-    res.setHeader("Content-Disposition", `attachment; filename=PAPDIS_${scheme.provider}_${Date.now()}.csv`);
-    res.send(csvContent);
+    res.setHeader("Content-Disposition", `attachment; filename=PAPDIS_${provider.replace(/[^a-zA-Z0-9]/g, "_")}_${new Date().toISOString().split("T")[0]}.csv`);
+    res.send(rows.join("\r\n"));
   } catch (e: any) {
-    res.status(500).json({ message: "Failed to generate PAPDIS file" });
+    res.status(500).json({ message: "Failed to generate PAPDIS file", error: e.message });
+  }
+});
+
+router.post("/pensions/letters/generate/:clientId", async (req: any, res) => {
+  try {
+    const clientId = parseInt(req.params.clientId);
+    const { letterType, employeeId } = req.body;
+    const now = new Date().toISOString().split("T")[0];
+
+    const [inserted] = await db.insert(payrollPensionLetters).values({
+      clientId,
+      employeeId: parseInt(employeeId),
+      letterType: letterType || "Auto Enrolment Notice",
+      generatedDate: now,
+      sentDate: now,
+      sentStatus: "Issued",
+    });
+
+    res.json({ id: inserted.insertId, message: "Statutory pension letter generated successfully" });
+  } catch (e: any) {
+    res.status(500).json({ message: "Failed to generate statutory pension letter", error: e.message });
   }
 });
 
@@ -719,8 +823,19 @@ router.get("/submissions/:clientId", async (req: any, res) => {
       status: rtiSubmissions.status,
       isZeroFps: rtiSubmissions.isZeroFps,
       employmentAllowanceClaimed: rtiSubmissions.employmentAllowanceClaimed,
+      stateAidSector: rtiSubmissions.stateAidSector,
       cisDeductionsSuffered: rtiSubmissions.cisDeductionsSuffered,
       statutoryPayRecovered: rtiSubmissions.statutoryPayRecovered,
+      smpRecovered: rtiSubmissions.smpRecovered,
+      sppRecovered: rtiSubmissions.sppRecovered,
+      sapRecovered: rtiSubmissions.sapRecovered,
+      shppRecovered: rtiSubmissions.shppRecovered,
+      nicCompensation: rtiSubmissions.nicCompensation,
+      periodOfInactivity: rtiSubmissions.periodOfInactivity,
+      inactivityStartDate: rtiSubmissions.inactivityStartDate,
+      inactivityEndDate: rtiSubmissions.inactivityEndDate,
+      isFinalSubmission: rtiSubmissions.isFinalSubmission,
+      lateReason: rtiSubmissions.lateReason,
       payRunId: rtiSubmissions.payRunId,
     })
     .from(rtiSubmissions)
@@ -784,27 +899,53 @@ router.post(["/submissions/zero-fps", "/submissions/zero-fps/:clientId"], async 
 router.post(["/submissions/eps", "/submissions/eps/:clientId"], async (req: any, res) => {
   try {
     const clientId = req.params.clientId || req.body.clientId;
-    const { employmentAllowanceClaimed, cisDeductionsSuffered, statutoryPayRecovered, periodOfInactivity, periodName } = req.body;
+    const { 
+      employmentAllowanceClaimed,
+      stateAidSector,
+      cisDeductionsSuffered, 
+      statutoryPayRecovered,
+      smpRecovered,
+      sppRecovered,
+      sapRecovered,
+      shppRecovered,
+      nicCompensation,
+      periodOfInactivity,
+      inactivityStartDate,
+      inactivityEndDate,
+      isFinalSubmission,
+      periodName,
+      taxYear 
+    } = req.body;
+
     const [scheme] = await db.select().from(payeSchemes).where(eq(payeSchemes.clientId, parseInt(clientId)));
     const correlationId = `HMRC-EPS-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 
     const [inserted] = await db.insert(rtiSubmissions).values({
       schemeId: scheme?.id,
       submissionType: "EPS",
-      taxYear: "2025-26",
-      periodName: periodName || "Month 12 EPS",
+      taxYear: taxYear || "2025-26",
+      periodName: periodName || "Employer Payment Summary (EPS)",
       correlationId,
-      employmentAllowanceClaimed: employmentAllowanceClaimed ? employmentAllowanceClaimed.toString() : "0.00",
-      cisDeductionsSuffered: cisDeductionsSuffered ? cisDeductionsSuffered.toString() : "0.00",
-      statutoryPayRecovered: statutoryPayRecovered ? statutoryPayRecovered.toString() : "0.00",
+      employmentAllowanceClaimed: employmentAllowanceClaimed ? String(employmentAllowanceClaimed) : "0.00",
+      stateAidSector: stateAidSector || "None",
+      cisDeductionsSuffered: cisDeductionsSuffered ? String(cisDeductionsSuffered) : "0.00",
+      statutoryPayRecovered: statutoryPayRecovered ? String(statutoryPayRecovered) : "0.00",
+      smpRecovered: smpRecovered ? String(smpRecovered) : "0.00",
+      sppRecovered: sppRecovered ? String(sppRecovered) : "0.00",
+      sapRecovered: sapRecovered ? String(sapRecovered) : "0.00",
+      shppRecovered: shppRecovered ? String(shppRecovered) : "0.00",
+      nicCompensation: nicCompensation ? String(nicCompensation) : "0.00",
       periodOfInactivity: Boolean(periodOfInactivity),
+      inactivityStartDate: inactivityStartDate || null,
+      inactivityEndDate: inactivityEndDate || null,
+      isFinalSubmission: Boolean(isFinalSubmission),
       submittedAt: new Date(),
       status: "Accepted",
     });
 
-    res.json({ id: inserted.insertId, correlationId, status: "Accepted" });
+    res.json({ id: inserted.insertId, correlationId, status: "Accepted", message: "Employer Payment Summary successfully submitted to HMRC Gateway." });
   } catch (e: any) {
-    res.status(500).json({ message: "Failed to submit EPS" });
+    res.status(500).json({ message: "Failed to submit EPS", error: e.message });
   }
 });
 
@@ -831,27 +972,88 @@ router.post(["/submissions/eyu", "/submissions/eyu/:clientId"], async (req: any,
   }
 });
 
-router.get("/bacs/:runId", async (req: any, res) => {
+router.get(["/bacs/:runId", "/submissions/bacs/:runId", "/runs/:runId/bacs"], async (req: any, res) => {
   try {
     const runId = parseInt(req.params.runId);
+    const format = (req.query.format || "bac").toString().toLowerCase();
+
+    const [run] = await db.select().from(payRuns).where(eq(payRuns.id, runId));
+    if (!run) return res.status(404).json({ message: "Pay run not found" });
+
+    const [scheme] = await db.select().from(payeSchemes).where(eq(payeSchemes.id, run.payeSchemeId));
+
     const slips = await db.select({
       netPay: payslips.netPay,
+      employeeId: payslips.employeeId,
       firstName: employees.firstName,
       lastName: employees.lastName,
+      bankSortCode: employees.bankSortCode,
+      bankAccountNumber: employees.bankAccountNumber,
+      bankAccountName: employees.bankAccountName,
     }).from(payslips)
       .leftJoin(employees, eq(payslips.employeeId, employees.id))
       .where(eq(payslips.payRunId, runId));
 
-    let bacsText = `VOL100000100000000000000000000000000000000000000000000000000000000000000000000000000\n`;
-    for (const s of slips) {
-      bacsText += `20000012345678099${(parseFloat(s.netPay || "0") * 100).toFixed(0).padStart(11, '0')}000000000000${(s.lastName || '').padEnd(18, ' ')}PAYROLL\n`;
+    const origSort = (scheme?.bankSortCode || "200000").replace(/[^0-9]/g, "").padStart(6, "0").slice(0, 6);
+    const origAcc = (scheme?.bankAccountNumber || "12345678").replace(/[^0-9]/g, "").padStart(8, "0").slice(0, 8);
+    const origName = (scheme?.employerName || "EMPLOYER").replace(/[^a-zA-Z0-9 ]/g, "").slice(0, 18).padEnd(18, " ");
+
+    if (format === "csv") {
+      const csvRows = [
+        "Sort Code,Account Number,Account Name,Amount,Payment Reference",
+      ];
+      for (const s of slips) {
+        const net = parseFloat(s.netPay || "0");
+        if (net <= 0) continue;
+        const sCode = s.bankSortCode ? s.bankSortCode.replace(/[^0-9]/g, "").replace(/(\d{2})(\d{2})(\d{2})/, "$1-$2-$3") : "20-00-00";
+        const accNo = (s.bankAccountNumber || "12345678").replace(/[^0-9]/g, "").padStart(8, "0").slice(0, 8);
+        const name = s.bankAccountName || `${s.firstName || ""} ${s.lastName || ""}`.trim() || "EMPLOYEE";
+        csvRows.push(`"${sCode}","${accNo}","${name}",${net.toFixed(2)},"SALARY M${run.payPeriod}"`);
+      }
+
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename=BACS_Payments_Run_${runId}.csv`);
+      return res.send(csvRows.join("\r\n"));
     }
 
+    // UK Standard 18 BACS File Format (.bac / .txt)
+    let totalPence = 0;
+    let recordCount = 0;
+    const lines: string[] = [];
+
+    // Header VOL1
+    lines.push(`VOL1${origSort.slice(0, 4)}11${" ".repeat(74)}1`);
+    // HDR1
+    lines.push(`HDR1A${origSort.slice(0, 4)}11S  1${origSort.slice(0, 4)}1100010001${" ".repeat(46)}`);
+    // UHL1
+    lines.push(`UHL1 00001${" ".repeat(59)}1`);
+
+    for (const s of slips) {
+      const net = parseFloat(s.netPay || "0");
+      if (net <= 0) continue;
+      const pence = Math.round(net * 100);
+      totalPence += pence;
+      recordCount++;
+
+      const destSort = (s.bankSortCode || "200000").replace(/[^0-9]/g, "").padStart(6, "0").slice(0, 6);
+      const destAcc = (s.bankAccountNumber || "12345678").replace(/[^0-9]/g, "").padStart(8, "0").slice(0, 8);
+      const destName = (s.bankAccountName || `${s.lastName || ""} ${s.firstName ? s.firstName[0] : ""}`.trim()).slice(0, 18).padEnd(18, " ");
+      const ref = `SALARY P${run.payPeriod}`.slice(0, 18).padEnd(18, " ");
+
+      // Standard 18 byte record line
+      const dataLine = `${destSort}${destAcc}099${origSort}${origAcc}0000${String(pence).padStart(11, "0")}${origName}${ref}${destName}`;
+      lines.push(dataLine);
+    }
+
+    // EOF1 / UTL1 Trailer
+    lines.push(`EOF1A${origSort.slice(0, 4)}11S  1${origSort.slice(0, 4)}1100010001${" ".repeat(46)}`);
+    lines.push(`UTL1${String(totalPence).padStart(13, "0")}${String(recordCount).padStart(7, "0")}${" ".repeat(60)}`);
+
     res.setHeader("Content-Type", "text/plain");
-    res.setHeader("Content-Disposition", `attachment; filename=BACS_Run_${runId}.bac`);
-    res.send(bacsText);
+    res.setHeader("Content-Disposition", `attachment; filename=BACS_Standard18_Run_${runId}.bac`);
+    res.send(lines.join("\r\n"));
   } catch (e: any) {
-    res.status(500).json({ message: "Failed to generate BACS file" });
+    res.status(500).json({ message: "Failed to generate BACS file", error: e.message });
   }
 });
 
@@ -1071,19 +1273,46 @@ router.get("/reports/p45/:employeeId", async (req: any, res) => {
 
     const [scheme] = await db.select().from(payeSchemes).where(eq(payeSchemes.id, emp.payeSchemeId));
 
+    // Calculate authentic YTD from real payslips in database
+    const empSlips = await db.select().from(payslips).where(eq(payslips.employeeId, empId));
+    let gross = 0, tax = 0, empNi = 0, studentLoan = 0;
+    if (empSlips.length > 0) {
+      gross = empSlips.reduce((sum, s) => sum + parseFloat(s.grossPay || "0"), 0);
+      tax = empSlips.reduce((sum, s) => sum + parseFloat(s.incomeTax || "0"), 0);
+      empNi = empSlips.reduce((sum, s) => sum + parseFloat(s.employeeNi || "0"), 0);
+      studentLoan = empSlips.reduce((sum, s) => sum + parseFloat(s.studentLoan || "0"), 0);
+    } else {
+      gross = parseFloat(emp.ytdGrossPay || emp.grossRate || "0");
+      tax = parseFloat(emp.ytdTaxPaid || "0");
+      empNi = parseFloat(emp.ytdEmployeeNi || "0");
+    }
+
     res.json({
       form: "P45",
+      employeeId: emp.id,
+      worksNumber: `EMP${String(emp.id).padStart(4, "0")}`,
       employeeName: `${emp.firstName} ${emp.lastName}`,
-      niNumber: emp.niNumber,
-      leavingDate: emp.leavingDate || new Date().toISOString().split("T")[0],
-      taxCodeAtLeaving: emp.taxCode,
-      totalPayInThisEmployment: (parseFloat(emp.grossRate || "0") * 10).toFixed(2),
-      totalTaxInThisEmployment: (parseFloat(emp.grossRate || "0") * 1.5).toFixed(2),
+      firstName: emp.firstName,
+      lastName: emp.lastName,
+      niNumber: emp.niNumber || "QQ123456A",
+      gender: emp.gender || "U",
+      birthDate: emp.birthDate ? new Date(emp.birthDate).toLocaleDateString("en-GB") : "—",
+      hireDate: emp.hireDate ? new Date(emp.hireDate).toLocaleDateString("en-GB") : "—",
+      leavingDate: emp.leavingDate ? new Date(emp.leavingDate).toLocaleDateString("en-GB") : new Date().toLocaleDateString("en-GB"),
+      taxCodeAtLeaving: emp.taxCode || "1257L",
+      taxBasis: emp.taxBasis || "Cumulative",
+      totalPayInThisEmployment: gross.toFixed(2),
+      totalTaxInThisEmployment: tax.toFixed(2),
+      employeeNiPaid: empNi.toFixed(2),
+      studentLoanDeductions: studentLoan.toFixed(2),
+      postgraduateLoanDeductions: "0.00",
       employerName: scheme?.employerName || "Practice Employer",
-      payeReference: scheme?.payeReference || "123/AB10020",
+      payeReference: scheme?.payeReference || "120/AC98765",
+      accountsOfficeReference: scheme?.accountsOfficeReference || "120PA00012345",
+      issueDate: new Date().toLocaleDateString("en-GB"),
     });
   } catch (e: any) {
-    res.status(500).json({ message: "Failed to generate P45" });
+    res.status(500).json({ message: "Failed to generate P45", error: e.message });
   }
 });
 
@@ -1095,19 +1324,64 @@ router.get("/reports/p60/:employeeId", async (req: any, res) => {
 
     const [scheme] = await db.select().from(payeSchemes).where(eq(payeSchemes.id, emp.payeSchemeId));
 
+    // Calculate authentic YTD from real payslips in database
+    const empSlips = await db.select().from(payslips).where(eq(payslips.employeeId, empId));
+    let gross = 0, tax = 0, empNi = 0, emprNi = 0, pensionEmp = 0, studentLoan = 0;
+    if (empSlips.length > 0) {
+      gross = empSlips.reduce((sum, s) => sum + parseFloat(s.grossPay || "0"), 0);
+      tax = empSlips.reduce((sum, s) => sum + parseFloat(s.incomeTax || "0"), 0);
+      empNi = empSlips.reduce((sum, s) => sum + parseFloat(s.employeeNi || "0"), 0);
+      emprNi = empSlips.reduce((sum, s) => sum + parseFloat(s.employerNi || "0"), 0);
+      pensionEmp = empSlips.reduce((sum, s) => sum + parseFloat(s.pensionEmployee || "0"), 0);
+      studentLoan = empSlips.reduce((sum, s) => sum + parseFloat(s.studentLoan || "0"), 0);
+    } else {
+      gross = parseFloat(emp.ytdGrossPay || emp.grossRate || "0");
+      tax = parseFloat(emp.ytdTaxPaid || "0");
+      empNi = parseFloat(emp.ytdEmployeeNi || "0");
+      emprNi = parseFloat(emp.ytdEmployerNi || "0");
+    }
+
+    // UK Statutory NIC bands (Class 1)
+    const lel = Math.min(gross, 6396);
+    const pt = Math.max(0, Math.min(gross, 12570) - 6396);
+    const uel = Math.max(0, Math.min(gross, 50270) - 12570);
+
     res.json({
       form: "P60",
-      taxYear: "2024-25",
+      taxYear: scheme?.taxYear || "2024-25",
+      employeeId: emp.id,
+      worksNumber: `EMP${String(emp.id).padStart(4, "0")}`,
       employeeName: `${emp.firstName} ${emp.lastName}`,
-      niNumber: emp.niNumber,
-      payInThisEmployment: (parseFloat(emp.grossRate || "0") * 12).toFixed(2),
-      taxDeducted: (parseFloat(emp.grossRate || "0") * 2.2).toFixed(2),
-      finalTaxCode: emp.taxCode,
+      firstName: emp.firstName,
+      lastName: emp.lastName,
+      niNumber: emp.niNumber || "QQ123456A",
+      finalTaxCode: emp.taxCode || "1257L",
+      taxBasis: emp.taxBasis || "Cumulative",
+      payInThisEmployment: gross.toFixed(2),
+      taxDeducted: tax.toFixed(2),
+      totalPayForYear: gross.toFixed(2),
+      totalTaxForYear: tax.toFixed(2),
+      employeeNi: empNi.toFixed(2),
+      employerNi: emprNi.toFixed(2),
+      pensionEmployee: pensionEmp.toFixed(2),
+      studentLoanDeductions: studentLoan.toFixed(2),
+      postgraduateLoanDeductions: "0.00",
+      statutoryMaternityPay: "0.00",
+      statutoryPaternityPay: "0.00",
+      statutoryAdoptionPay: "0.00",
+      statutorySharedParentalPay: "0.00",
+      niCategory: emp.niCategory || "A",
+      earningsAtLel: lel.toFixed(2),
+      earningsLelToPt: pt.toFixed(2),
+      earningsPtToUel: uel.toFixed(2),
+      employeeNiDue: empNi.toFixed(2),
       employerName: scheme?.employerName || "Practice Employer",
-      payeReference: scheme?.payeReference || "123/AB10020",
+      payeReference: scheme?.payeReference || "120/AC98765",
+      accountsOfficeReference: scheme?.accountsOfficeReference || "120PA00012345",
+      certificateDate: "05/04/2025",
     });
   } catch (e: any) {
-    res.status(500).json({ message: "Failed to generate P60" });
+    res.status(500).json({ message: "Failed to generate P60", error: e.message });
   }
 });
 
@@ -1309,10 +1583,69 @@ router.get("/schemes", async (req: any, res) => {
 
 router.post("/schemes", async (req: any, res) => {
   try {
-    const data = { ...req.body, clientId: req.body.clientId ? parseInt(req.body.clientId) : 1 };
+    const clientId = req.body.clientId ? parseInt(req.body.clientId) : 1;
+    const existing = await db.select().from(payeSchemes).where(eq(payeSchemes.clientId, clientId));
+    const data = {
+      clientId,
+      employerName: req.body.employerName,
+      hmrcOfficeNumber: req.body.hmrcOfficeNumber,
+      payeReference: req.body.payeReference,
+      accountsOfficeReference: req.body.accountsOfficeReference,
+      econ: req.body.econ,
+      defaultPayFrequency: req.body.defaultPayFrequency || "Monthly",
+      paymentMode: req.body.paymentMode || "BACS",
+      bankName: req.body.bankName,
+      bankSortCode: req.body.bankSortCode,
+      bankAccountNumber: req.body.bankAccountNumber,
+      syncBookkeeping: !!req.body.syncBookkeeping,
+      smallEmployersRelief: !!req.body.smallEmployersRelief,
+      employmentAllowance: !!req.body.employmentAllowance,
+    };
+    if (existing.length > 0) {
+      await db.update(payeSchemes).set(data).where(eq(payeSchemes.id, existing[0].id));
+      return res.json({ id: existing[0].id, ...data });
+    }
     const [r] = await db.insert(payeSchemes).values(data);
     res.json({ id: r.insertId, ...data });
-  } catch { res.status(500).json({ message: "Failed to create PAYE scheme" }); }
+  } catch (e: any) { 
+    res.status(500).json({ message: "Failed to save PAYE scheme", error: e.message }); 
+  }
+});
+
+router.post("/schemes/:id/settings", async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const updates = {
+      employerName: req.body.employerName,
+      hmrcOfficeNumber: req.body.hmrcOfficeNumber,
+      payeReference: req.body.payeReference,
+      accountsOfficeReference: req.body.accountsOfficeReference,
+      econ: req.body.econ,
+      defaultPayFrequency: req.body.defaultPayFrequency || "Monthly",
+      paymentMode: req.body.paymentMode || "BACS",
+      bankName: req.body.bankName,
+      bankSortCode: req.body.bankSortCode,
+      bankAccountNumber: req.body.bankAccountNumber,
+      syncBookkeeping: !!req.body.syncBookkeeping,
+      smallEmployersRelief: !!req.body.smallEmployersRelief,
+      employmentAllowance: !!req.body.employmentAllowance,
+      payslipTemplate: req.body.payslipTemplate || "classic",
+    };
+    await db.update(payeSchemes).set(updates).where(eq(payeSchemes.id, id));
+    res.json({ success: true, message: "Settings saved successfully", id });
+  } catch (e: any) {
+    res.status(500).json({ message: "Failed to update PAYE scheme settings", error: e.message });
+  }
+});
+
+router.patch("/schemes/:id", async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    await db.update(payeSchemes).set(req.body).where(eq(payeSchemes.id, id));
+    res.json({ success: true, message: "Updated", id });
+  } catch (e: any) {
+    res.status(500).json({ message: "Failed to update", error: e.message });
+  }
 });
 
 router.delete("/schemes/:id", async (req: any, res) => {
@@ -1436,6 +1769,106 @@ router.post("/runs/:id/approve", async (req: any, res) => {
     res.json({ success: true, message: "Pay run approved and RTI FPS submitted to HMRC", correlationId });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/runs/:id/rollback", async (req: any, res) => {
+  try {
+    const runId = parseInt(req.params.id);
+    const [run] = await db.select().from(payRuns).where(eq(payRuns.id, runId));
+    if (!run) return res.status(404).json({ message: "Pay run not found" });
+
+    // Update any associated RTI submissions to Rolled Back status
+    await db.update(rtiSubmissions)
+      .set({ status: "Rolled Back" })
+      .where(eq(rtiSubmissions.payRunId, runId));
+
+    // Reset pay run status to Draft
+    await db.update(payRuns)
+      .set({ 
+        status: "Draft",
+        isRolledBack: true,
+        notes: `Rolled back to Draft on ${new Date().toLocaleDateString("en-GB")} ${new Date().toLocaleTimeString("en-GB")}`
+      })
+      .where(eq(payRuns.id, runId));
+
+    res.json({
+      success: true,
+      message: `Pay Run #${runId} has been successfully rolled back to Draft. You can now adjust timesheets, hourly wages, or tax codes before re-calculating.`,
+      runId,
+      status: "Draft",
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to roll back pay run", error: error.message });
+  }
+});
+
+router.post("/schemes/:id/year-end-rollover", async (req: any, res) => {
+  try {
+    const schemeId = parseInt(req.params.id);
+    const [scheme] = await db.select().from(payeSchemes).where(eq(payeSchemes.id, schemeId));
+    if (!scheme) return res.status(404).json({ message: "PAYE scheme not found" });
+
+    const currentYear = scheme.taxYear || "2024-25";
+    const parts = currentYear.split("-");
+    const startYear = parseInt(parts[0]) || 2024;
+    const endYear = parseInt(parts[1]) || 25;
+    const nextTaxYear = `${startYear + 1}-${String((endYear + 1) % 100).padStart(2, "0")}`;
+
+    const { upliftLCode = true, lCodeIncrease = 0, resetWeek1Month1 = true } = req.body;
+
+    // Fetch active employees in this scheme
+    const empList = await db.select().from(employees).where(eq(employees.payeSchemeId, schemeId));
+    let updatedEmployees = 0;
+
+    for (const emp of empList) {
+      const updates: any = {
+        ytdGrossPay: "0.00",
+        ytdTaxPaid: "0.00",
+        ytdEmployeeNi: "0.00",
+        ytdEmployerNi: "0.00",
+      };
+
+      if (resetWeek1Month1 && emp.taxBasis !== "Cumulative") {
+        updates.taxBasis = "Cumulative";
+      }
+
+      if (upliftLCode && lCodeIncrease > 0 && emp.taxCode && emp.taxCode.toUpperCase().endsWith("L")) {
+        const numPart = parseInt(emp.taxCode.slice(0, -1));
+        if (!isNaN(numPart)) {
+          updates.taxCode = `${numPart + lCodeIncrease}L`;
+        }
+      }
+
+      await db.update(employees).set(updates).where(eq(employees.id, emp.id));
+      updatedEmployees++;
+    }
+
+    // Advance scheme tax year
+    await db.update(payeSchemes).set({ taxYear: nextTaxYear }).where(eq(payeSchemes.id, schemeId));
+
+    // Create Period 1 Draft Pay Run for the new year
+    const [newRun] = await db.insert(payRuns).values({
+      payeSchemeId: schemeId,
+      taxYear: nextTaxYear,
+      payPeriod: 1,
+      startDate: new Date(`${startYear + 1}-04-06`),
+      endDate: new Date(`${startYear + 1}-05-05`),
+      paymentDate: new Date(`${startYear + 1}-04-30`),
+      status: "Draft",
+      notes: `Rollover initialized from tax year ${currentYear}`,
+    });
+
+    res.json({
+      success: true,
+      message: `Tax Year Rollover completed! Successfully advanced from ${currentYear} to ${nextTaxYear}.`,
+      previousTaxYear: currentYear,
+      newTaxYear: nextTaxYear,
+      employeesRolledOver: updatedEmployees,
+      newPayRunId: newRun.insertId,
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to execute Tax Year Rollover", error: error.message });
   }
 });
 

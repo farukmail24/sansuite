@@ -6,7 +6,8 @@ import { practicePayrollSidebar } from "./sidebar";
 import {
   LayoutDashboard, Users, Calculator, Settings, Plus, X,
   PlayCircle, FileText, CheckCircle, ChevronDown, ChevronUp,
-  BookOpen, Download
+  BookOpen, Download, RotateCcw, RefreshCw, AlertTriangle,
+  ArrowRight, ShieldCheck, FileSpreadsheet
 } from "lucide-react";
 import { useLocation, useRoute } from "wouter";
 import { apiRequest } from "../../lib/queryClient";
@@ -27,7 +28,7 @@ export default function PayRunsPage() {
   return (
     <AppLayout sidebar={practicePayrollSidebar} module="Payroll">
       <div className="p-6 bg-gray-50 min-h-screen">
-        <div className="max-w-7xl mx-auto">
+        <div className="w-full">
           <PayRunsContent />
         </div>
       </div>
@@ -41,6 +42,16 @@ function PayRunsContent() {
   const [showNew, setShowNew] = useState(false);
   const [selectedRun, setSelectedRun] = useState<number | null>(null);
   const [selectedPayslip, setSelectedPayslip] = useState<any>(null);
+  const [bacsRunId, setBacsRunId] = useState<number | null>(null);
+  const [showRolloverModal, setShowRolloverModal] = useState(false);
+  const [rolloverStep, setRolloverStep] = useState(1);
+  const [rolloverForm, setRolloverForm] = useState({
+    schemeId: 0,
+    upliftLCode: true,
+    lCodeIncrease: 0,
+    resetWeek1Month1: true,
+  });
+
   const [newForm, setNewForm] = useState({
     taxYear: "2024-25", payPeriod: "1",
     startDate: "", endDate: "", paymentDate: "",
@@ -115,6 +126,51 @@ function PayRunsContent() {
     },
   });
 
+  const rollbackRun = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/payroll/runs/${id}/rollback`);
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed to rollback pay run");
+      }
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: "Pay Run Rolled Back to Draft",
+        description: data.message,
+        type: "success",
+      });
+      qc.invalidateQueries({ queryKey: ["/api/payroll/runs"] });
+    },
+    onError: (e: any) => toast({ title: "Rollback Failed", description: e.message, type: "error" }),
+  });
+
+  const rolloverMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const targetSchemeId = payload.schemeId || schemes[0]?.id || 1;
+      const res = await apiRequest("POST", `/api/payroll/schemes/${targetSchemeId}/year-end-rollover`, payload);
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed to execute Tax Year Rollover");
+      }
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: "Tax Year Rollover Complete",
+        description: data.message,
+        type: "success",
+      });
+      qc.invalidateQueries({ queryKey: ["/api/payroll/runs"] });
+      qc.invalidateQueries({ queryKey: ["/api/payroll/schemes"] });
+      qc.invalidateQueries({ queryKey: ["/api/payroll/employees"] });
+      setShowRolloverModal(false);
+      setRolloverStep(1);
+    },
+    onError: (e: any) => toast({ title: "Rollover Failed", description: e.message, type: "error" }),
+  });
+
   const syncJournal = useMutation({
     mutationFn: async (id: number) => {
       const res = await apiRequest("POST", `/api/payroll/runs/${id}/sync-journal`);
@@ -148,9 +204,23 @@ function PayRunsContent() {
             Calculate gross-to-net PAYE, approve wages, post bookkeeping journals, and file live FPS returns.
           </p>
         </div>
-        <button onClick={() => setShowNew(true)} className="btn-SanSuite flex items-center gap-2 text-xs font-semibold cursor-pointer">
-          <Plus size={14} /> New Pay Run
-        </button>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => {
+              if (schemes.length > 0) {
+                setRolloverForm(f => ({ ...f, schemeId: schemes[0].id }));
+              }
+              setRolloverStep(1);
+              setShowRolloverModal(true);
+            }} 
+            className="px-3 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+          >
+            <RefreshCw size={13} /> Tax Year Rollover
+          </button>
+          <button onClick={() => setShowNew(true)} className="btn-SanSuite flex items-center gap-2 text-xs font-semibold cursor-pointer">
+            <Plus size={14} /> New Pay Run
+          </button>
+        </div>
       </div>
 
       {/* Pay Runs Table */}
@@ -224,6 +294,23 @@ function PayRunsContent() {
                         </button>
                       )}
 
+                      {/* Rollback button */}
+                      {(r.status === "Calculated" || r.status === "Approved") && (
+                        <button
+                          onClick={() => {
+                            if (confirm(`Roll back Pay Run Period ${r.payPeriod} (${r.taxYear}) to Draft? This will allow editing timesheets, hourly rates, or employee tax codes before re-calculating.`)) {
+                              rollbackRun.mutate(r.id);
+                            }
+                          }}
+                          disabled={rollbackRun.isPending}
+                          title="Roll back pay run to Draft status to edit or recalculate"
+                          className="text-amber-600 hover:text-amber-800 flex items-center gap-1 text-xs font-semibold cursor-pointer"
+                        >
+                          <RotateCcw size={12} />
+                          {rollbackRun.isPending && rollbackRun.variables === r.id ? "Rolling..." : "Rollback"}
+                        </button>
+                      )}
+
                       <button
                         onClick={() => syncJournal.mutate(r.id)}
                         disabled={syncJournal.isPending}
@@ -235,9 +322,9 @@ function PayRunsContent() {
                       </button>
 
                       <button
-                        onClick={() => window.open(`/api/payroll/submissions/bacs/${r.id}`, "_blank")}
-                        title="Download BACS File for Bank Payment"
-                        className="text-gray-600 hover:text-gray-800 flex items-center gap-1 text-xs cursor-pointer"
+                        onClick={() => setBacsRunId(r.id)}
+                        title="Download BACS Payment File (Standard 18 or Banking CSV)"
+                        className="text-gray-600 hover:text-gray-800 flex items-center gap-1 text-xs font-semibold cursor-pointer"
                       >
                         <Download size={12} /> BACS
                       </button>
@@ -412,6 +499,286 @@ function PayRunsContent() {
                 <span className="font-bold text-emerald-900 text-sm">Net Pay (Take-Home):</span>
                 <span className="font-mono font-bold text-emerald-800 text-xl">£{parseFloat(selectedPayslip.netPay || "0").toFixed(2)}</span>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BACS Export Modal */}
+      {bacsRunId && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in duration-200">
+            <div className="bg-gradient-to-r from-purple-800 to-indigo-900 text-white p-5 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-white/10 rounded-lg">
+                  <Download size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold">Export BACS Payment File</h3>
+                  <p className="text-[11px] text-purple-200">Pay Run #{bacsRunId}</p>
+                </div>
+              </div>
+              <button onClick={() => setBacsRunId(null)} className="text-white/70 hover:text-white cursor-pointer"><X size={18} /></button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              <p className="text-gray-600">
+                Choose the payment format required for transmitting employee salaries to your banking provider:
+              </p>
+
+              <div className="space-y-3">
+                <div 
+                  onClick={() => {
+                    window.open(`/api/payroll/bacs/${bacsRunId}?format=bac`, "_blank");
+                    setBacsRunId(null);
+                  }}
+                  className="p-3.5 border border-purple-200 bg-purple-50/50 hover:bg-purple-100/60 rounded-xl cursor-pointer transition-colors flex items-center justify-between group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-purple-600 text-white rounded-lg">
+                      <FileText size={16} />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-gray-900 text-xs group-hover:text-purple-700">UK Standard 18 Format (.bac)</h4>
+                      <p className="text-[11px] text-gray-500">Official clearing house format for direct corporate BACS submission</p>
+                    </div>
+                  </div>
+                  <Download size={14} className="text-purple-600" />
+                </div>
+
+                <div 
+                  onClick={() => {
+                    window.open(`/api/payroll/bacs/${bacsRunId}?format=csv`, "_blank");
+                    setBacsRunId(null);
+                  }}
+                  className="p-3.5 border border-gray-200 bg-gray-50 hover:bg-gray-100 rounded-xl cursor-pointer transition-colors flex items-center justify-between group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-indigo-600 text-white rounded-lg">
+                      <FileSpreadsheet size={16} />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-gray-900 text-xs group-hover:text-indigo-700">Online Banking CSV (.csv)</h4>
+                      <p className="text-[11px] text-gray-500">Ready for Barclays, NatWest, Lloyds, HSBC, Santander portal import</p>
+                    </div>
+                  </div>
+                  <Download size={14} className="text-indigo-600" />
+                </div>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-[11px] text-amber-800 flex items-start gap-2">
+                <AlertTriangle size={14} className="shrink-0 mt-0.5 text-amber-600" />
+                <span>Ensure employee sort codes and account numbers are fully verified prior to executing payments.</span>
+              </div>
+            </div>
+
+            <div className="p-4 bg-gray-50 border-t flex justify-end">
+              <button onClick={() => setBacsRunId(null)} className="px-4 py-2 border rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-100 cursor-pointer">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tax Year Rollover 3-Step Wizard Modal */}
+      {showRolloverModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden animate-in fade-in duration-200">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-purple-800 to-indigo-900 text-white p-5 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-white/10 rounded-lg">
+                  <RefreshCw size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold">Tax Year End Rollover Wizard</h3>
+                  <p className="text-[11px] text-purple-200">Capium-inspired automated year-end closeout & tax code uplift</p>
+                </div>
+              </div>
+              <button onClick={() => setShowRolloverModal(false)} className="text-white/70 hover:text-white cursor-pointer"><X size={18} /></button>
+            </div>
+
+            {/* Stepper Header */}
+            <div className="bg-gray-50 border-b px-6 py-3 flex items-center justify-between text-xs">
+              {[
+                { num: 1, title: "1. Pre-Checklist" },
+                { num: 2, title: "2. Tax Code Uplift" },
+                { num: 3, title: "3. Execute Rollover" },
+              ].map(s => (
+                <div key={s.num} className={`flex items-center gap-2 font-semibold ${rolloverStep === s.num ? "text-purple-700" : rolloverStep > s.num ? "text-emerald-600" : "text-gray-400"}`}>
+                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold ${
+                    rolloverStep === s.num ? "bg-purple-600 text-white" : rolloverStep > s.num ? "bg-emerald-100 text-emerald-800" : "bg-gray-200 text-gray-500"
+                  }`}>{s.num}</span>
+                  <span>{s.title}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Step Content */}
+            <div className="p-6 text-xs space-y-4">
+              {rolloverStep === 1 && (
+                <div className="space-y-3.5">
+                  <h4 className="font-bold text-gray-900 text-sm">Pre-Rollover Compliance Verification</h4>
+                  <p className="text-gray-600 leading-relaxed">
+                    Before advancing to the new UK statutory tax year, verify that all statutory requirements for the closing year are completed:
+                  </p>
+
+                  <div className="space-y-2 border border-gray-200 rounded-xl p-4 bg-gray-50">
+                    <label className="flex items-center gap-2.5 cursor-pointer">
+                      <ShieldCheck size={16} className="text-emerald-600 shrink-0" />
+                      <span className="font-medium text-gray-800">Final Pay Run for Month 12 / Week 52 has been calculated and approved.</span>
+                    </label>
+                    <label className="flex items-center gap-2.5 cursor-pointer">
+                      <ShieldCheck size={16} className="text-emerald-600 shrink-0" />
+                      <span className="font-medium text-gray-800">Final RTI FPS has been transmitted to HMRC Gateway on or before pay date.</span>
+                    </label>
+                    <label className="flex items-center gap-2.5 cursor-pointer">
+                      <ShieldCheck size={16} className="text-emerald-600 shrink-0" />
+                      <span className="font-medium text-gray-800">Final EPS with tax year cessation/final submission declaration filed.</span>
+                    </label>
+                    <label className="flex items-center gap-2.5 cursor-pointer">
+                      <ShieldCheck size={16} className="text-emerald-600 shrink-0" />
+                      <span className="font-medium text-gray-800">Form P60 certificates generated for all active staff employed at 5th April.</span>
+                    </label>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-1">Select PAYE Scheme</label>
+                    <select 
+                      value={rolloverForm.schemeId} 
+                      onChange={(e) => setRolloverForm({ ...rolloverForm, schemeId: parseInt(e.target.value) })}
+                      className="w-full border border-gray-300 rounded-lg p-2 font-medium"
+                    >
+                      {schemes.map((s: any) => (
+                        <option key={s.id} value={s.id}>{s.employerName || `Scheme #${s.id}`} (Current Year: {s.taxYear || "2024-25"})</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {rolloverStep === 2 && (
+                <div className="space-y-3.5">
+                  <h4 className="font-bold text-gray-900 text-sm">HMRC Tax Code Uplift Rules</h4>
+                  <p className="text-gray-600">
+                    Configure standard UK Budget statutory adjustments to apply to all active employees during year rollover:
+                  </p>
+
+                  <div className="space-y-3 border border-gray-200 rounded-xl p-4 bg-gray-50">
+                    <label className="flex items-start gap-2.5 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={rolloverForm.upliftLCode} 
+                        onChange={(e) => setRolloverForm({ ...rolloverForm, upliftLCode: e.target.checked })}
+                        className="mt-0.5 rounded text-purple-600" 
+                      />
+                      <div>
+                        <span className="font-bold text-gray-900">Uplift Standard Suffix 'L' Tax Codes</span>
+                        <p className="text-[11px] text-gray-500 mt-0.5">Increases personal allowance tax codes (e.g. 1257L) as announced in the UK Budget.</p>
+                      </div>
+                    </label>
+
+                    {rolloverForm.upliftLCode && (
+                      <div className="pl-6 pt-1">
+                        <label className="block font-medium text-gray-700 mb-1">Increase amount (numeric points, e.g. 0 to retain 1257L or 50 for +£500 allowance):</label>
+                        <input 
+                          type="number" 
+                          value={rolloverForm.lCodeIncrease} 
+                          onChange={(e) => setRolloverForm({ ...rolloverForm, lCodeIncrease: parseInt(e.target.value) || 0 })}
+                          className="w-32 border border-gray-300 rounded-lg p-1.5 font-mono"
+                        />
+                      </div>
+                    )}
+
+                    <label className="flex items-start gap-2.5 cursor-pointer pt-2 border-t border-gray-200">
+                      <input 
+                        type="checkbox" 
+                        checked={rolloverForm.resetWeek1Month1} 
+                        onChange={(e) => setRolloverForm({ ...rolloverForm, resetWeek1Month1: e.target.checked })}
+                        className="mt-0.5 rounded text-purple-600" 
+                      />
+                      <div>
+                        <span className="font-bold text-gray-900">Reset 'Week 1 / Month 1' Emergency Basis to Cumulative</span>
+                        <p className="text-[11px] text-gray-500 mt-0.5">HMRC rules stipulate non-cumulative emergency bases reset to standard cumulative at start of new tax year.</p>
+                      </div>
+                    </label>
+
+                    <div className="p-3 bg-purple-50 rounded-lg text-purple-900 border border-purple-100 flex items-start gap-2">
+                      <ShieldCheck size={14} className="text-purple-600 shrink-0 mt-0.5" />
+                      <span>Year-to-date balances (Gross Pay, Tax Paid, Employee NI, Employer NI) will automatically be cleared to £0.00 for the new tax year.</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {rolloverStep === 3 && (
+                <div className="space-y-4">
+                  <h4 className="font-bold text-gray-900 text-sm">Confirm & Execute Tax Year Rollover</h4>
+                  
+                  <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between text-xs py-1 border-b border-emerald-100">
+                      <span className="text-emerald-800 font-medium">Selected PAYE Scheme:</span>
+                      <span className="font-bold text-emerald-950 font-mono">
+                        {schemes.find((s: any) => s.id === rolloverForm.schemeId)?.employerName || `Scheme #${rolloverForm.schemeId}`}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs py-1 border-b border-emerald-100">
+                      <span className="text-emerald-800 font-medium">Current Tax Year:</span>
+                      <span className="font-bold text-emerald-950 font-mono">
+                        {schemes.find((s: any) => s.id === rolloverForm.schemeId)?.taxYear || "2024-25"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs py-1">
+                      <span className="text-emerald-800 font-medium">New Tax Year (Target):</span>
+                      <span className="font-bold text-emerald-900 font-mono text-sm">
+                        2025-26
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="text-gray-600 text-xs">
+                    Clicking <strong>Execute Rollover</strong> will advance the scheme's tax year, apply tax code uplifts, zero all employee YTD figures, and initialize Period 1 in Draft status.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-gray-50 border-t flex items-center justify-between">
+              {rolloverStep > 1 ? (
+                <button 
+                  onClick={() => setRolloverStep(s => s - 1)}
+                  className="px-3 py-1.5 border rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-100 cursor-pointer"
+                >
+                  Back
+                </button>
+              ) : (
+                <button 
+                  onClick={() => setShowRolloverModal(false)}
+                  className="px-3 py-1.5 border rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-100 cursor-pointer"
+                >
+                  Cancel
+                </button>
+              )}
+
+              {rolloverStep < 3 ? (
+                <button 
+                  onClick={() => setRolloverStep(s => s + 1)}
+                  className="btn-SanSuite inline-flex items-center gap-1 text-xs font-semibold cursor-pointer"
+                >
+                  Continue <ArrowRight size={13} />
+                </button>
+              ) : (
+                <button 
+                  onClick={() => rolloverMutation.mutate(rolloverForm)}
+                  disabled={rolloverMutation.isPending}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <RefreshCw size={13} />
+                  {rolloverMutation.isPending ? "Executing Rollover..." : "Execute Rollover"}
+                </button>
+              )}
             </div>
           </div>
         </div>

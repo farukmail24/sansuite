@@ -2,9 +2,10 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ClientPayrollLayout, { useClientPayroll } from "./ClientPayrollLayout";
 import { apiRequest } from "../../../lib/queryClient";
+import { useToast } from "../../../hooks/useToast";
 import {
   Send, CheckCircle2, AlertCircle, Download, FileText,
-  Clock, Shield, RefreshCw, X, Play, HelpCircle
+  Clock, Shield, RefreshCw, X, Play, HelpCircle, ShieldCheck
 } from "lucide-react";
 
 export default function PayrollSubmissionsPage() {
@@ -18,20 +19,30 @@ export default function PayrollSubmissionsPage() {
 function PayrollSubmissionsContent() {
   const { clientId, scheme, taxYear } = useClientPayroll();
   const qc = useQueryClient();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<"history" | "fps" | "eps" | "zeroFps" | "bacs">("history");
   const [showEpsModal, setShowEpsModal] = useState(false);
   const [showZeroFpsModal, setShowZeroFpsModal] = useState(false);
 
-  // Form for EPS
+  // Form for EPS with full Capium & HMRC statutory parity
   const [epsForm, setEpsForm] = useState({
     taxYear: taxYear || "2024-25",
     taxMonth: 1,
+    periodName: "Month 1 EPS",
     employmentAllowanceClaimed: true,
+    stateAidSector: "None",
     cisDeductionsSuffered: "0.00",
+    statutoryPayRecovered: "0.00",
     smpRecovered: "0.00",
-    smpNicCompensation: "0.00",
+    sppRecovered: "0.00",
+    sapRecovered: "0.00",
+    shppRecovered: "0.00",
+    nicCompensation: "0.00",
     noPaymentForPeriod: false,
     periodOfInactivity: false,
+    inactivityStartDate: "",
+    inactivityEndDate: "",
+    isFinalSubmission: false,
   });
 
   // Form for Zero FPS
@@ -43,9 +54,9 @@ function PayrollSubmissionsContent() {
 
   // Fetch RTI Submissions for this scheme
   const { data: submissions = [], isLoading } = useQuery<any[]>({
-    queryKey: [`/api/payroll/rti-submissions`],
+    queryKey: [`/api/payroll/submissions/${clientId}`],
     queryFn: async () => {
-      const res = await apiRequest("GET", `/api/payroll/rti-submissions`);
+      const res = await apiRequest("GET", `/api/payroll/submissions/${clientId}`);
       if (!res.ok) return [];
       return res.json();
     },
@@ -72,10 +83,15 @@ function PayrollSubmissionsContent() {
       return res.json();
     },
     onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: [`/api/payroll/rti-submissions`] });
+      qc.invalidateQueries({ queryKey: [`/api/payroll/submissions/${clientId}`] });
       setShowEpsModal(false);
-      alert(`EPS Filed Successfully! Correlation ID: ${data.correlationId}`);
+      toast({
+        title: "EPS Filed Successfully",
+        description: `Employer Payment Summary transmitted to HMRC Gateway. Correlation ID: ${data.correlationId}`,
+        type: "success",
+      });
     },
+    onError: (e: any) => toast({ title: "EPS Submission Failed", description: e.message, type: "error" }),
   });
 
   // Submit Zero FPS Mutation
@@ -89,14 +105,19 @@ function PayrollSubmissionsContent() {
       return res.json();
     },
     onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: [`/api/payroll/rti-submissions`] });
+      qc.invalidateQueries({ queryKey: [`/api/payroll/submissions/${clientId}`] });
       setShowZeroFpsModal(false);
-      alert(`Zero FPS Filed! Correlation ID: ${data.correlationId}`);
+      toast({
+        title: "Zero FPS (Nil Return) Filed",
+        description: `Filed with HMRC Gateway. Correlation ID: ${data.correlationId}`,
+        type: "success",
+      });
     },
+    onError: (e: any) => toast({ title: "Zero FPS Failed", description: e.message, type: "error" }),
   });
 
-  const downloadBacs = (runId: number) => {
-    window.open(`/api/payroll/submissions/bacs/${runId}`, "_blank");
+  const downloadBacs = (runId: number, format: string = "bac") => {
+    window.open(`/api/payroll/bacs/${runId}?format=${format}`, "_blank");
   };
 
   const clientSubmissions = submissions.filter(
@@ -104,7 +125,7 @@ function PayrollSubmissionsContent() {
   );
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6 w-full">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -207,20 +228,34 @@ function PayrollSubmissionsContent() {
                   clientSubmissions.map((s) => (
                     <tr key={s.id} className="hover:bg-gray-50">
                       <td className="px-4 py-2.5 font-bold text-purple-700 uppercase">
-                        {s.submissionType || "FPS"}
+                        <div className="flex items-center gap-1.5">
+                          <span>{s.submissionType || "FPS"}</span>
+                          {s.periodOfInactivity ? (
+                            <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded text-[9px] font-semibold">Nil Return</span>
+                          ) : null}
+                          {s.stateAidSector && s.stateAidSector !== "None" ? (
+                            <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-800 rounded text-[9px] font-semibold">{s.stateAidSector}</span>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="px-4 py-2.5">Month {s.taxMonth || 1} ({s.taxYear || taxYear})</td>
                       <td className="px-4 py-2.5 font-mono text-gray-600">{s.correlationId || "CORR-000"}</td>
                       <td className="px-4 py-2.5 text-gray-500">{s.submittedAt ? new Date(s.submittedAt).toLocaleString() : "—"}</td>
                       <td className="px-4 py-2.5">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1 w-fit">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold flex items-center gap-1 w-fit ${
+                          s.status === "Accepted"
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            : s.status === "Rolled Back"
+                            ? "bg-amber-50 text-amber-800 border border-amber-200"
+                            : "bg-gray-100 text-gray-700"
+                        }`}>
                           <CheckCircle2 size={10} /> {s.status || "Accepted"}
                         </span>
                       </td>
                       <td className="px-4 py-2.5 text-right">
-                        <button className="text-purple-700 hover:underline font-medium cursor-pointer">
-                          View Receipt
-                        </button>
+                        <span className="text-gray-400 font-mono text-[11px]">
+                          {s.correlationId?.slice(-6) || "OK"}
+                        </span>
                       </td>
                     </tr>
                   ))
@@ -232,7 +267,7 @@ function PayrollSubmissionsContent() {
 
         {activeTab === "bacs" && (
           <div className="space-y-4">
-            <h3 className="font-bold text-sm text-gray-800">BACS Payment Files (Standard 18 Format)</h3>
+            <h3 className="font-bold text-sm text-gray-800">BACS Payment Files (Standard 18 Format & Bank CSV)</h3>
             <p className="text-xs text-gray-500">
               Download payment files for bank batch payment processing (Barclays, HSBC, Lloyds, NatWest, RBS, Santander).
             </p>
@@ -246,15 +281,23 @@ function PayrollSubmissionsContent() {
                 {payRuns.map((r) => (
                   <div key={r.id} className="p-3 border border-gray-200 rounded-lg flex items-center justify-between text-xs hover:bg-gray-50">
                     <div>
-                      <p className="font-bold text-gray-800">Pay Run: {r.name || `Period ${r.periodNumber || 1}`}</p>
-                      <p className="text-gray-500 text-[11px]">Pay Date: {r.paymentDate || "—"}</p>
+                      <p className="font-bold text-gray-800">Pay Run: Period {r.payPeriod || 1} ({r.taxYear || taxYear})</p>
+                      <p className="text-gray-500 text-[11px]">Pay Date: {r.paymentDate ? new Date(r.paymentDate).toLocaleDateString("en-GB") : "—"}</p>
                     </div>
-                    <button
-                      onClick={() => downloadBacs(r.id)}
-                      className="btn-SanSuite inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
-                    >
-                      <Download size={13} /> Export BACS (.txt)
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => downloadBacs(r.id, "bac")}
+                        className="px-2.5 py-1.5 border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 rounded-lg text-xs font-semibold inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <Download size={12} /> Standard 18 (.bac)
+                      </button>
+                      <button
+                        onClick={() => downloadBacs(r.id, "csv")}
+                        className="px-2.5 py-1.5 border border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100 rounded-lg text-xs font-semibold inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <Download size={12} /> Bank CSV (.csv)
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -295,20 +338,52 @@ function PayrollSubmissionsContent() {
                 </div>
               </div>
 
-              <div className="p-3 bg-purple-50 rounded-lg border border-purple-100 space-y-2">
-                <label className="flex items-center gap-2 cursor-pointer font-semibold text-purple-900">
+              {/* 1. Employment Allowance & De Minimis State Aid */}
+              <div className="p-3.5 bg-purple-50 rounded-xl border border-purple-100 space-y-2.5">
+                <label className="flex items-center gap-2 cursor-pointer font-bold text-purple-900 text-xs">
                   <input
                     type="checkbox"
                     checked={epsForm.employmentAllowanceClaimed}
                     onChange={(e) => setEpsForm({ ...epsForm, employmentAllowanceClaimed: e.target.checked })}
+                    className="rounded text-purple-600"
                   />
-                  <span>Claim Employment Allowance (£5,000 max relief)</span>
+                  <span>Claim Employment Allowance (£5,000 max annual relief)</span>
                 </label>
                 <p className="text-[11px] text-purple-700 pl-5">
-                  Reduces secondary Class 1 National Insurance liabilities by up to £5,000 per tax year.
+                  Reduces secondary Class 1 Employer National Insurance liabilities by up to £5,000 per tax year.
                 </p>
+
+                {epsForm.employmentAllowanceClaimed && (
+                  <div className="pl-5 pt-1.5 border-t border-purple-200/60 space-y-1.5">
+                    <label className="block font-semibold text-purple-950 text-[11px]">
+                      De Minimis State Aid Sector (HMRC Statutory Declaration) *
+                    </label>
+                    <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                      {[
+                        { id: "None", label: "State aid rules do not apply" },
+                        { id: "Agriculture", label: "Agriculture" },
+                        { id: "Fisheries", label: "Fisheries & Aquaculture" },
+                        { id: "RoadFreight", label: "Road freight transport" },
+                        { id: "Industrial", label: "Industrial / Other" },
+                      ].map(sec => (
+                        <label key={sec.id} className="flex items-center gap-1.5 text-gray-700 cursor-pointer">
+                          <input 
+                            type="radio" 
+                            name="stateAidSector" 
+                            value={sec.id}
+                            checked={epsForm.stateAidSector === sec.id}
+                            onChange={(e) => setEpsForm({ ...epsForm, stateAidSector: e.target.value })}
+                            className="text-purple-600"
+                          />
+                          <span>{sec.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
+              {/* 2. CIS Deductions Suffered */}
               <div>
                 <label className="block font-semibold mb-1">CIS Deductions Suffered (£)</label>
                 <input
@@ -319,60 +394,118 @@ function PayrollSubmissionsContent() {
                   placeholder="0.00"
                   className="w-full border rounded-lg p-2 font-mono"
                 />
-                <p className="text-[11px] text-gray-500 mt-0.5">Offset subcontractor deductions suffered by this company against PAYE liability.</p>
+                <p className="text-[11px] text-gray-500 mt-0.5">Offset subcontractor deductions suffered by this limited company against PAYE liability.</p>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold mb-1">Statutory Pay Recovered (£)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={epsForm.smpRecovered}
-                    onChange={(e) => setEpsForm({ ...epsForm, smpRecovered: e.target.value })}
-                    className="w-full border rounded-lg p-2 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold mb-1">NIC Compensation (£)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={epsForm.smpNicCompensation}
-                    onChange={(e) => setEpsForm({ ...epsForm, smpNicCompensation: e.target.value })}
-                    className="w-full border rounded-lg p-2 font-mono"
-                  />
+              {/* 3. Statutory Payments Recovered */}
+              <div className="space-y-2 border border-gray-200 rounded-xl p-3 bg-gray-50">
+                <span className="font-bold text-gray-800 text-xs block">Statutory Pay Recovered & Small Employers' Relief</span>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-600 mb-0.5">SMP Recovered (£)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={epsForm.smpRecovered}
+                      onChange={(e) => setEpsForm({ ...epsForm, smpRecovered: e.target.value })}
+                      className="w-full border rounded-lg p-1.5 font-mono text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-600 mb-0.5">SPP (Paternity) Recovered (£)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={epsForm.sppRecovered}
+                      onChange={(e) => setEpsForm({ ...epsForm, sppRecovered: e.target.value })}
+                      className="w-full border rounded-lg p-1.5 font-mono text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-600 mb-0.5">SAP (Adoption) Recovered (£)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={epsForm.sapRecovered}
+                      onChange={(e) => setEpsForm({ ...epsForm, sapRecovered: e.target.value })}
+                      className="w-full border rounded-lg p-1.5 font-mono text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-600 mb-0.5">NIC Compensation (3%) (£)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={epsForm.nicCompensation}
+                      onChange={(e) => setEpsForm({ ...epsForm, nicCompensation: e.target.value })}
+                      className="w-full border rounded-lg p-1.5 font-mono text-xs"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-1 pt-1">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={epsForm.noPaymentForPeriod}
-                    onChange={(e) => setEpsForm({ ...epsForm, noPaymentForPeriod: e.target.checked })}
-                  />
-                  <span>No payment was made to any employee for this tax month</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
+              {/* 4. Period of Inactivity (Nil Return) */}
+              <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer font-bold text-gray-900 text-xs">
                   <input
                     type="checkbox"
                     checked={epsForm.periodOfInactivity}
                     onChange={(e) => setEpsForm({ ...epsForm, periodOfInactivity: e.target.checked })}
+                    className="rounded text-purple-600"
                   />
-                  <span>Period of inactivity (Scheme temporarily closed/inactive)</span>
+                  <span>Period of Inactivity (Nil Return — No wages paid)</span>
+                </label>
+                <p className="text-[11px] text-gray-500 pl-5">
+                  Submitting an Inactivity EPS prevents automatic HMRC late filing penalties when no payments were made to employees.
+                </p>
+
+                {epsForm.periodOfInactivity && (
+                  <div className="grid grid-cols-2 gap-2 pl-5 pt-1">
+                    <div>
+                      <label className="block text-[11px] font-medium text-gray-600 mb-0.5">Inactivity From Date</label>
+                      <input 
+                        type="date"
+                        value={epsForm.inactivityStartDate}
+                        onChange={(e) => setEpsForm({ ...epsForm, inactivityStartDate: e.target.value })}
+                        className="w-full border rounded-lg p-1.5 text-xs font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-medium text-gray-600 mb-0.5">Inactivity To Date</label>
+                      <input 
+                        type="date"
+                        value={epsForm.inactivityEndDate}
+                        onChange={(e) => setEpsForm({ ...epsForm, inactivityEndDate: e.target.value })}
+                        className="w-full border rounded-lg p-1.5 text-xs font-mono"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 5. Final Submission Declaration */}
+              <div className="pt-1">
+                <label className="flex items-center gap-2 cursor-pointer font-medium text-gray-800 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={epsForm.isFinalSubmission}
+                    onChange={(e) => setEpsForm({ ...epsForm, isFinalSubmission: e.target.checked })}
+                    className="rounded text-purple-600"
+                  />
+                  <span>Final submission for this tax year (Month 12 EPS / Scheme Cessation)</span>
                 </label>
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 border-t pt-3">
-              <button onClick={() => setShowEpsModal(false)} className="px-3 py-1.5 text-xs text-gray-600">Cancel</button>
+            <div className="flex justify-end gap-2 border-t p-4 bg-gray-50">
+              <button onClick={() => setShowEpsModal(false)} className="px-3.5 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-lg cursor-pointer">Cancel</button>
               <button
                 onClick={() => submitEpsMutation.mutate(epsForm)}
                 disabled={submitEpsMutation.isPending}
-                className="btn-SanSuite text-xs"
+                className="btn-SanSuite text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
               >
-                {submitEpsMutation.isPending ? "Transmitting..." : "Submit EPS to HMRC"}
+                <Send size={13} />
+                {submitEpsMutation.isPending ? "Transmitting to HMRC..." : "Submit EPS to HMRC Gateway"}
               </button>
             </div>
           </div>

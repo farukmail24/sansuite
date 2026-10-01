@@ -1,17 +1,31 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import AppLayout from "../../components/layout/AppLayout";
 import ClientPayrollLayout from "./workspace/ClientPayrollLayout";
 import { practicePayrollSidebar } from "./sidebar";
-import { LayoutDashboard, Users, Calculator, Settings, CheckCircle, Save, CheckSquare, Building2, History } from "lucide-react";
+import { 
+  LayoutDashboard, Users, Calculator, Settings, CheckCircle, Save, 
+  CheckSquare, Building2, History, X, Search, Loader2, Sparkles, Check, ArrowRight 
+} from "lucide-react";
 import { apiRequest } from "../../lib/queryClient";
 
 export default function PayrollSettingsPage() {
   const qc = useQueryClient();
   const [match, params] = useRoute("/payroll/:clientId/settings");
-  // If no clientId in route, fallback to a global settings context, but usually we navigate here per client.
-  const clientId = params?.clientId || "1";
+  const [selectedClientId, setSelectedClientId] = useState<string>(params?.clientId || "");
+
+  // Fetch practice clients for auto-suggest and scheme switching
+  const { data: practiceClients = [] } = useQuery<any[]>({
+    queryKey: ["/api/practice/clients"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/practice/clients");
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const effectiveClientId = params?.clientId || selectedClientId || (practiceClients.length > 0 ? practiceClients[0].id.toString() : "1");
 
   const [activeTab, setActiveTab] = useState("paye");
   const [saved, setSaved] = useState(false);
@@ -26,7 +40,8 @@ export default function PayrollSettingsPage() {
   });
 
   // Find the scheme for this client
-  const scheme = schemes.find((s: any) => s.clientId.toString() === clientId);
+  const scheme = schemes.find((s: any) => s.clientId.toString() === effectiveClientId);
+  const currentClient = practiceClients.find((c: any) => c.id.toString() === effectiveClientId);
 
   const [form, setForm] = useState<any>({
     employerName: scheme?.employerName || "",
@@ -41,6 +56,7 @@ export default function PayrollSettingsPage() {
     bankAccountNumber: scheme?.bankAccountNumber || "",
     syncBookkeeping: scheme?.syncBookkeeping || false,
     smallEmployersRelief: scheme?.smallEmployersRelief || false,
+    employmentAllowance: scheme?.employmentAllowance || false,
     contactName: "",
     contactEmail: "",
     contactPhone: "",
@@ -58,30 +74,87 @@ export default function PayrollSettingsPage() {
     standardWeeklyHours: "37.5",
   });
 
-  // Update local state when scheme is loaded
-  if (scheme && form.employerName === "" && scheme.employerName) {
-    setForm((f: any) => ({
-      ...f,
-      ...scheme,
-      employerName: scheme.employerName || "",
-      hmrcOfficeNumber: scheme.hmrcOfficeNumber || "",
-      payeReference: scheme.payeReference || "",
-      accountsOfficeReference: scheme.accountsOfficeReference || "",
-      econ: scheme.econ || "",
-      defaultPayFrequency: scheme.defaultPayFrequency || "Monthly",
-      paymentMode: scheme.paymentMode || "BACS",
-      bankName: scheme.bankName || "",
-      bankSortCode: scheme.bankSortCode || "",
-      bankAccountNumber: scheme.bankAccountNumber || "",
-      syncBookkeeping: scheme.syncBookkeeping || false,
-      smallEmployersRelief: scheme.smallEmployersRelief || false,
-    }));
-  }
+  // Suggestion states
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [chResults, setChResults] = useState<any[]>([]);
+  const [isSearchingCh, setIsSearchingCh] = useState(false);
+  const suggestionRef = useRef<HTMLDivElement>(null);
+
+  // Update local form state when scheme or client changes
+  useEffect(() => {
+    if (scheme) {
+      setForm((f: any) => ({
+        ...f,
+        ...scheme,
+        employerName: scheme.employerName || currentClient?.clientName || "",
+        hmrcOfficeNumber: scheme.hmrcOfficeNumber || "",
+        payeReference: scheme.payeReference || "",
+        accountsOfficeReference: scheme.accountsOfficeReference || "",
+        econ: scheme.econ || "",
+        defaultPayFrequency: scheme.defaultPayFrequency || "Monthly",
+        paymentMode: scheme.paymentMode || "BACS",
+        bankName: scheme.bankName || "",
+        bankSortCode: scheme.bankSortCode || "",
+        bankAccountNumber: scheme.bankAccountNumber || "",
+        syncBookkeeping: scheme.syncBookkeeping || false,
+        smallEmployersRelief: scheme.smallEmployersRelief || false,
+        employmentAllowance: scheme.employmentAllowance || false,
+      }));
+    } else if (currentClient) {
+      setForm((f: any) => ({
+        ...f,
+        employerName: currentClient.clientName || "",
+      }));
+    }
+  }, [scheme, effectiveClientId, currentClient]);
+
+  // Close suggestions on outside click
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (suggestionRef.current && !suggestionRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Live Companies House search debounce (when query >= 2 characters)
+  useEffect(() => {
+    const query = form.employerName?.trim() || "";
+    if (query.length < 2) {
+      setChResults([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearchingCh(true);
+      try {
+        const res = await apiRequest("GET", `/api/companies-house/search?q=${encodeURIComponent(query)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setChResults((data.items || []).slice(0, 6));
+        }
+      } catch {
+        setChResults([]);
+      } finally {
+        setIsSearchingCh(false);
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [form.employerName]);
+
+  const matchingPracticeClients = (practiceClients || []).filter((c: any) => {
+    const name = c.clientName || "";
+    const query = (form.employerName || "").trim().toLowerCase();
+    return query.length >= 1 && name.toLowerCase().includes(query);
+  }).slice(0, 4);
 
   const saveMutation = useMutation({
     mutationFn: async (data: any) => {
       const endpoint = scheme?.id ? `/api/payroll/schemes/${scheme.id}/settings` : "/api/payroll/schemes";
-      const res = await apiRequest("POST", endpoint, { ...data, clientId });
+      const res = await apiRequest("POST", endpoint, { ...data, clientId: effectiveClientId });
       if (!res.ok) throw new Error("Failed to save settings");
       return res.json();
     },
@@ -98,11 +171,61 @@ export default function PayrollSettingsPage() {
 
   const content = (
     <div className="space-y-5">
+      {/* Practice-Level Client Scheme Selector (Shown when at /payroll/settings) */}
+      {!match && (
+        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+              <Building2 size={20} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-bold text-gray-900">Practice Client Scheme Selector</h3>
+                <span className="text-[10px] bg-purple-50 text-purple-700 font-semibold px-2 py-0.5 rounded border border-purple-200">
+                  Bureau Level
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-500 mt-0.5">
+                Select which client's PAYE scheme you are configuring, or open directly in their dedicated Client Workspace.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <select
+              value={effectiveClientId}
+              onChange={(e) => setSelectedClientId(e.target.value)}
+              className="text-xs border border-gray-300 rounded-lg px-3 py-2 bg-white font-medium focus:ring-2 focus:ring-purple-400 outline-none"
+            >
+              {practiceClients.map((c: any) => (
+                <option key={c.id} value={c.id.toString()}>
+                  {c.clientName} (ID: #{c.id})
+                </option>
+              ))}
+            </select>
+
+            {effectiveClientId && (
+              <Link
+                href={`/payroll/${effectiveClientId}`}
+                className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1 shadow-xs transition-colors cursor-pointer"
+              >
+                Open Workspace <ArrowRight size={13} />
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Payroll Scheme Settings</h1>
+          <h1 className="text-xl font-bold text-gray-900">
+            {match ? `${currentClient?.clientName || "Client"} — Payroll Settings` : "Payroll Scheme Settings"}
+          </h1>
           <p className="text-xs text-gray-500 mt-0.5">
-            Configure HMRC PAYE reference, accounts office credentials, nominal accounts, and pay frequencies.
+            {match 
+              ? `Manage statutory PAYE reference, Employment Allowance, and payment accounts for ${currentClient?.clientName || "this employer"}.`
+              : `Configure HMRC PAYE reference, accounts office credentials, and bureau settings for ${currentClient?.clientName || "selected client"}.`
+            }
           </p>
         </div>
         <button 
@@ -166,9 +289,127 @@ export default function PayrollSettingsPage() {
                 <div className="p-5 grid grid-cols-2 gap-8">
                   {/* Left Column */}
                   <div className="space-y-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1">Employer Name *</label>
-                      <input type="text" value={form.employerName} onChange={e => setForm({...form, employerName: e.target.value})} className="w-full text-sm border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-purple-400 outline-none" />
+                    <div className="relative" ref={suggestionRef}>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-semibold text-gray-700">Employer Name *</label>
+                        <span className="text-[10px] text-purple-700 bg-purple-50 px-2 py-0.5 rounded font-medium border border-purple-200">
+                          Client / Company Legal Name
+                        </span>
+                      </div>
+                      
+                      <div className="relative">
+                        <input 
+                          type="text" 
+                          value={form.employerName} 
+                          onChange={e => {
+                            setForm({...form, employerName: e.target.value});
+                            setShowSuggestions(true);
+                          }} 
+                          onFocus={() => setShowSuggestions(true)}
+                          placeholder="Type 2+ letters to auto-suggest company names..." 
+                          className="w-full text-sm border border-gray-300 rounded px-3 py-2 pr-16 focus:ring-2 focus:ring-purple-400 outline-none bg-white" 
+                        />
+
+                        <div className="absolute right-2 top-2.5 flex items-center gap-1.5">
+                          {isSearchingCh && (
+                            <Loader2 size={14} className="animate-spin text-purple-600" />
+                          )}
+                          {form.employerName ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setForm({ ...form, employerName: "" });
+                                setShowSuggestions(false);
+                              }}
+                              className="text-gray-400 hover:text-gray-600 p-0.5 rounded-full hover:bg-gray-100 cursor-pointer transition-colors"
+                              title="Clear Employer Name"
+                            >
+                              <X size={14} />
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      {/* Floating Auto-suggestions Dropdown */}
+                      {showSuggestions && (matchingPracticeClients.length > 0 || chResults.length > 0 || isSearchingCh) && (
+                        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-2xl z-50 overflow-hidden divide-y divide-gray-100 max-h-80 overflow-y-auto">
+                          {/* Practice Clients */}
+                          {matchingPracticeClients.length > 0 && (
+                            <div className="p-2 bg-slate-50/70">
+                              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1 flex items-center gap-1">
+                                <Building2 size={11} className="text-purple-600" /> Practice Clients
+                              </div>
+                              {matchingPracticeClients.map((client: any) => (
+                                <div
+                                  key={client.id}
+                                  onClick={() => {
+                                    setForm({ ...form, employerName: client.clientName });
+                                    setShowSuggestions(false);
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-purple-100/60 cursor-pointer flex items-center justify-between text-xs transition-colors"
+                                >
+                                  <div>
+                                    <p className="font-semibold text-gray-900">{client.clientName}</p>
+                                    <p className="text-[11px] text-gray-500">
+                                      Code: {client.clientCode || "—"} • {client.entityType || "Limited"}
+                                    </p>
+                                  </div>
+                                  <span className="text-[10px] bg-purple-100 text-purple-800 font-semibold px-2 py-0.5 rounded">
+                                    Select
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Companies House Results */}
+                          {chResults.length > 0 && (
+                            <div className="p-2">
+                              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1 flex items-center gap-1">
+                                <Sparkles size={11} className="text-amber-500" /> UK Companies House (Live)
+                              </div>
+                              {chResults.map((item: any) => (
+                                <div
+                                  key={item.company_number}
+                                  onClick={() => {
+                                    setForm({ ...form, employerName: item.title });
+                                    setShowSuggestions(false);
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-purple-50 cursor-pointer flex items-center justify-between text-xs transition-colors"
+                                >
+                                  <div className="max-w-[75%]">
+                                    <p className="font-semibold text-gray-900 truncate">{item.title}</p>
+                                    <p className="text-[11px] text-gray-500 font-mono truncate">
+                                      #{item.company_number} • {item.address_snippet || "United Kingdom"}
+                                    </p>
+                                  </div>
+                                  <div className="text-right">
+                                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${
+                                      item.company_status === "active" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-gray-100 text-gray-600"
+                                    }`}>
+                                      {item.company_status || "Registered"}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {isSearchingCh && chResults.length === 0 && (
+                            <div className="p-4 text-center text-xs text-gray-400 flex items-center justify-center gap-2">
+                              <Loader2 size={14} className="animate-spin text-purple-600" /> Searching Companies House...
+                            </div>
+                          )}
+
+                          <div className="p-2 bg-gray-50 text-[10px] text-gray-400 text-center">
+                            Click any company to auto-fill, or continue typing custom name.
+                          </div>
+                        </div>
+                      )}
+
+                      <p className="text-[11px] text-gray-500 mt-1">
+                        The registered legal name of the business/company that pays the employees (as registered on HMRC PAYE).
+                      </p>
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-gray-600 mb-1">HMRC Office Number *</label>
@@ -227,14 +468,28 @@ export default function PayrollSettingsPage() {
                       </div>
                     </div>
 
-                    <div className="pt-2 space-y-2">
-                      <label className="flex items-center gap-2 text-sm text-gray-700">
-                        <input type="checkbox" checked={form.syncBookkeeping} onChange={e => setForm({...form, syncBookkeeping: e.target.checked})} className="rounded text-purple-600 focus:ring-purple-500" /> 
-                        Synchronise data with Bookkeeping
+                    <div className="pt-2 space-y-2.5">
+                      <label className="flex items-start gap-2.5 p-3 rounded-lg border border-purple-200 bg-purple-50/60 cursor-pointer hover:bg-purple-50 transition-colors">
+                        <input 
+                          type="checkbox" 
+                          checked={form.employmentAllowance} 
+                          onChange={e => setForm({...form, employmentAllowance: e.target.checked})} 
+                          className="mt-0.5 rounded text-purple-600 focus:ring-purple-500 cursor-pointer" 
+                        /> 
+                        <div>
+                          <span className="font-bold text-xs text-purple-950 block">Claim Employment Allowance (£5,000 / year)</span>
+                          <span className="text-[11px] text-purple-800 block mt-0.5 leading-snug">
+                            Reduces secondary Class 1 Employer National Insurance by up to £5,000 across the tax year for eligible businesses.
+                          </span>
+                        </div>
                       </label>
-                      <label className="flex items-center gap-2 text-sm text-gray-700">
-                        <input type="checkbox" checked={form.smallEmployersRelief} onChange={e => setForm({...form, smallEmployersRelief: e.target.checked})} className="rounded text-purple-600 focus:ring-purple-500" /> 
-                        Qualify for Small Employer's Relief
+                      <label className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
+                        <input type="checkbox" checked={form.smallEmployersRelief} onChange={e => setForm({...form, smallEmployersRelief: e.target.checked})} className="rounded text-purple-600 focus:ring-purple-500 cursor-pointer" /> 
+                        Qualify for Small Employer's Relief (103% statutory pay recovery)
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
+                        <input type="checkbox" checked={form.syncBookkeeping} onChange={e => setForm({...form, syncBookkeeping: e.target.checked})} className="rounded text-purple-600 focus:ring-purple-500 cursor-pointer" /> 
+                        Synchronise data with Bookkeeping General Ledger
                       </label>
                     </div>
                   </div>
@@ -377,7 +632,7 @@ export default function PayrollSettingsPage() {
   return (
     <AppLayout sidebar={practicePayrollSidebar} module="Payroll">
       <div className="p-6 bg-gray-50 min-h-screen">
-        <div className="max-w-7xl mx-auto">
+        <div className="w-full">
           {content}
         </div>
       </div>

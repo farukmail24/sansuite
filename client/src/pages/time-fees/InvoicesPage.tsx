@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import AppLayout from "../../components/layout/AppLayout";
@@ -15,9 +15,10 @@ import {
   X, RefreshCw, Layers, Sparkles, Shield, Lock,
   UploadCloud, FileCode, CheckSquare, Palette, Sliders,
   HelpCircle, AlertTriangle, ArrowDownToLine, RefreshCcw,
-  Edit2, PieChart, Bell, ArrowUpRight
+  Edit2, PieChart, Bell, ArrowUpRight 
 } from "lucide-react";
 import { timeFeesSidebar } from "./sidebar";
+import WipToInvoiceWizard from "../../components/time-fees/WipToInvoiceWizard";
 
 // UK Standard Turnover / Sales Accounts for Invoicing (Capium / SanSuite info 9000236009)
 const CHART_OF_ACCOUNTS = [
@@ -76,8 +77,8 @@ export default function InvoicesPage() {
 
   const isAdmin = user?.role === "admin" || (user as any)?.isSuperAdmin || (user as any)?.role === "superadmin" || true; // Practice administrator authorized
 
-  // Navigation Sub-Tabs: "invoices" | "recurring" | "estimates" | "templates" | "overview" (From sansuite info 9000195170 & 9000236009)
-  const [activeSubTab, setActiveSubTab] = useState<"invoices" | "recurring" | "estimates" | "templates" | "overview">("invoices");
+  // Navigation Sub-Tabs: "invoices" | "wip" | "recurring" | "estimates" | "templates" | "overview" (From sansuite info 9000195170 & 9000236009)
+  const [activeSubTab, setActiveSubTab] = useState<"invoices" | "wip" | "recurring" | "estimates" | "templates" | "overview">("invoices");
 
   // Mode: "list" (Invoices Table) or "create" (Capium-style Create New Invoice)
   const [viewMode, setViewMode] = useState<"list" | "create">("list");
@@ -167,6 +168,106 @@ export default function InvoicesPage() {
   const [recipientEmail, setRecipientEmail] = useState("");
   const [emailSubject, setEmailSubject] = useState("");
   const [emailBody, setEmailBody] = useState("");
+
+  // WIP Billing Modal State & Calculations
+  const [isWipModalOpen, setIsWipModalOpen] = useState<boolean>(false);
+  const [wipClientId, setWipClientId] = useState<string>("");
+  const [wipLineItemMode, setWipLineItemMode] = useState<"detailed" | "consolidated">("detailed");
+  const [wipInvoiceDate, setWipInvoiceDate] = useState<string>(new Date().toISOString().split("T")[0]);
+  const [wipDueDate, setWipDueDate] = useState<string>(
+    new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
+  );
+  const [selectedWipTimesheetIds, setSelectedWipTimesheetIds] = useState<(string | number)[]>([]);
+  const [selectedWipExpenseIds, setSelectedWipExpenseIds] = useState<(string | number)[]>([]);
+
+  // Fetch unbilled WIP Timesheets
+  const { data: unbilledTimesheetsList = [], isLoading: isLoadingWipTimesheets } = useQuery<any[]>({
+    queryKey: ["/api/time-fees/timesheets/unbilled", wipClientId],
+    queryFn: async () => {
+      const url = wipClientId ? `/api/time-fees/timesheets?clientId=${wipClientId}&status=unbilled` : `/api/time-fees/timesheets?status=unbilled`;
+      const res = await apiRequest("GET", url);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: isWipModalOpen,
+  });
+
+  // Fetch unbilled WIP Expenses
+  const { data: unbilledExpensesList = [], isLoading: isLoadingWipExpenses } = useQuery<any[]>({
+    queryKey: ["/api/time-fees/expenses/unbilled", wipClientId],
+    queryFn: async () => {
+      const url = wipClientId ? `/api/time-fees/expenses?clientId=${wipClientId}&status=unbilled` : `/api/time-fees/expenses?status=unbilled`;
+      const res = await apiRequest("GET", url);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: isWipModalOpen,
+  });
+
+  const isLoadingWip = isLoadingWipTimesheets || isLoadingWipExpenses;
+
+  // Selected WIP totals
+  const selectedTimeTotal = useMemo(() => {
+    return unbilledTimesheetsList
+      .filter((t: any) => selectedWipTimesheetIds.includes(t.id))
+      .reduce((sum: number, t: any) => {
+        const val = parseFloat(t.billableAmount || t.amount || 0) || (parseFloat(t.hours || 0) * parseFloat(t.hourlyRate || 85));
+        return sum + val;
+      }, 0);
+  }, [unbilledTimesheetsList, selectedWipTimesheetIds]);
+
+  const selectedTimeHours = useMemo(() => {
+    return unbilledTimesheetsList
+      .filter((t: any) => selectedWipTimesheetIds.includes(t.id))
+      .reduce((sum: number, t: any) => sum + parseFloat(t.hours || 0), 0);
+  }, [unbilledTimesheetsList, selectedWipTimesheetIds]);
+
+  const selectedExpenseTotal = useMemo(() => {
+    return unbilledExpensesList
+      .filter((e: any) => selectedWipExpenseIds.includes(e.id))
+      .reduce((sum: number, e: any) => sum + parseFloat(e.amount || 0), 0);
+  }, [unbilledExpensesList, selectedWipExpenseIds]);
+
+  const totalWipNet = selectedTimeTotal + selectedExpenseTotal;
+  const totalWipVat = totalWipNet * 0.20;
+  const totalWipGross = totalWipNet + totalWipVat;
+
+  // Generate Invoice from WIP Mutation
+  const generateFromWipMutation = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        clientId: wipClientId,
+        lineItemMode: wipLineItemMode,
+        invoiceDate: wipInvoiceDate,
+        dueDate: wipDueDate,
+        timesheetIds: selectedWipTimesheetIds,
+        expenseIds: selectedWipExpenseIds,
+      };
+      const res = await apiRequest("POST", "/api/time-fees/invoices/generate-wip", payload);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Failed to generate WIP invoice");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Invoice Generated",
+        description: "WIP unbilled entries successfully converted to a fee invoice.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/time-fees/invoices"] });
+      setIsWipModalOpen(false);
+      setSelectedWipTimesheetIds([]);
+      setSelectedWipExpenseIds([]);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "WIP Billing Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
 
   // Fetch Invoices
   const { data: invoices = [], isLoading: isLoadingInvoices } = useQuery<any[]>({
@@ -459,28 +560,7 @@ export default function InvoicesPage() {
     },
   });
 
-  // Auto-generate invoice from unbilled timesheets (sansuite info Article 9000236009)
-  const generateFromTimesheetsMutation = useMutation({
-    mutationFn: async (clientId: number) => {
-      const res = await apiRequest("POST", "/api/time-fees/invoices/generate-from-time", { clientId, defaultRatePerHour: 85 });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || "No unbilled timesheets found");
-      }
-      return res.json();
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/time-fees/invoices"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/time-fees/timesheets"] });
-      toast({
-        title: "Invoice Generated From Timesheets",
-        description: `Created invoice ${data.invoiceNumber} with ${data.timesheetsBilled} billable timesheets.`,
-      });
-    },
-    onError: (err: any) => {
-      toast({ title: "Cannot Generate Invoice", description: err.message, type: "error" });
-    },
-  });
+
 
   // Filtered Invoices for List View
   const filteredInvoices = useMemo(() => {
@@ -498,6 +578,7 @@ export default function InvoicesPage() {
   const totalInvoicedSum = useMemo(() => invoices.reduce((acc, curr) => acc + parseFloat(curr.totalAmount || "0"), 0), [invoices]);
   const totalPaidSum = useMemo(() => invoices.filter((i) => i.status === "Paid").reduce((acc, curr) => acc + parseFloat(curr.totalAmount || "0"), 0), [invoices]);
   const totalOutstandingSum = totalInvoicedSum - totalPaidSum;
+
 
   const handleOpenEmailModal = (inv: any) => {
     setEmailModalInvoice(inv);
@@ -730,12 +811,14 @@ export default function InvoicesPage() {
                     {selectedClientId && (
                       <button
                         type="button"
-                        onClick={() => generateFromTimesheetsMutation.mutate(parseInt(selectedClientId))}
-                        disabled={generateFromTimesheetsMutation.isPending}
-                        className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                        onClick={() => {
+                          setWipClientId(selectedClientId);
+                          setIsWipModalOpen(true);
+                        }}
+                        className="px-3 py-1.5 bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400 hover:bg-purple-100 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
                       >
-                        <Clock size={13} />
-                        {generateFromTimesheetsMutation.isPending ? "Generating..." : "Auto-Fill Unbilled Timesheets"}
+                        <Sparkles size={13} />
+                        Launch WIP Billing Assistant
                       </button>
                     )}
                   </div>
@@ -949,20 +1032,14 @@ export default function InvoicesPage() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
-                    {/* Auto-generate from unbilled timesheets button */}
+                    {/* WIP Billing Assistant (Money Pipeline - Capium Article 9000236009) */}
                     <button
-                      onClick={() => {
-                        const defaultClient = clients[0];
-                        if (defaultClient) {
-                          generateFromTimesheetsMutation.mutate(defaultClient.id);
-                        } else {
-                          toast({ title: "No clients available" });
-                        }
-                      }}
-                      className="px-3.5 py-2 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
-                      title="Generate invoice from unbilled billable timesheets"
+                      onClick={() => setIsWipModalOpen(true)}
+                      className="px-3.5 py-2 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                      title="Convert unbilled billable timesheets and rechargeable expenses into invoices"
                     >
-                      <Sparkles size={13} /> Bill Timesheets
+                      <Sparkles size={13} className="text-purple-600" />
+                      <span>WIP Billing Assistant</span>
                     </button>
 
                     <button
@@ -2295,6 +2372,403 @@ export default function InvoicesPage() {
                 >
                   <Send size={12} /> Send Email
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* WIP BILLING ASSISTANT MODAL (The Money Pipeline - Capium Article 9000236009) */}
+        {isWipModalOpen && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+            <div className="max-w-4xl w-full bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[92vh]">
+              {/* Modal Header */}
+              <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-gradient-to-r from-purple-50 via-slate-50 to-indigo-50 dark:from-purple-950/30 dark:via-slate-900 dark:to-indigo-950/30 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-purple-600 text-white shadow-md">
+                    <Sparkles size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                      WIP Billing Assistant (The Money Pipeline)
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300 font-semibold">
+                        Capium Parity
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Batch unbilled staff timelogs & reimbursable client expenses into a professional fee invoice.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsWipModalOpen(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-6 overflow-y-auto space-y-5 flex-1 text-xs">
+                {/* Client & Billing Configurations Bar */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <div>
+                    <label className="font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                      Client to Bill <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={wipClientId}
+                      onChange={(e) => setWipClientId(e.target.value)}
+                      className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-medium"
+                    >
+                      <option value="">Select a Client...</option>
+                      {clients.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.clientName} ({c.clientCode || `CL-${c.id}`})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                      Invoice Line Mode
+                    </label>
+                    <select
+                      value={wipLineItemMode}
+                      onChange={(e) => setWipLineItemMode(e.target.value as any)}
+                      className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-medium"
+                    >
+                      <option value="detailed">Detailed (Row per entry)</option>
+                      <option value="consolidated">Consolidated (1 Service + 1 Expense row)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                      Invoice Date
+                    </label>
+                    <input
+                      type="date"
+                      value={wipInvoiceDate}
+                      onChange={(e) => setWipInvoiceDate(e.target.value)}
+                      className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                      Payment Due Date
+                    </label>
+                    <input
+                      type="date"
+                      value={wipDueDate}
+                      onChange={(e) => setWipDueDate(e.target.value)}
+                      className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                    />
+                  </div>
+                </div>
+
+                {/* KPI Summary Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="p-3 bg-purple-50 dark:bg-purple-950/30 rounded-xl border border-purple-200 dark:border-purple-800">
+                    <span className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold uppercase tracking-wider">
+                      Selected Time
+                    </span>
+                    <p className="text-base font-bold text-purple-900 dark:text-purple-100 mt-0.5">
+                      £{selectedTimeTotal.toFixed(2)}
+                    </p>
+                    <span className="text-[10px] text-purple-600/80">
+                      {selectedWipTimesheetIds.length} logs ({selectedTimeHours.toFixed(1)} hrs)
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-xl border border-emerald-200 dark:border-emerald-800">
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold uppercase tracking-wider">
+                      Rechargeable Expenses
+                    </span>
+                    <p className="text-base font-bold text-emerald-900 dark:text-emerald-100 mt-0.5">
+                      £{selectedExpenseTotal.toFixed(2)}
+                    </p>
+                    <span className="text-[10px] text-emerald-600/80">
+                      {selectedWipExpenseIds.length} claims
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-indigo-50 dark:bg-indigo-950/30 rounded-xl border border-indigo-200 dark:border-indigo-800">
+                    <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold uppercase tracking-wider">
+                      Total Net Amount
+                    </span>
+                    <p className="text-base font-bold text-indigo-900 dark:text-indigo-100 mt-0.5">
+                      £{totalWipNet.toFixed(2)}
+                    </p>
+                    <span className="text-[10px] text-indigo-600/80">
+                      Excl. VAT
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-slate-900 dark:bg-slate-800 text-white rounded-xl shadow-xs">
+                    <span className="text-[10px] text-purple-300 font-semibold uppercase tracking-wider">
+                      Gross Invoice Total
+                    </span>
+                    <p className="text-base font-bold text-white mt-0.5">
+                      £{totalWipGross.toFixed(2)}
+                    </p>
+                    <span className="text-[10px] text-slate-300">
+                      Incl. 20% VAT (£{totalWipVat.toFixed(2)})
+                    </span>
+                  </div>
+                </div>
+
+                {/* Unbilled Timesheets Section */}
+                <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
+                  <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Clock size={14} className="text-purple-600" />
+                      <h4 className="font-bold text-slate-900 dark:text-slate-100 text-xs">
+                        Unbilled Billable Timesheets ({unbilledTimesheetsList.length})
+                      </h4>
+                    </div>
+                    {unbilledTimesheetsList.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedWipTimesheetIds(unbilledTimesheetsList.map((t: any) => t.id))}
+                          className="text-[11px] text-indigo-600 hover:underline font-semibold cursor-pointer"
+                        >
+                          Select All
+                        </button>
+                        <span className="text-slate-300">|</span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedWipTimesheetIds([])}
+                          className="text-[11px] text-slate-500 hover:underline cursor-pointer"
+                        >
+                          Deselect All
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="overflow-x-auto max-h-48 overflow-y-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800 z-10 text-[10px] uppercase font-bold text-slate-600 dark:text-slate-400">
+                        <tr>
+                          <th className="py-2 px-3 w-10 text-center"></th>
+                          <th className="py-2 px-3">Date</th>
+                          <th className="py-2 px-3">Staff</th>
+                          <th className="py-2 px-3">Task / Service</th>
+                          <th className="py-2 px-3">Description</th>
+                          <th className="py-2 px-3 text-right">Hours</th>
+                          <th className="py-2 px-3 text-right">Rate</th>
+                          <th className="py-2 px-3 text-right">Billable (£)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {isLoadingWip ? (
+                          <tr>
+                            <td colSpan={8} className="py-4 text-center text-slate-400">
+                              Loading unbilled WIP...
+                            </td>
+                          </tr>
+                        ) : unbilledTimesheetsList.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="py-4 text-center text-slate-400">
+                              No unbilled timesheets found. Log billable time in Timesheets to see them here.
+                            </td>
+                          </tr>
+                        ) : (
+                          unbilledTimesheetsList.map((t: any) => {
+                            const isSelected = selectedWipTimesheetIds.includes(t.id);
+                            return (
+                              <tr
+                                key={t.id}
+                                onClick={() => {
+                                  setSelectedWipTimesheetIds((prev: (string | number)[]) =>
+                                    isSelected ? prev.filter((id: string | number) => id !== t.id) : [...prev, t.id]
+                                  );
+                                }}
+                                className={`cursor-pointer transition-colors ${
+                                  isSelected ? "bg-purple-50/50 dark:bg-purple-950/20" : "hover:bg-slate-50 dark:hover:bg-slate-800/40"
+                                }`}
+                              >
+                                <td className="py-2 px-3 text-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => {}} // handled by tr click
+                                    className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                                  />
+                                </td>
+                                <td className="py-2 px-3 text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                                  {t.date ? new Date(t.date).toLocaleDateString("en-GB") : "-"}
+                                </td>
+                                <td className="py-2 px-3 font-semibold text-slate-800 dark:text-slate-200">
+                                  {t.staffName || `Staff #${t.userId || 1}`}
+                                </td>
+                                <td className="py-2 px-3 text-indigo-600 dark:text-indigo-400 font-medium">
+                                  {t.taskName || t.task || "Professional Service"}
+                                </td>
+                                <td className="py-2 px-3 text-slate-500 max-w-xs truncate">
+                                  {t.description || "-"}
+                                </td>
+                                <td className="py-2 px-3 text-right font-mono font-medium text-slate-700 dark:text-slate-300">
+                                  {parseFloat(t.hours || 0).toFixed(1)}h
+                                </td>
+                                <td className="py-2 px-3 text-right font-mono text-slate-500">
+                                  £{parseFloat(t.hourlyRate || 85).toFixed(2)}
+                                </td>
+                                <td className="py-2 px-3 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
+                                  £{parseFloat(t.billableAmount || t.amount || 0).toFixed(2)}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Rechargeable Expenses Section */}
+                <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
+                  <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Receipt size={14} className="text-emerald-600" />
+                      <h4 className="font-bold text-slate-900 dark:text-slate-100 text-xs">
+                        Rechargeable Client Expenses & Disbursements ({unbilledExpensesList.length})
+                      </h4>
+                    </div>
+                    {unbilledExpensesList.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedWipExpenseIds(unbilledExpensesList.map((e: any) => e.id))}
+                          className="text-[11px] text-indigo-600 hover:underline font-semibold cursor-pointer"
+                        >
+                          Select All
+                        </button>
+                        <span className="text-slate-300">|</span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedWipExpenseIds([])}
+                          className="text-[11px] text-slate-500 hover:underline cursor-pointer"
+                        >
+                          Deselect All
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="overflow-x-auto max-h-40 overflow-y-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800 z-10 text-[10px] uppercase font-bold text-slate-600 dark:text-slate-400">
+                        <tr>
+                          <th className="py-2 px-3 w-10 text-center"></th>
+                          <th className="py-2 px-3">Date</th>
+                          <th className="py-2 px-3">Staff</th>
+                          <th className="py-2 px-3">Category</th>
+                          <th className="py-2 px-3">Description</th>
+                          <th className="py-2 px-3 text-right">Amount (£)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {isLoadingWip ? (
+                          <tr>
+                            <td colSpan={6} className="py-4 text-center text-slate-400">
+                              Loading unbilled expenses...
+                            </td>
+                          </tr>
+                        ) : unbilledExpensesList.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="py-4 text-center text-slate-400">
+                              No unbilled rechargeable expenses found.
+                            </td>
+                          </tr>
+                        ) : (
+                          unbilledExpensesList.map((e: any) => {
+                            const isSelected = selectedWipExpenseIds.includes(e.id);
+                            return (
+                              <tr
+                                key={e.id}
+                                onClick={() => {
+                                  setSelectedWipExpenseIds((prev: (string | number)[]) =>
+                                    isSelected ? prev.filter((id: string | number) => id !== e.id) : [...prev, e.id]
+                                  );
+                                }}
+                                className={`cursor-pointer transition-colors ${
+                                  isSelected ? "bg-emerald-50/50 dark:bg-emerald-950/20" : "hover:bg-slate-50 dark:hover:bg-slate-800/40"
+                                }`}
+                              >
+                                <td className="py-2 px-3 text-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => {}} // handled by tr click
+                                    className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                                  />
+                                </td>
+                                <td className="py-2 px-3 text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                                  {e.date ? new Date(e.date).toLocaleDateString("en-GB") : "-"}
+                                </td>
+                                <td className="py-2 px-3 font-semibold text-slate-800 dark:text-slate-200">
+                                  {e.staffName || `Staff #${e.userId || 1}`}
+                                </td>
+                                <td className="py-2 px-3 text-emerald-600 dark:text-emerald-400 font-medium">
+                                  {e.category || "Disbursement"}
+                                </td>
+                                <td className="py-2 px-3 text-slate-500 max-w-xs truncate">
+                                  {e.notes || e.description || "-"}
+                                </td>
+                                <td className="py-2 px-3 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
+                                  £{parseFloat(e.amount || 0).toFixed(2)}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="text-[11px] text-slate-500">
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">
+                    {selectedWipTimesheetIds.length + selectedWipExpenseIds.length} items selected
+                  </span>{" "}
+                  for invoice generation.
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsWipModalOpen(false)}
+                    className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold cursor-pointer transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => generateFromWipMutation.mutate()}
+                    disabled={generateFromWipMutation.isPending || (selectedWipTimesheetIds.length === 0 && selectedWipExpenseIds.length === 0)}
+                    className="px-5 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold shadow-md cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {generateFromWipMutation.isPending ? (
+                      <>
+                        <RefreshCw size={14} className="animate-spin" />
+                        <span>Generating Invoice...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={14} />
+                        <span>Generate Invoice (£{totalWipGross.toFixed(2)} Gross)</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>

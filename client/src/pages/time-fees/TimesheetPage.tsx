@@ -13,6 +13,7 @@ import {
   Filter, CheckCircle2, AlertCircle, Play, Pause,
   DollarSign, X, CheckSquare, Send, Check, XCircle, RotateCcw, Copy
 } from "lucide-react";
+import WeeklyMatrixGrid from "../../components/time-fees/WeeklyMatrixGrid";
 
 export default function TimesheetPage() {
   const { toast } = useToast();
@@ -85,6 +86,32 @@ export default function TimesheetPage() {
       return res.json();
     },
   });
+
+  // Fetch Staff Rates for Dynamic Rate Propagation (Phase 2.3)
+  const { data: staffRates = [] } = useQuery<any[]>({
+    queryKey: ["/api/time-fees/manage/staff-rates"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/time-fees/manage/staff-rates");
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const currentUserRate = useMemo(() => {
+    if (!user?.id || !staffRates.length) return null;
+    return staffRates.find((s: any) => s.userId === user.id);
+  }, [user, staffRates]);
+
+  // Propagate user's rate card dynamically into time log form
+  useMemo(() => {
+    if (currentUserRate) {
+      setNewEntry((prev) => ({
+        ...prev,
+        ratePerHour: currentUserRate.billableRatePerHour ? String(currentUserRate.billableRatePerHour) : prev.ratePerHour,
+        costRate: currentUserRate.costRatePerHour ? String(currentUserRate.costRatePerHour) : prev.costRate,
+      }));
+    }
+  }, [currentUserRate]);
 
   const clientJobs = jobs.filter((j: any) => j.clientId === parseInt(newEntry.clientId));
 
@@ -609,106 +636,14 @@ export default function TimesheetPage() {
             </div>
           )}
 
-          {/* VIEW 2: WEEK MATRIX VIEW (Capium Article 9000235910 - Copy Previous Week) */}
+          {/* VIEW 2: WEEK MATRIX VIEW (Capium Article 9000235910 - Weekly Matrix Timesheet Grid) */}
           {viewMode === "week" && (
-            <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-5 space-y-4">
-              {/* Week navigation & Copy action */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => {
-                      const d = new Date(currentWeekStart);
-                      d.setDate(d.getDate() - 7);
-                      setCurrentWeekStart(d);
-                    }}
-                    className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer"
-                  >
-                    <ChevronLeft size={16} />
-                  </button>
-                  <span className="text-xs font-bold text-slate-800">
-                    Week of {currentWeekStart.toLocaleDateString("en-GB")} — {weekDays[6].toLocaleDateString("en-GB")}
-                  </span>
-                  <button
-                    onClick={() => {
-                      const d = new Date(currentWeekStart);
-                      d.setDate(d.getDate() + 7);
-                      setCurrentWeekStart(d);
-                    }}
-                    className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer"
-                  >
-                    <ChevronRight size={16} />
-                  </button>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => copyWeekMutation.mutate()}
-                    disabled={copyWeekMutation.isPending}
-                    className="px-3.5 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50/70 text-indigo-700 hover:bg-indigo-100 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-colors"
-                  >
-                    <Copy size={14} /> Copy Tasks from Previous Week
-                  </button>
-                  <button
-                    onClick={() => setIsRecordModalOpen(true)}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer"
-                  >
-                    + Add Time
-                  </button>
-                </div>
-              </div>
-
-              {/* Day Columns */}
-              <div className="grid grid-cols-7 gap-3">
-                {weekDays.map((day, idx) => {
-                  const dayStr = day.toISOString().split("T")[0];
-                  const dayEntries = timesheets.filter((t: any) => {
-                    const tStr = t.date ? new Date(t.date).toISOString().split("T")[0] : "";
-                    return tStr === dayStr;
-                  });
-                  const dayTotal = dayEntries.reduce((sum, t) => sum + parseFloat(t.hours || "0"), 0);
-                  const isToday = dayStr === new Date().toISOString().split("T")[0];
-
-                  return (
-                    <div key={idx} className={`p-3 rounded-xl border flex flex-col justify-between min-h-[220px] ${
-                      isToday ? 'bg-indigo-50/30 border-indigo-200 ring-2 ring-indigo-100' : 'bg-slate-50/50 border-slate-200'
-                    }`}>
-                      <div className="space-y-2">
-                        <div className="flex justify-between items-center border-b border-slate-200/60 pb-2">
-                          <span className="text-xs font-bold text-slate-700">
-                            {day.toLocaleDateString("en-GB", { weekday: "short" })}
-                          </span>
-                          <span className="text-[11px] font-mono text-slate-500">
-                            {day.getDate()}
-                          </span>
-                        </div>
-
-                        {dayEntries.length === 0 ? (
-                          <div className="py-8 text-center text-[11px] text-slate-400">No time logged</div>
-                        ) : (
-                          <div className="space-y-1.5">
-                            {dayEntries.map((t: any) => (
-                              <div key={t.id} className="p-2 bg-white rounded-lg border border-slate-200 shadow-2xs space-y-0.5 text-[11px]">
-                                <div className="font-bold text-slate-800 truncate">{t.clientName}</div>
-                                <div className="text-slate-500 truncate">{t.taskName}</div>
-                                <div className="flex justify-between items-center pt-1 font-mono">
-                                  <span className="font-bold text-indigo-700">{parseFloat(t.hours).toFixed(1)}h</span>
-                                  <span className="text-[9px] text-slate-400 uppercase">{t.status || 'Draft'}</span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="pt-2 border-t border-slate-200 flex justify-between items-center text-xs font-bold">
-                        <span className="text-slate-500">Total:</span>
-                        <span className="text-slate-900 font-mono">{dayTotal.toFixed(1)}h</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            <WeeklyMatrixGrid
+              currentWeekStart={currentWeekStart}
+              onWeekChange={setCurrentWeekStart}
+              clients={clients}
+              jobs={jobs}
+            />
           )}
 
           {/* VIEW 3: DAY VIEW */}

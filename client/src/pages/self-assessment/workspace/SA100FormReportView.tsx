@@ -96,12 +96,38 @@ export default function SA100FormReportView({
   }
 
   // Check presence of supplementary schedules
-  const hasEmployment = Array.isArray(sched.employments) && sched.employments.length > 0;
-  const hasSelfEmployment = Array.isArray(sched.selfEmployments) && sched.selfEmployments.length > 0;
-  const hasPartnership = Array.isArray(sched.partnerships) && sched.partnerships.length > 0;
-  const hasProperty = Boolean(sched.ukProperty?.hasIncome || parseFloat(sched.ukProperty?.totalRentalIncome || "0") > 0);
-  const hasForeign = Boolean(sched.foreign?.hasIncome || parseFloat(currentReturn?.foreignIncome || "0") > 0);
-  const hasCapitalGains = Boolean(sched.capitalGains?.hasGains || parseFloat(currentReturn?.capitalGainsNet || "0") > 0);
+  const hasEmployment = (Array.isArray(sched.employments) && sched.employments.length > 0) || parseFloat(currentReturn?.employmentIncome || "0") > 0;
+  const hasSelfEmployment = (Array.isArray(sched.selfEmployments) && sched.selfEmployments.length > 0) || parseFloat(currentReturn?.selfEmploymentProfit || "0") > 0;
+  const hasPartnership = (Array.isArray(sched.partnerships) && sched.partnerships.length > 0) || parseFloat(currentReturn?.partnershipProfit || "0") > 0;
+  const hasProperty = Boolean(sched.ukProperty?.hasIncome || (Array.isArray(sched.properties) && sched.properties.length > 0) || parseFloat(currentReturn?.propertyIncome || "0") > 0);
+  const hasForeign = Boolean(sched.foreign?.hasIncome || (Array.isArray(sched.foreignItems) && sched.foreignItems.length > 0) || parseFloat(currentReturn?.foreignIncome || "0") > 0);
+  const hasCapitalGains = Boolean(sched.capitalGains?.hasGains || (Array.isArray(sched.capitalGainsAssets) && sched.capitalGainsAssets.length > 0) || parseFloat(currentReturn?.capitalGainsNet || "0") > 0);
+  const hasResidenceRemittance = Boolean(sched.sa109?.claimRemittanceBasis || currentReturn?.claimRemittanceBasis);
+  const hasAnySupplementary = hasEmployment || hasSelfEmployment || hasPartnership || hasProperty || hasForeign || hasCapitalGains || hasResidenceRemittance;
+  const hasAdditionalInfo = Boolean(parseFloat(sched.seisReliefClaimed || "0") > 0 || parseFloat(sched.eisReliefClaimed || "0") > 0 || parseFloat(sched.vctReliefClaimed || "0") > 0 || sched.hasAdditionalInfo);
+
+  // Bank refund details (from Step 2 & Step 5)
+  const bankDetails = sched?.bankRefundDetails || {};
+  const isRepaymentToAgent = bankDetails.repaymentOption === "agent";
+  const rawSortCode = String(bankDetails.bankSortCode || currentReturn?.bankSortCode || currentReturn?.sortCode || "").replace(/\D/g, "");
+  const sortCodeStr = rawSortCode.padEnd(6, " ").slice(0, 6);
+  const rawAccountNo = String(bankDetails.bankAccountNumber || currentReturn?.bankAccountNumber || currentReturn?.accountNumber || "").replace(/\D/g, "");
+  const accountNoStr = rawAccountNo.padEnd(8, " ").slice(0, 8);
+  const accountName = bankDetails.bankAccountName || currentReturn?.bankAccountName || currentReturn?.accountHolderName || client?.clientName || "";
+  const bankName = bankDetails.bankName || currentReturn?.bankName || (accountName ? "Assessee Nominated UK Bank" : "");
+  const buildingSocietyRef = bankDetails.buildingSocietyRoll || currentReturn?.buildingSocietyRoll || "";
+
+  // Declaration date (submittedAt if available, else current date)
+  const declDate = currentReturn?.submittedAt ? new Date(currentReturn.submittedAt) : new Date();
+  const declDay = String(declDate.getDate()).padStart(2, "0");
+  const declMonth = String(declDate.getMonth() + 1).padStart(2, "0");
+  const declYear = String(declDate.getFullYear());
+  const declDateStr = declDay + declMonth + declYear;
+
+  // Authentic IR Mark or clean draft state (Rule 6: Zero Mock Data)
+  const irMarkDisplay = currentReturn?.irMark
+    ? `IR Mark: ${currentReturn.irMark}`
+    : "HMRC Self Assessment Return (Draft - Pre-filing)";
 
   const handlePrint = () => {
     window.print();
@@ -416,7 +442,7 @@ export default function SA100FormReportView({
                 
                 {/* Red IR Mark Centered */}
                 <div className="text-center font-mono text-[11px] font-bold text-red-600 select-none pb-1">
-                  IR Mark: {currentReturn?.irMark || "5Z6zag3NQSIxf3KUUWK2RpFVNbo="}
+                  {irMarkDisplay}
                 </div>
 
                 {/* Header Teal Bar with Crown */}
@@ -438,15 +464,15 @@ export default function SA100FormReportView({
                   <div className="space-y-2 font-mono">
                     <div className="flex items-center gap-3">
                       <span className="text-slate-600 font-sans text-xs w-28">UTR:</span>
-                      <strong className="tracking-wider text-sm text-slate-900">{utrStr || "123456789"}</strong>
+                      <strong className="tracking-wider text-sm text-slate-900">{utrStr || "—"}</strong>
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="text-slate-600 font-sans text-xs w-28">NINO:</span>
-                      <strong className="tracking-wider text-sm text-slate-900">{ninoStr || "AB123456C"}</strong>
+                      <strong className="tracking-wider text-sm text-slate-900">{ninoStr || "—"}</strong>
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="text-slate-600 font-sans text-xs w-28">Employer ref:</span>
-                      <span className="text-slate-400">—</span>
+                      <span className="text-slate-800 font-mono">{sched.employments?.[0]?.payeReference || "—"}</span>
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="text-slate-600 font-sans text-xs w-28">Date:</span>
@@ -468,13 +494,15 @@ export default function SA100FormReportView({
                   <div className="space-y-2">
                     <span className="text-[11px] font-medium text-slate-600 block">Issue address:</span>
                     <CornerBracketBox className="bg-slate-50/50">
-                      <strong className="text-slate-900 block text-sm font-sans">{client?.clientName || "Mr Ahsin Akhtar"}</strong>
-                      <div className="text-slate-700 text-xs mt-1">{client?.addressLine1 || "Flat 1, 10 High Street"}</div>
+                      <strong className="text-slate-900 block text-sm font-sans">{client?.clientName || "Taxpayer"}</strong>
+                      <div className="text-slate-700 text-xs mt-1">{client?.addressLine1 || "—"}</div>
                       {client?.addressLine2 && <div className="text-slate-700 text-xs">{client?.addressLine2}</div>}
-                      <div className="text-slate-700 text-xs">{client?.city || "London"} {client?.postcode || "E1 6AN"}</div>
+                      {(client?.city || client?.postcode) && (
+                        <div className="text-slate-700 text-xs">{[client?.city, client?.postcode].filter(Boolean).join(" ")}</div>
+                      )}
                     </CornerBracketBox>
                     <div className="text-[11px] text-slate-600 pt-1">
-                      For Reference: <span className="font-mono font-bold text-slate-800">{utrStr || "123456789"}</span>
+                      For Reference: <span className="font-mono font-bold text-slate-800">{utrStr || "—"}</span>
                     </div>
                   </div>
                 </div>
@@ -542,9 +570,9 @@ export default function SA100FormReportView({
                         <div className="pl-6 space-y-1">
                           <span className="text-[10px] text-slate-500 font-mono">DD MM YYYY</span>
                           <div className="flex items-center gap-2">
-                            {renderBoxes(dobDay || "31", 2)}
-                            {renderBoxes(dobMonth || "01", 2)}
-                            {renderBoxes(dobYear || "1991", 4)}
+                            {renderBoxes(dobDay, 2)}
+                            {renderBoxes(dobMonth, 2)}
+                            {renderBoxes(dobYear, 4)}
                           </div>
                         </div>
                       </div>
@@ -555,7 +583,7 @@ export default function SA100FormReportView({
                           <span className="w-5 h-5 bg-[#008080] text-white font-bold font-mono text-xs flex items-center justify-center shrink-0">3</span>
                           <span className="font-medium text-xs text-slate-900">Your phone number</span>
                         </div>
-                        <div className="pl-6 pt-1">{renderBoxes(client?.phone || "", 12)}</div>
+                        <div className="pl-6 pt-1">{renderBoxes(client?.phone || client?.mobile || "", 12)}</div>
                       </div>
                     </div>
 
@@ -598,7 +626,7 @@ export default function SA100FormReportView({
               <div id="sa100-page-2" className="sa100-paper-page bg-white text-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-8 sm:p-10 shadow-md max-w-4xl mx-auto space-y-5 text-xs print:border-none print:shadow-none print:p-0 print:m-0 print:max-w-none print:rounded-none print:break-after-page">
                 
                 <div className="text-center font-mono text-[11px] font-bold text-red-600 select-none pb-1">
-                  IR Mark: {currentReturn?.irMark || "5Z6zag3NQSIxf3KUUWK2RpFVNbo="}
+                  {irMarkDisplay}
                 </div>
 
                 <div className="border-b-4 border-[#008080] pb-2">
@@ -630,7 +658,7 @@ export default function SA100FormReportView({
                           </div>
                           <div className="flex items-center gap-1">
                             <span className="text-[11px] text-slate-500">Number</span>
-                            {renderBoxes(hasEmployment ? "1" : "", 1)}
+                            {renderBoxes(hasEmployment ? String(sched.employments?.length || 1) : "", 1)}
                           </div>
                         </div>
                       </div>
@@ -651,7 +679,7 @@ export default function SA100FormReportView({
                           </div>
                           <div className="flex items-center gap-1">
                             <span className="text-[11px] text-slate-500">Number</span>
-                            {renderBoxes(hasSelfEmployment ? "1" : "", 1)}
+                            {renderBoxes(hasSelfEmployment ? String(sched.selfEmployments?.length || 1) : "", 1)}
                           </div>
                         </div>
                       </div>
@@ -672,7 +700,7 @@ export default function SA100FormReportView({
                           </div>
                           <div className="flex items-center gap-1">
                             <span className="text-[11px] text-slate-500">Number</span>
-                            {renderBoxes(hasPartnership ? "1" : "", 1)}
+                            {renderBoxes(hasPartnership ? String(sched.partnerships?.length || 1) : "", 1)}
                           </div>
                         </div>
                       </div>
@@ -720,8 +748,8 @@ export default function SA100FormReportView({
                           Did you receive or are you treated as having received income from a trust, settlement or estate?
                         </p>
                         <div className="pl-7 flex items-center gap-3 pt-1">
-                          <label className="flex items-center gap-1.5">Yes {renderCheckbox(false)}</label>
-                          <label className="flex items-center gap-1.5">No {renderCheckbox(true)}</label>
+                          <label className="flex items-center gap-1.5">Yes {renderCheckbox(Boolean(sched.trustsIncome || parseFloat(sched.trustIncome || "0") > 0))}</label>
+                          <label className="flex items-center gap-1.5">No {renderCheckbox(!Boolean(sched.trustsIncome || parseFloat(sched.trustIncome || "0") > 0))}</label>
                         </div>
                       </div>
 
@@ -741,7 +769,7 @@ export default function SA100FormReportView({
                           </div>
                           <div className="flex items-center gap-1">
                             <span className="text-[10px] text-slate-500">Computation(s) provided</span>
-                            {renderCheckbox(false)}
+                            {renderCheckbox(Boolean(sched.cgtHasAttachment || sched.cgtComputationProvided))}
                           </div>
                         </div>
                       </div>
@@ -756,8 +784,8 @@ export default function SA100FormReportView({
                           Were you, for all or part of the year to 5 April {nextYear}, not resident or not domiciled in the UK and claiming the remittance basis?
                         </p>
                         <div className="pl-7 flex items-center gap-3 pt-1">
-                          <label className="flex items-center gap-1.5">Yes {renderCheckbox(false)}</label>
-                          <label className="flex items-center gap-1.5">No {renderCheckbox(true)}</label>
+                          <label className="flex items-center gap-1.5">Yes {renderCheckbox(hasResidenceRemittance)}</label>
+                          <label className="flex items-center gap-1.5">No {renderCheckbox(!hasResidenceRemittance)}</label>
                         </div>
                       </div>
 
@@ -771,16 +799,16 @@ export default function SA100FormReportView({
                           If you answered 'Yes' to any of questions 1 to 8, check to see if within this return there is a page dealing with that kind of income.
                         </p>
                         <div className="pl-7 flex items-center gap-3 pt-1">
-                          <label className="flex items-center gap-1.5">Yes {renderCheckbox(hasEmployment || hasSelfEmployment || hasProperty)}</label>
-                          <label className="flex items-center gap-1.5">No {renderCheckbox(!(hasEmployment || hasSelfEmployment || hasProperty))}</label>
+                          <label className="flex items-center gap-1.5">Yes {renderCheckbox(hasAnySupplementary)}</label>
+                          <label className="flex items-center gap-1.5">No {renderCheckbox(!hasAnySupplementary)}</label>
                         </div>
 
                         <div className="pl-7 pt-2 space-y-1 text-[10px] text-slate-500">
                           <p>Some less common kinds of income and tax reliefs should be returned on <em>Additional information</em> pages.</p>
                           <div className="flex items-center gap-3 pt-0.5">
                             <span className="text-[11px] text-slate-700">Need Additional information pages?</span>
-                            <label className="flex items-center gap-1.5">Yes {renderCheckbox(false)}</label>
-                            <label className="flex items-center gap-1.5">No {renderCheckbox(true)}</label>
+                            <label className="flex items-center gap-1.5">Yes {renderCheckbox(hasAdditionalInfo)}</label>
+                            <label className="flex items-center gap-1.5">No {renderCheckbox(!hasAdditionalInfo)}</label>
                           </div>
                         </div>
                       </div>
@@ -801,7 +829,7 @@ export default function SA100FormReportView({
               <div id="sa100-page-3" className="sa100-paper-page bg-white text-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-8 sm:p-10 shadow-md max-w-4xl mx-auto space-y-5 text-xs print:border-none print:shadow-none print:p-0 print:m-0 print:max-w-none print:rounded-none print:break-after-page">
                 
                 <div className="text-center font-mono text-[11px] font-bold text-red-600 select-none pb-1">
-                  IR Mark: {currentReturn?.irMark || "5Z6zag3NQSIxf3KUUWK2RpFVNbo="}
+                  {irMarkDisplay}
                 </div>
 
                 <div className="border-b-4 border-[#008080] pb-2">
@@ -815,27 +843,27 @@ export default function SA100FormReportView({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>1</strong> Taxed UK interest etc. - net amount after tax taken off</span>
-                        {renderCurrencyBoxes(currentReturn?.taxedInterest || 0)}
+                        {renderCurrencyBoxes(currentReturn?.taxedInterest || sched?.taxedInterest || 0)}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>4</strong> Other dividends - do not include the tax credit</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(sched?.otherDividends || 0)}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>2</strong> Untaxed UK interest etc. - amounts with no tax taken off</span>
-                        {renderCurrencyBoxes(currentReturn?.bankInterest || 0)}
+                        {renderCurrencyBoxes(currentReturn?.savingsInterest || currentReturn?.bankInterest || sched?.savingsInterest || sched?.untaxedInterest || 0)}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>5</strong> Foreign dividends (up to £300)</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(sched?.foreignDividends || (parseFloat(currentReturn?.foreignIncome || "0") > 0 && parseFloat(currentReturn?.foreignIncome || "0") <= 300 ? currentReturn.foreignIncome : 0))}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>3</strong> Dividends from UK companies - do not include tax credit</span>
-                        {renderCurrencyBoxes(currentReturn?.dividendIncome || 0)}
+                        {renderCurrencyBoxes(currentReturn?.dividendIncome || sched?.dividendIncome || 0)}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>6</strong> Tax taken off foreign dividends</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(sched?.foreignDividendsTax || 0)}
                       </div>
                     </div>
                   </div>
@@ -848,39 +876,39 @@ export default function SA100FormReportView({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>7</strong> State Pension - gross amount on pension statement</span>
-                        {renderCurrencyBoxes(currentReturn?.statePension || 0)}
+                        {renderCurrencyBoxes(sched?.statePension || (parseFloat(currentReturn?.pensionIncome || "0") > 0 && !sched?.otherPensions && !sched?.privatePensions ? currentReturn.pensionIncome : 0))}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>11</strong> Tax taken off box 10</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(sched?.pensionTaxDeducted || 0)}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>8</strong> State Pension lump sum</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(sched?.statePensionLumpSum || 0)}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>12</strong> Taxable Incapacity Benefit &amp; ESA</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(sched?.taxableIncapacityBenefit || 0)}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>9</strong> Tax taken off box 8</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(sched?.statePensionLumpSumTax || 0)}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>13</strong> Tax taken off Incapacity Benefit in box 12</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(sched?.incapacityBenefitTax || 0)}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>10</strong> Pensions (other than State Pension), retirement annuities</span>
-                        {renderCurrencyBoxes(currentReturn?.otherPensions || 0)}
+                        {renderCurrencyBoxes(sched?.otherPensions || sched?.privatePensions || currentReturn?.pensionIncome || 0)}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>14</strong> Jobseeker's Allowance</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(sched?.jobseekersAllowance || 0)}
                       </div>
                       <div className="space-y-1 md:col-span-2">
                         <span className="text-[11px] text-slate-700 block"><strong>15</strong> Total of any other taxable State Pensions and benefits</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(sched?.otherStateBenefits || 0)}
                       </div>
                     </div>
                   </div>
@@ -893,27 +921,29 @@ export default function SA100FormReportView({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>16</strong> Other taxable income - before expenses and tax taken off</span>
-                        {renderCurrencyBoxes(currentReturn?.otherUkIncome || 0)}
+                        {renderCurrencyBoxes(currentReturn?.otherIncome || currentReturn?.otherUkIncome || sched?.otherIncome || 0)}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>19</strong> Benefit from pre-owned assets</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(sched?.preOwnedAssetsBenefit || 0)}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>17</strong> Total amount of allowable expenses</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(sched?.otherIncomeExpenses || 0)}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>20</strong> Description of income in boxes 16 and 19</span>
-                        <div className="border border-slate-300 bg-white p-2 rounded h-16 text-[10px] text-slate-500 font-mono flex flex-col justify-around">
-                          <div className="border-b border-dotted border-slate-300 pb-0.5">Casual commissions or copyright fees</div>
+                        <div className="border border-slate-300 bg-white p-2 rounded h-16 text-[10px] text-slate-700 font-mono flex flex-col justify-around">
+                          <div className="border-b border-dotted border-slate-300 pb-0.5 truncate">
+                            {sched?.otherIncomeDescription || (parseFloat(currentReturn?.otherIncome || currentReturn?.otherUkIncome || "0") > 0 ? "Sundry taxable income and commissions" : "")}
+                          </div>
                           <div className="border-b border-dotted border-slate-300 pb-0.5"></div>
                           <div></div>
                         </div>
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>18</strong> Any tax taken off box 16</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(sched?.otherIncomeTaxDeducted || 0)}
                       </div>
                     </div>
                   </div>
@@ -932,7 +962,7 @@ export default function SA100FormReportView({
               <div id="sa100-page-4" className="sa100-paper-page bg-white text-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-8 sm:p-10 shadow-md max-w-4xl mx-auto space-y-5 text-xs print:border-none print:shadow-none print:p-0 print:m-0 print:max-w-none print:rounded-none print:break-after-page">
                 
                 <div className="text-center font-mono text-[11px] font-bold text-red-600 select-none pb-1">
-                  IR Mark: {currentReturn?.irMark || "5Z6zag3NQSIxf3KUUWK2RpFVNbo="}
+                  {irMarkDisplay}
                 </div>
 
                 <div className="border-b-4 border-[#008080] pb-2">
@@ -946,19 +976,19 @@ export default function SA100FormReportView({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>1</strong> Payments to registered pension schemes (relief at source)</span>
-                        {renderCurrencyBoxes(currentReturn?.pensionContributions || 0)}
+                        {renderCurrencyBoxes(currentReturn?.pensionContributions || sched?.pensionContributions || 0)}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>3</strong> Payments to employer's scheme not deducted before tax</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(sched?.employerSchemeNotDeducted || 0)}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>2</strong> Payments to retirement annuity contract</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(sched?.retirementAnnuityPayments || 0)}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>4</strong> Payments to an overseas pension scheme</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(sched?.overseasPensionPayments || 0)}
                       </div>
                     </div>
                   </div>
@@ -971,35 +1001,35 @@ export default function SA100FormReportView({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>5</strong> Gift Aid payments made in year to 5 April {nextYear}</span>
-                        {renderCurrencyBoxes(currentReturn?.giftAidPayments || 0)}
+                        {renderCurrencyBoxes(currentReturn?.giftAidDonations || currentReturn?.giftAidPayments || sched?.giftAidDonations || 0)}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>9</strong> Value of qualifying shares/securities gifted to charity</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(sched?.charityGiftShares || 0)}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>6</strong> Total of any 'one-off' payments in box 5</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(sched?.giftAidOneOff || 0)}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>10</strong> Value of qualifying land/buildings gifted to charity</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(sched?.charityGiftLand || 0)}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>7</strong> Gift Aid payments treated as made in year to 5 April {baseYear}</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(sched?.giftAidTreatedPriorYear || 0)}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>11</strong> Value of qualifying investments gifted to non-UK charities</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(sched?.charityGiftInvestmentsNonUk || 0)}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>8</strong> Gift Aid payments made after 5 April {nextYear} treated as current year</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(sched?.giftAidTreatedCurrentYear || 0)}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>12</strong> Gift Aid payments to non-UK charities in box 5</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(sched?.giftAidNonUk || 0)}
                       </div>
                     </div>
                   </div>
@@ -1012,19 +1042,21 @@ export default function SA100FormReportView({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>13</strong> If registered blind on local authority register put 'X'</span>
-                        {renderCheckbox(false)}
+                        {renderCheckbox(Boolean(sched?.isRegisteredBlind || client?.isRegisteredBlind))}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>15</strong> Want spouse's or civil partner's surplus allowance put 'X'</span>
-                        {renderCheckbox(false)}
+                        {renderCheckbox(Boolean(sched?.claimMarriageAllowanceRecipient || currentReturn?.claimMarriageAllowanceRecipient))}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>14</strong> Enter name of local authority or other register</span>
-                        <div className="border border-slate-300 bg-white p-2 rounded h-8"></div>
+                        <div className="border border-slate-300 bg-white p-2 rounded h-8 text-[11px] text-slate-700 font-mono flex items-center">
+                          {sched?.blindRegisterAuthority || (sched?.isRegisteredBlind ? client?.city || "Local Authority" : "")}
+                        </div>
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>16</strong> Want spouse/civil partner to have your surplus allowance put 'X'</span>
-                        {renderCheckbox(false)}
+                        {renderCheckbox(Boolean(sched?.claimMarriageAllowanceTransferor || currentReturn?.claimMarriageAllowanceTransferor))}
                       </div>
                     </div>
                   </div>
@@ -1043,7 +1075,7 @@ export default function SA100FormReportView({
               <div id="sa100-page-5" className="sa100-paper-page bg-white text-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-8 sm:p-10 shadow-md max-w-4xl mx-auto space-y-5 text-xs print:border-none print:shadow-none print:p-0 print:m-0 print:max-w-none print:rounded-none print:break-after-page">
                 
                 <div className="text-center font-mono text-[11px] font-bold text-red-600 select-none pb-1">
-                  IR Mark: {currentReturn?.irMark || "5Z6zag3NQSIxf3KUUWK2RpFVNbo="}
+                  {irMarkDisplay}
                 </div>
 
                 {/* Student Loan */}
@@ -1056,15 +1088,15 @@ export default function SA100FormReportView({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <span className="text-[11px] text-slate-700 block"><strong>1</strong> Notification that repayment began before 6 April {baseYear} put 'X'</span>
-                      {renderCheckbox(Boolean(currentReturn?.studentLoanPlan))}
+                      {renderCheckbox(Boolean((currentReturn?.studentLoanPlan && currentReturn.studentLoanPlan !== "None") || (sched?.studentLoanPlan && sched.studentLoanPlan !== "None")))}
                     </div>
                     <div className="space-y-1">
                       <span className="text-[11px] text-slate-700 block"><strong>3</strong> Think loan fully repaid within next 2 years put 'X'</span>
-                      {renderCheckbox(false)}
+                      {renderCheckbox(Boolean(sched?.studentLoanRepaidSoon))}
                     </div>
                     <div className="space-y-1">
                       <span className="text-[11px] text-slate-700 block"><strong>2</strong> Employer deducted Student Loan repayments</span>
-                      {renderCurrencyBoxes(currentReturn?.studentLoanDeductions || 0)}
+                      {renderCurrencyBoxes(currentReturn?.studentLoanDeductions || sched?.studentLoanDeductions || (Array.isArray(sched.employments) ? sched.employments.reduce((sum: number, e: any) => sum + parseFloat(e.studentLoanDeducted || "0"), 0) : 0))}
                     </div>
                   </div>
                 </div>
@@ -1079,11 +1111,11 @@ export default function SA100FormReportView({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <span className="text-[11px] text-slate-700 block"><strong>1</strong> Enter total amount of Child Benefit entitled to receive</span>
-                      {renderCurrencyBoxes(currentReturn?.childBenefitReceived || 0)}
+                      {renderCurrencyBoxes(currentReturn?.childBenefitReceived || sched?.childBenefitReceived || sched?.childBenefit?.amountReceived || 0)}
                     </div>
                     <div className="space-y-1">
                       <span className="text-[11px] text-slate-700 block"><strong>2</strong> Enter number of children entitled for</span>
-                      {renderBoxes(currentReturn?.childBenefitChildren || "", 2)}
+                      {renderBoxes(currentReturn?.childBenefitChildrenCount || sched?.childBenefitChildrenCount || sched?.childBenefit?.childrenCount || (parseFloat(currentReturn?.childBenefitReceived || sched?.childBenefitReceived || "0") > 0 ? "1" : ""), 2)}
                     </div>
                   </div>
                 </div>
@@ -1096,7 +1128,7 @@ export default function SA100FormReportView({
                 <div className="bg-[#f0f9fa] border border-[#b2e2e6] rounded-lg p-4">
                   <div className="space-y-1">
                     <span className="text-[11px] text-slate-700 block"><strong>1</strong> Dividends and salary from personal service company in tax year</span>
-                    {renderCurrencyBoxes(0)}
+                    {renderCurrencyBoxes(sched?.personalServiceCompanyIncome || 0)}
                   </div>
                 </div>
 
@@ -1131,7 +1163,7 @@ export default function SA100FormReportView({
               <div id="sa100-page-6" className="sa100-paper-page bg-white text-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-8 sm:p-10 shadow-md max-w-4xl mx-auto space-y-5 text-xs print:border-none print:shadow-none print:p-0 print:m-0 print:max-w-none print:rounded-none print:break-after-page">
                 
                 <div className="text-center font-mono text-[11px] font-bold text-red-600 select-none pb-1">
-                  IR Mark: {currentReturn?.irMark || "5Z6zag3NQSIxf3KUUWK2RpFVNbo="}
+                  {irMarkDisplay}
                 </div>
 
                 <div className="border-b-4 border-[#008080] pb-2">
@@ -1143,11 +1175,11 @@ export default function SA100FormReportView({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <span className="text-[11px] text-slate-700 block"><strong>2</strong> Collect tax due (under £3,000) through next year's PAYE tax code</span>
-                      {renderCheckbox(Boolean(currentReturn?.codingOutSelected))}
+                      {renderCheckbox(Boolean(sched?.electPayeCodingOut || currentReturn?.canCodeOut || sched?.canCodeOut))}
                     </div>
                     <div className="space-y-1">
                       <span className="text-[11px] text-slate-700 block"><strong>3</strong> Do not collect High Income Child Benefit charge through tax code</span>
-                      {renderCheckbox(false)}
+                      {renderCheckbox(Boolean(sched?.doNotCodeOutHicbc))}
                     </div>
                   </div>
                 </div>
@@ -1162,60 +1194,60 @@ export default function SA100FormReportView({
                     <div className="space-y-1">
                       <span className="text-[11px] text-slate-700 block"><strong>4</strong> Name of bank or building society</span>
                       <div className="p-1.5 border border-slate-300 bg-white rounded font-mono font-bold text-xs">
-                        {currentReturn?.bankName || "Barclays Bank UK PLC"}
+                        {bankName || "—"}
                       </div>
                     </div>
 
                     <div className="space-y-1">
                       <span className="text-[11px] text-slate-700 block"><strong>11</strong> If your nominee is your tax adviser, put 'X'</span>
-                      {renderCheckbox(false)}
+                      {renderCheckbox(isRepaymentToAgent)}
                     </div>
 
                     <div className="space-y-1">
                       <span className="text-[11px] text-slate-700 block"><strong>5</strong> Name of account holder (or nominee)</span>
                       <div className="p-1.5 border border-slate-300 bg-white rounded font-mono font-bold text-xs">
-                        {currentReturn?.accountHolderName || client?.clientName || "Taxpayer"}
+                        {accountName || "—"}
                       </div>
                     </div>
 
                     <div className="space-y-1">
                       <span className="text-[11px] text-slate-700 block"><strong>12</strong> Nominee's address</span>
                       <div className="p-1.5 border border-slate-300 bg-white rounded font-mono text-xs">
-                        {client?.addressLine1 || "—"}
+                        {isRepaymentToAgent ? (firmDetails?.addressLine1 || "Practice Registered Office") : (bankDetails.nomineeAddress || "—")}
                       </div>
                     </div>
 
                     <div className="space-y-1">
                       <span className="text-[11px] text-slate-700 block"><strong>6</strong> Branch sort code</span>
                       <div className="flex items-center gap-1 font-mono">
-                        {renderBoxes((currentReturn?.sortCode || "200000").slice(0, 2), 2)}
+                        {renderBoxes(sortCodeStr.slice(0, 2), 2)}
                         <span>-</span>
-                        {renderBoxes((currentReturn?.sortCode || "200000").slice(2, 4), 2)}
+                        {renderBoxes(sortCodeStr.slice(2, 4), 2)}
                         <span>-</span>
-                        {renderBoxes((currentReturn?.sortCode || "200000").slice(4, 6), 2)}
+                        {renderBoxes(sortCodeStr.slice(4, 6), 2)}
                       </div>
                     </div>
 
                     <div className="space-y-1">
                       <span className="text-[11px] text-slate-700 block"><strong>13</strong> and postcode</span>
-                      {renderBoxes(client?.postcode || "E16AN", 8)}
+                      {renderBoxes(isRepaymentToAgent ? (firmDetails?.postcode || "") : (bankDetails.nomineePostcode || ""), 8)}
                     </div>
 
                     <div className="space-y-1">
                       <span className="text-[11px] text-slate-700 block"><strong>7</strong> Account number</span>
-                      {renderBoxes(currentReturn?.accountNumber || "12345678", 8)}
+                      {renderBoxes(accountNoStr, 8)}
                     </div>
 
                     <div className="space-y-1">
                       <span className="text-[11px] text-slate-700 block"><strong>14</strong> Authorise nominee to receive repayment signature</span>
-                      <div className="border border-dashed border-slate-300 bg-white p-2 rounded h-10 text-[10px] text-slate-400 font-mono flex items-center justify-center">
-                        Authorised direct BACS repayment to assessee nominated account
+                      <div className="border border-dashed border-slate-300 bg-white p-2 rounded h-10 text-[10px] text-slate-600 font-mono flex items-center justify-center text-center">
+                        {bankDetails.nomineeDeclaration ? "Authorised direct BACS repayment to nominee account" : "—"}
                       </div>
                     </div>
 
                     <div className="space-y-1 md:col-span-2 pt-2 border-t border-[#b2e2e6]/50">
                       <span className="text-[11px] text-slate-700 block"><strong>8</strong> Building society reference number</span>
-                      {renderBoxes("", 18)}
+                      {renderBoxes(buildingSocietyRef, 18)}
                     </div>
                   </div>
                 </div>
@@ -1233,7 +1265,7 @@ export default function SA100FormReportView({
               <div id="sa100-page-7" className="sa100-paper-page bg-white text-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-8 sm:p-10 shadow-md max-w-4xl mx-auto space-y-5 text-xs print:border-none print:shadow-none print:p-0 print:m-0 print:max-w-none print:rounded-none print:break-after-page">
                 
                 <div className="text-center font-mono text-[11px] font-bold text-red-600 select-none pb-1">
-                  IR Mark: {currentReturn?.irMark || "5Z6zag3NQSIxf3KUUWK2RpFVNbo="}
+                  {irMarkDisplay}
                 </div>
 
                 <div className="border-b-4 border-[#008080] pb-2">
@@ -1246,22 +1278,22 @@ export default function SA100FormReportView({
                     <div className="space-y-1">
                       <span className="text-[11px] text-slate-700 block"><strong>15</strong> Your tax adviser's name</span>
                       <div className="p-1.5 border border-slate-300 bg-white rounded font-mono font-bold text-xs">
-                        {firmDetails?.firmName || "SanSuite Practice Advisors LLP"}
+                        {firmDetails?.firmName || "—"}
                       </div>
                     </div>
                     <div className="space-y-1">
                       <span className="text-[11px] text-slate-700 block"><strong>17</strong> The first line of their address including postcode</span>
                       <div className="p-1.5 border border-slate-300 bg-white rounded font-mono text-xs">
-                        {firmDetails?.addressLine1 || "71-75 Shelton Street, London, WC2H 9JQ"}
+                        {[firmDetails?.addressLine1, firmDetails?.city, firmDetails?.postcode].filter(Boolean).join(", ") || "—"}
                       </div>
                     </div>
                     <div className="space-y-1">
                       <span className="text-[11px] text-slate-700 block"><strong>16</strong> Their phone number</span>
-                      {renderBoxes(firmDetails?.phone || "02079460000", 14)}
+                      {renderBoxes(firmDetails?.phone ? String(firmDetails.phone).replace(/\D/g, "") : "", 14)}
                     </div>
                     <div className="space-y-1">
                       <span className="text-[11px] text-slate-700 block"><strong>18</strong> The reference your adviser uses for you</span>
-                      {renderBoxes(client?.clientCode || "SAN-101", 10)}
+                      {renderBoxes(client?.clientCode || firmDetails?.saAgentId || "", 10)}
                     </div>
                   </div>
                 </div>
@@ -1274,8 +1306,8 @@ export default function SA100FormReportView({
                 <div className="space-y-1">
                   <span className="font-bold text-xs text-slate-900 block"><strong>19</strong> Please give any other information in this space</span>
                   <div className="border-2 border-slate-300 bg-white p-4 rounded-lg min-h-[360px] font-mono text-xs text-slate-700 leading-relaxed">
-                    {currentReturn?.additionalInformation || (
-                      <div className="text-slate-400 italic">
+                    {currentReturn?.additionalInformation || sched?.whiteSpaceNotes || currentReturn?.notes || (
+                      <div className="text-slate-500 italic">
                         Return submitted electronically via HMRC Transaction Engine GovTalk XML API. Full schedules and statutory accounts verified under Self Assessment TMA 1970 s9.
                       </div>
                     )}
@@ -1295,7 +1327,7 @@ export default function SA100FormReportView({
               <div id="sa100-page-8" className="sa100-paper-page bg-white text-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-8 sm:p-10 shadow-md max-w-4xl mx-auto space-y-5 text-xs print:border-none print:shadow-none print:p-0 print:m-0 print:max-w-none print:rounded-none print:break-after-page">
                 
                 <div className="text-center font-mono text-[11px] font-bold text-red-600 select-none pb-1">
-                  IR Mark: {currentReturn?.irMark || "5Z6zag3NQSIxf3KUUWK2RpFVNbo="}
+                  {irMarkDisplay}
                 </div>
 
                 <div className="border-b-4 border-[#008080] pb-2">
@@ -1309,11 +1341,11 @@ export default function SA100FormReportView({
                     <div className="space-y-4">
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>20</strong> If this tax return contains provisional or estimated figures, put 'X'</span>
-                        {renderCheckbox(false)}
+                        {renderCheckbox(Boolean(sched?.hasProvisionalFigures))}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>21</strong> If you are enclosing separate supplementary pages, put 'X'</span>
-                        {renderCheckbox(true)}
+                        {renderCheckbox(hasAnySupplementary)}
                       </div>
 
                       {/* Box 22: Declaration & Orange-bordered Signature box */}
@@ -1331,14 +1363,24 @@ export default function SA100FormReportView({
                             <span className="font-mono text-slate-800 font-bold text-sm">
                               {client?.clientName || "Assessee Signature"}
                             </span>
-                            <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200">
-                              Electronic Signature Verified
-                            </span>
+                            {currentReturn?.status === "Submitted" || currentReturn?.submittedAt ? (
+                              <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200">
+                                HMRC Submission Verified
+                              </span>
+                            ) : client?.esignStatus === "Signed" ? (
+                              <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200">
+                                Electronic Signature Verified
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-amber-700 font-semibold bg-amber-50 px-2.5 py-1 rounded border border-amber-200">
+                                Ready for Assessee Sign-off
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-2 pt-2">
                           <span className="text-[11px] text-slate-700 font-mono">Date DD MM YYYY</span>
-                          {renderBoxes("0102" + nextYear, 8)}
+                          {renderBoxes(declDateStr, 8)}
                         </div>
                       </div>
                     </div>
@@ -1347,19 +1389,19 @@ export default function SA100FormReportView({
                     <div className="space-y-3 border-l border-[#b2e2e6]/60 pl-5">
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>23</strong> If you have signed on behalf of someone else, enter the capacity. For example, executor, receiver</span>
-                        <div className="p-1.5 border border-slate-300 bg-white rounded font-mono text-xs">Executor / Receiver / Trustee</div>
+                        <div className="p-1.5 border border-slate-300 bg-white rounded font-mono text-xs">{sched?.signatoryCapacity || "Taxpayer / Self"}</div>
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>24</strong> Enter the name of the person you have signed for</span>
-                        <div className="p-1.5 border border-slate-300 bg-white rounded font-mono text-xs">{client?.clientName}</div>
+                        <div className="p-1.5 border border-slate-300 bg-white rounded font-mono text-xs">{client?.clientName || "—"}</div>
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>25</strong> If you filled in boxes 23 and 24 enter your name</span>
-                        <div className="p-1.5 border border-slate-300 bg-white rounded font-mono text-xs">Self</div>
+                        <div className="p-1.5 border border-slate-300 bg-white rounded font-mono text-xs">{sched?.signatoryName || client?.clientName || "Self"}</div>
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>26</strong> and your address</span>
-                        <div className="p-1.5 border border-slate-300 bg-white rounded font-mono text-xs">{client?.addressLine1 || "—"}</div>
+                        <div className="p-1.5 border border-slate-300 bg-white rounded font-mono text-xs">{[client?.addressLine1, client?.city, client?.postcode].filter(Boolean).join(", ") || "—"}</div>
                       </div>
                     </div>
                   </div>
@@ -1378,7 +1420,7 @@ export default function SA100FormReportView({
               <div id="sa100-page-9" className="sa100-paper-page bg-white text-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-8 sm:p-10 shadow-md max-w-4xl mx-auto space-y-5 text-xs print:border-none print:shadow-none print:p-0 print:m-0 print:max-w-none print:rounded-none print:break-after-page">
                 
                 <div className="text-center font-mono text-[11px] font-bold text-red-600 select-none pb-1">
-                  IR Mark: {currentReturn?.irMark || "5Z6zag3NQSIxf3KUUWK2RpFVNbo="}
+                  {irMarkDisplay}
                 </div>
 
                 {/* Header SA110 */}
@@ -1399,11 +1441,11 @@ export default function SA100FormReportView({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-[#f0f9fa] p-3.5 rounded-lg border border-[#b2e2e6]">
                   <div>
                     <span className="text-[11px] text-slate-600 block">Your name</span>
-                    <strong className="text-xs text-slate-900 font-mono">{client?.clientName}</strong>
+                    <strong className="text-xs text-slate-900 font-mono">{client?.clientName || "—"}</strong>
                   </div>
                   <div>
                     <span className="text-[11px] text-slate-600 block">Your Unique Taxpayer Reference (UTR)</span>
-                    {renderBoxes(utrStr || "123456789", 10)}
+                    {renderBoxes(utrStr, 10)}
                   </div>
                 </div>
 
@@ -1420,7 +1462,7 @@ export default function SA100FormReportView({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>1</strong> Total tax (this may include Student Loan repayment) and Class 4 NICs due</span>
-                        {renderCurrencyBoxes(incomeTaxDue)}
+                        {renderCurrencyBoxes(incomeTaxDue + class4Nic + parseFloat(currentReturn?.studentLoanDue || "0"))}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>4</strong> Class 4 NICs due</span>
@@ -1428,7 +1470,7 @@ export default function SA100FormReportView({
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>2</strong> Total tax and Class 4 NICs overpaid</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(netTaxDue < 0 ? Math.abs(netTaxDue) : 0)}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>5</strong> Capital Gains Tax due</span>
@@ -1440,7 +1482,7 @@ export default function SA100FormReportView({
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>6</strong> Pension charges due</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(sched?.pensionChargesDue || 0)}
                       </div>
                     </div>
                   </div>
@@ -1453,15 +1495,15 @@ export default function SA100FormReportView({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>7</strong> Underpaid tax for earlier years in tax code</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(sched?.underpaidTaxPriorYears || 0)}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>9</strong> Outstanding debt in your tax code</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(sched?.taxCodeDebt || 0)}
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-slate-700 block"><strong>8</strong> Underpaid tax for {baseYear}-{nextYearShort} in code for {nextYearShort}-{nextNextYearShort}</span>
-                        {renderCurrencyBoxes(0)}
+                        {renderCurrencyBoxes(sched?.underpaidTaxCurrentYear || 0)}
                       </div>
                     </div>
                   </div>
@@ -1497,7 +1539,7 @@ export default function SA100FormReportView({
               <div id="sa100-page-10" className="sa100-paper-page bg-white text-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-8 sm:p-10 shadow-md max-w-4xl mx-auto space-y-5 text-xs print:border-none print:shadow-none print:p-0 print:m-0 print:max-w-none print:rounded-none print:break-after-avoid">
                 
                 <div className="text-center font-mono text-[11px] font-bold text-red-600 select-none pb-1">
-                  IR Mark: {currentReturn?.irMark || "5Z6zag3NQSIxf3KUUWK2RpFVNbo="}
+                  {irMarkDisplay}
                 </div>
 
                 <div className="border-b-4 border-[#008080] pb-2">
@@ -1508,11 +1550,11 @@ export default function SA100FormReportView({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <span className="text-[11px] text-slate-700 block"><strong>12</strong> Blind person's surplus allowance you can have</span>
-                      {renderCurrencyBoxes(0)}
+                      {renderCurrencyBoxes(sched?.blindSurplusAllowance || 0)}
                     </div>
                     <div className="space-y-1">
                       <span className="text-[11px] text-slate-700 block"><strong>13</strong> Spouse/civil partner surplus allowance</span>
-                      {renderCurrencyBoxes(0)}
+                      {renderCurrencyBoxes(sched?.marriageAllowanceTaxReducer || 0)}
                     </div>
                   </div>
                 </div>
@@ -1525,15 +1567,15 @@ export default function SA100FormReportView({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <span className="text-[11px] text-slate-700 block"><strong>14</strong> Increase in tax due because of adjustments to earlier year</span>
-                      {renderCurrencyBoxes(0)}
+                      {renderCurrencyBoxes(sched?.adjustmentIncrease || 0)}
                     </div>
                     <div className="space-y-1">
                       <span className="text-[11px] text-slate-700 block"><strong>15</strong> Decrease in tax due because of adjustments to earlier year</span>
-                      {renderCurrencyBoxes(0)}
+                      {renderCurrencyBoxes(sched?.adjustmentDecrease || 0)}
                     </div>
                     <div className="space-y-1 md:col-span-2">
                       <span className="text-[11px] text-slate-700 block"><strong>16</strong> Any {nextYearShort}-{nextNextYearShort} repayment you are claiming now</span>
-                      {renderCurrencyBoxes(0)}
+                      {renderCurrencyBoxes(sched?.repaymentClaimedNow || 0)}
                     </div>
                   </div>
                 </div>
@@ -1545,7 +1587,7 @@ export default function SA100FormReportView({
                 <div className="space-y-1">
                   <span className="text-[11px] text-slate-700 block font-medium"><strong>17</strong> Please give any other information in this space</span>
                   <div className="border-2 border-slate-300 bg-white p-4 rounded-lg min-h-[300px] font-mono text-xs text-slate-600 leading-relaxed">
-                    SA110 Tax calculation completed with HMRC verified statutory standard formulas.
+                    {sched?.whiteSpaceNotesTC2 || `SA110 Tax calculation completed with HMRC verified statutory standard formulas (TMA 1970 s9). Total tax & NICs liability: £${netTaxDue.toFixed(2)}.`}
                   </div>
                 </div>
 
@@ -1564,7 +1606,7 @@ export default function SA100FormReportView({
               
               {/* Red IR Mark Centered */}
               <div className="text-center font-mono text-[11px] font-bold text-red-600 select-none pb-2 print:pb-1">
-                IR Mark: {currentReturn?.irMark || "5Z6zag3NQSIxf3KUUWK2RpFVNbo="}
+                {irMarkDisplay}
               </div>
 
               {/* Title */}
@@ -1579,14 +1621,14 @@ export default function SA100FormReportView({
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-slate-600">Client Name:</span>
                   <span className="px-3 py-1 rounded bg-[#e6f4f8] text-slate-900 font-bold font-mono">
-                    {client?.clientName || "Mr Ahsin Akhtar"}
+                    {client?.clientName || "—"}
                   </span>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-slate-600">UTR No :</span>
                   <span className="px-3 py-1 rounded bg-[#e6f4f8] text-slate-900 font-bold font-mono tracking-wider">
-                    {utrStr || "123456789"}
+                    {utrStr || "—"}
                   </span>
                 </div>
 

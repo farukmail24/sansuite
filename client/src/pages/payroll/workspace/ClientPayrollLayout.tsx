@@ -161,7 +161,7 @@ export default function ClientPayrollLayout({ children }: ClientPayrollLayoutPro
           </div>
 
           {/* Main Page Workspace Content */}
-          <div className="p-6">
+          <div className="p-6 w-full">
             {children}
           </div>
         </div>

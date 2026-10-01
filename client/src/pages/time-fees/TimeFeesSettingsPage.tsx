@@ -8,7 +8,7 @@ import {
   BarChart3, Clock, Briefcase, FileText, Settings, Receipt, 
   PieChart, Building2, Save, Plus, Trash2, CheckCircle2, 
   AlertCircle, RefreshCw, Mail, Check, Sliders, DollarSign,
-  HelpCircle, ShieldCheck
+  HelpCircle, ShieldCheck, Users, UserCheck, Shield
 } from "lucide-react";
 
 import { timeFeesSidebar } from "./sidebar";
@@ -19,6 +19,18 @@ interface ActivityRate {
   name: string;
   defaultRate: string;
   billable: boolean;
+}
+
+interface StaffRate {
+  userId: number;
+  name: string;
+  email: string;
+  roleTier: string;
+  capacityHoursPerWeek: string;
+  billableRatePerHour: string;
+  costRatePerHour: string;
+  assignedTasks: string[];
+  isActive: boolean;
 }
 
 const DEFAULT_ACTIVITIES: ActivityRate[] = [
@@ -36,8 +48,8 @@ export default function TimeFeesSettingsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Active section tab: "preferences" | "business" | "invoices" | "estimates" | "activities"
-  const [activeTab, setActiveTab] = useState<"preferences" | "business" | "invoices" | "estimates" | "activities">("preferences");
+  // Active section tab: "preferences" | "staff-rates" | "business" | "invoices" | "estimates" | "activities"
+  const [activeTab, setActiveTab] = useState<"preferences" | "staff-rates" | "business" | "invoices" | "estimates" | "activities">("preferences");
 
   // Fetch settings & practice profile from API
   const { data: settingsData, isLoading } = useQuery({
@@ -137,6 +149,68 @@ export default function TimeFeesSettingsPage() {
     }
   });
 
+  // Query staff rates
+  const { data: staffRates = [], isLoading: isLoadingStaff, refetch: refetchStaff } = useQuery<StaffRate[]>({
+    queryKey: ["/api/time-fees/manage/staff-rates"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/time-fees/manage/staff-rates");
+      return res.json();
+    },
+  });
+
+  // Staff rate edits state
+  const [staffRateEdits, setStaffRateEdits] = useState<Record<number, Partial<StaffRate>>>({});
+
+  const updateStaffField = (userId: number, field: keyof StaffRate, val: any) => {
+    setStaffRateEdits(prev => ({
+      ...prev,
+      [userId]: {
+        ...(prev[userId] || {}),
+        [field]: val,
+      }
+    }));
+  };
+
+  const syncStaffMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/time-fees/manage/sync-users");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/time-fees/manage/staff-rates"] });
+      toast({ title: "Staff Synchronized", description: data.message });
+    },
+    onError: (err: any) => {
+      toast({ title: "Sync Failed", description: err.message, variant: "destructive" });
+    }
+  });
+
+  const saveStaffRateMutation = useMutation({
+    mutationFn: async (payload: Partial<StaffRate>) => {
+      const res = await apiRequest("POST", "/api/time-fees/manage/staff-rates", payload);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/time-fees/manage/staff-rates"] });
+      toast({ title: "Rate Card Saved", description: "Staff capacity and chargeout rates updated successfully." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Save Failed", description: err.message, variant: "destructive" });
+    }
+  });
+
+  const handleSaveStaffRow = (user: StaffRate) => {
+    const edits = staffRateEdits[user.userId] || {};
+    saveStaffRateMutation.mutate({
+      userId: user.userId,
+      roleTier: edits.roleTier ?? user.roleTier,
+      capacityHoursPerWeek: edits.capacityHoursPerWeek ?? user.capacityHoursPerWeek,
+      billableRatePerHour: edits.billableRatePerHour ?? user.billableRatePerHour,
+      costRatePerHour: edits.costRatePerHour ?? user.costRatePerHour,
+      isActive: edits.isActive ?? user.isActive,
+    });
+  };
+
   const handleAddActivity = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newActivityName.trim()) return;
@@ -229,6 +303,16 @@ export default function TimeFeesSettingsPage() {
             }`}
           >
             <Clock size={14} /> Time & Work Preferences
+          </button>
+          <button
+            onClick={() => setActiveTab("staff-rates")}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors ${
+              activeTab === "staff-rates"
+                ? "bg-purple-100 text-purple-800 shadow-xs"
+                : "text-gray-600 hover:bg-gray-100"
+            }`}
+          >
+            <Users size={14} /> Staff Rate Cards & Capacity
           </button>
           <button
             onClick={() => setActiveTab("activities")}
@@ -395,6 +479,192 @@ export default function TimeFeesSettingsPage() {
                     <option value="hhmm">Hours & Minutes (e.g. 2h 45m)</option>
                   </select>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 1.5: Staff Rate Cards & Capacity (Capium Article 9000236008 & 9000271112) */}
+        {activeTab === "staff-rates" && (
+          <div className="space-y-5">
+            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
+                <div>
+                  <h2 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                    <Users size={16} className="text-purple-600" /> Staff Rate Cards & Weekly Capacity
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Configure individual staff target hours, billable rates, cost rates, and role access tiers (Admin, Manager, Staff).
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => syncStaffMutation.mutate()}
+                    disabled={syncStaffMutation.isPending}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 transition-colors shadow-xs"
+                  >
+                    <RefreshCw size={13} className={syncStaffMutation.isPending ? "animate-spin" : ""} />
+                    {syncStaffMutation.isPending ? "Syncing..." : "Sync Staff from My Admin"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Informational Guidance Box */}
+              <div className="p-3 bg-purple-50 rounded-xl border border-purple-100 text-xs text-purple-900 flex items-start gap-2.5">
+                <ShieldCheck size={16} className="text-purple-700 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <span className="font-bold">Capium Parity: Individual Staff Rate Overrides & Capacity</span>
+                  <p className="text-[11px] text-purple-800">
+                    When staff record time, their personalized billable rate (£/hr) and internal cost rate (£/hr) are applied automatically. The weekly capacity determines their timesheet completion target and utilization metrics on the Dashboard.
+                  </p>
+                </div>
+              </div>
+
+              {/* Staff Rate Cards Table */}
+              <div className="overflow-x-auto rounded-xl border border-gray-200">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-gray-50 text-gray-600 font-semibold border-b border-gray-200">
+                    <tr>
+                      <th className="py-2.5 px-3">Staff Member</th>
+                      <th className="py-2.5 px-3">Role Tier</th>
+                      <th className="py-2.5 px-3">Weekly Capacity (Hrs)</th>
+                      <th className="py-2.5 px-3">Billable Rate (£/hr)</th>
+                      <th className="py-2.5 px-3">Cost Rate (£/hr)</th>
+                      <th className="py-2.5 px-3">Status</th>
+                      <th className="py-2.5 px-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {isLoadingStaff ? (
+                      <tr>
+                        <td colSpan={7} className="py-8 text-center text-gray-400">
+                          <RefreshCw size={18} className="animate-spin inline mr-2 text-purple-600" />
+                          Loading staff rate cards...
+                        </td>
+                      </tr>
+                    ) : staffRates.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-12 text-center">
+                          <div className="max-w-sm mx-auto space-y-2">
+                            <Users size={32} className="mx-auto text-gray-300" />
+                            <p className="font-semibold text-gray-700 text-sm">No Staff Registered Yet</p>
+                            <p className="text-gray-500 text-xs">
+                              Sync users from your practice administration to automatically generate their Time & Fees rate cards.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => syncStaffMutation.mutate()}
+                              disabled={syncStaffMutation.isPending}
+                              className="mt-2 btn-SanSuite text-xs font-semibold px-4 py-2 inline-flex items-center gap-1.5"
+                            >
+                              <RefreshCw size={13} className={syncStaffMutation.isPending ? "animate-spin" : ""} />
+                              Sync Staff Now
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      staffRates.map((staff) => {
+                        const edits = staffRateEdits[staff.userId] || {};
+                        const currentRole = edits.roleTier ?? staff.roleTier;
+                        const currentCapacity = edits.capacityHoursPerWeek ?? staff.capacityHoursPerWeek;
+                        const currentBillable = edits.billableRatePerHour ?? staff.billableRatePerHour;
+                        const currentCost = edits.costRatePerHour ?? staff.costRatePerHour;
+                        const currentActive = edits.isActive ?? staff.isActive;
+                        const hasChanges = Object.keys(edits).length > 0;
+
+                        return (
+                          <tr key={staff.userId} className="hover:bg-purple-50/20 transition-colors">
+                            <td className="py-2.5 px-3">
+                              <div className="font-semibold text-gray-900">{staff.name}</div>
+                              <div className="text-[11px] text-gray-400 font-mono">{staff.email}</div>
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <select
+                                value={currentRole}
+                                onChange={(e) => updateStaffField(staff.userId, "roleTier", e.target.value)}
+                                className="SanSuite-input py-1 px-2 text-xs font-medium"
+                              >
+                                <option value="Admin">Admin (Full Access)</option>
+                                <option value="Manager">Manager (Approver)</option>
+                                <option value="Staff">Staff (Standard)</option>
+                              </select>
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  step="0.5"
+                                  min="0"
+                                  max="100"
+                                  value={currentCapacity}
+                                  onChange={(e) => updateStaffField(staff.userId, "capacityHoursPerWeek", e.target.value)}
+                                  className="SanSuite-input py-1 px-2 text-xs font-mono w-20 text-right"
+                                />
+                                <span className="text-gray-400 text-[11px]">hrs</span>
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <div className="relative w-24">
+                                <span className="absolute left-2 top-1.5 text-gray-400 text-xs">£</span>
+                                <input
+                                  type="number"
+                                  step="1"
+                                  min="0"
+                                  value={currentBillable}
+                                  onChange={(e) => updateStaffField(staff.userId, "billableRatePerHour", e.target.value)}
+                                  className="SanSuite-input py-1 pl-5 pr-2 text-xs font-mono font-semibold w-full text-right"
+                                />
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <div className="relative w-24">
+                                <span className="absolute left-2 top-1.5 text-gray-400 text-xs">£</span>
+                                <input
+                                  type="number"
+                                  step="1"
+                                  min="0"
+                                  value={currentCost}
+                                  onChange={(e) => updateStaffField(staff.userId, "costRatePerHour", e.target.value)}
+                                  className="SanSuite-input py-1 pl-5 pr-2 text-xs font-mono text-gray-600 w-full text-right"
+                                />
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <button
+                                type="button"
+                                onClick={() => updateStaffField(staff.userId, "isActive", !currentActive)}
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                                  currentActive
+                                    ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
+                                    : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                                }`}
+                              >
+                                {currentActive ? "Active" : "Inactive"}
+                              </button>
+                            </td>
+                            <td className="py-2.5 px-3 text-right">
+                              <button
+                                type="button"
+                                onClick={() => handleSaveStaffRow(staff)}
+                                disabled={saveStaffRateMutation.isPending || !hasChanges}
+                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors shadow-xs ${
+                                  hasChanges
+                                    ? "bg-purple-700 text-white hover:bg-purple-800"
+                                    : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                                }`}
+                              >
+                                <Save size={12} />
+                                {hasChanges ? "Save" : "Saved"}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>

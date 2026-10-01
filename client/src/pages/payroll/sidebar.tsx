@@ -2,7 +2,7 @@ import {
   LayoutDashboard, Users, Building2, Calculator,
   Clock, Shield, Send, FileSpreadsheet, FileText,
   Settings, Award, Layers, CheckCircle2, DollarSign,
-  Calendar, Briefcase, Car
+  Calendar, Briefcase, Car, ArrowLeft
 } from "lucide-react";
 
 export const practicePayrollSidebar = [
@@ -17,6 +17,12 @@ export const practicePayrollSidebar = [
 export function getClientPayrollSidebar(clientId: string | number) {
   const cId = String(clientId);
   return [
+    {
+      label: "Back to Practice",
+      icon: <ArrowLeft size={15} />,
+      route: "/payroll"
+    },
+    { isHeader: true, label: "Employer Workspace" },
     {
       label: "Dashboard",
       icon: <LayoutDashboard size={15} />,

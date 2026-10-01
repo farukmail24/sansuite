@@ -13,6 +13,7 @@ import { useState } from "react";
 import GlobalNavActions from "./GlobalNavActions";
 import SystemAnnouncementsBanner from "./SystemAnnouncementsBanner";
 import SupportTicketWidget from "./SupportTicketWidget";
+import GlobalFloatingTimer from "../time-fees/GlobalFloatingTimer";
 
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "../../lib/queryClient";
@@ -128,13 +129,32 @@ export default function AppLayout({ children, sidebar, module }: AppLayoutProps)
                   );
                 }
 
-                const currentTabParam = new URLSearchParams(searchString).get("tab");
-                const hasActiveChild = item.children?.some((c) => {
-                  if (c.route === fullLocation) return true;
-                  const cBase = c.route.split("?")[0];
-                  if (location === cBase) return true;
+                const isChildRouteActive = (childRoute?: string) => {
+                  if (!childRoute) return false;
+                  if (childRoute === fullLocation) return true;
+
+                  const [childPath, childQuery] = childRoute.split("?");
+                  if (location !== childPath) return false;
+
+                  const childParams = new URLSearchParams(childQuery || "");
+                  const currentParams = new URLSearchParams(searchString || "");
+
+                  if (childParams.has("tab")) {
+                    return childParams.get("tab") === currentParams.get("tab");
+                  }
+
+                  const currentTab = currentParams.get("tab");
+                  if (!currentTab || currentTab === "additions" || currentTab === "runs" || currentTab === "overview") {
+                    const hasSiblingExactTab = item.children?.some(
+                      (c) => c.route?.includes(`tab=${currentTab}`)
+                    );
+                    return !hasSiblingExactTab;
+                  }
+
                   return false;
-                });
+                };
+
+                const hasActiveChild = item.children?.some((c) => isChildRouteActive(c.route));
                 const isExpanded = expandedItems[item.label] !== undefined ? expandedItems[item.label] : hasActiveChild;
 
                 return (
@@ -159,13 +179,7 @@ export default function AppLayout({ children, sidebar, module }: AppLayoutProps)
                         {isExpanded && (
                           <div className="bg-black/25 rounded-md my-0.5 py-0.5">
                             {item.children.map((child) => {
-                              let isChildActive = child.route === fullLocation;
-
-                              if (!isChildActive) {
-                                if (child.route && !child.route.includes("?")) {
-                                  isChildActive = location === child.route;
-                                }
-                              }
+                              const isChildActive = isChildRouteActive(child.route);
 
                               return (
                                 <Link
@@ -192,6 +206,7 @@ export default function AppLayout({ children, sidebar, module }: AppLayoutProps)
                         className={`SanSuite-sidebar-item w-full text-left flex items-center justify-between group ${
                           item.route === fullLocation ||
                           (location === item.route && !item.route?.includes("?") && !searchString?.includes("tab=")) ||
+                          (item.route?.endsWith("/dashboard") && location === item.route.replace(/\/dashboard$/, "")) ||
                           (item.route === "/365/dashboard" && (location === "/365" || location === "/365/dashboard") && !searchString?.includes("tab=")) ||
                           (item.route === "/365/clients" && (location === "/365/clients" || location === "/365/manage/clients" || searchString?.includes("tab=clients"))) ||
                           (item.route === "/365/users" && (location === "/365/users" || location === "/365/manage/users" || searchString?.includes("tab=users"))) ||
@@ -229,6 +244,7 @@ export default function AppLayout({ children, sidebar, module }: AppLayoutProps)
       </div>
 
       <SupportTicketWidget />
+      <GlobalFloatingTimer />
     </div>
   );
 }

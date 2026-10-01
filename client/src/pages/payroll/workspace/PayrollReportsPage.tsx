@@ -6,6 +6,7 @@ import {
   FileSpreadsheet, Download, Printer, Calculator,
   Calendar, FileText, CheckCircle2, UserCheck, Award
 } from "lucide-react";
+import { HMRCP60Modal, HMRCP45Modal } from "../components/StatutoryCertificates";
 
 export default function PayrollReportsPage() {
   return (
@@ -18,6 +19,10 @@ export default function PayrollReportsPage() {
 function PayrollReportsContent() {
   const { clientId, taxYear } = useClientPayroll();
   const [activeTab, setActiveTab] = useState<"p32" | "summary" | "p45" | "p60" | "calc">("p32");
+
+  // Certificate Modals
+  const [selectedP60EmpId, setSelectedP60EmpId] = useState<number | null>(null);
+  const [selectedP45EmpId, setSelectedP45EmpId] = useState<number | null>(null);
 
   // Calculator state
   const [calcSalary, setCalcSalary] = useState("35000");
@@ -71,7 +76,7 @@ function PayrollReportsContent() {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6 w-full">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -283,20 +288,29 @@ function PayrollReportsContent() {
             </p>
 
             <div className="space-y-2">
-              {employees.map((e) => (
-                <div key={e.id} className="p-3 border border-gray-200 rounded-lg flex items-center justify-between text-xs hover:bg-gray-50">
-                  <div>
-                    <p className="font-bold text-gray-900">{e.name || `${e.firstName} ${e.lastName}`}</p>
-                    <p className="text-gray-500 text-[11px]">NINO: <span className="font-mono">{e.nationalInsuranceNumber || "—"}</span> • Tax Code: <span className="font-mono">{e.taxCode || "1257L"}</span></p>
-                  </div>
-                  <button
-                    onClick={() => window.open(`/api/payroll/reports/p60/${e.id}`, "_blank")}
-                    className="btn-SanSuite inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
-                  >
-                    <Download size={13} /> Generate P60 PDF
-                  </button>
+              {employees.length === 0 ? (
+                <div className="py-8 text-center text-gray-400 border border-dashed rounded-lg">
+                  <Award size={24} className="mx-auto text-gray-300 mb-1" />
+                  No employees found for this scheme.
                 </div>
-              ))}
+              ) : (
+                employees.map((e) => (
+                  <div key={e.id} className="p-3 border border-gray-200 rounded-lg flex items-center justify-between text-xs hover:bg-gray-50 bg-white">
+                    <div>
+                      <p className="font-bold text-gray-900">{e.name || `${e.firstName} ${e.lastName}`}</p>
+                      <p className="text-gray-500 text-[11px]">NINO: <span className="font-mono">{e.nationalInsuranceNumber || "—"}</span> • Tax Code: <span className="font-mono">{e.taxCode || "1257L"}</span></p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setSelectedP60EmpId(e.id)}
+                        className="btn-SanSuite inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
+                      >
+                        <Award size={13} /> View &amp; Print P60
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}
@@ -313,20 +327,21 @@ function PayrollReportsContent() {
               {employees.filter((e) => e.status === "Terminated" || e.leavingDate).length === 0 ? (
                 <div className="py-8 text-center text-gray-400 border border-dashed rounded-lg">
                   <UserCheck size={24} className="mx-auto text-gray-300 mb-1" />
-                  No leavers recorded. When an employee leaves, their Form P45 can be downloaded here.
+                  <p className="font-semibold text-gray-700 text-xs">No leavers recorded</p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">When an employee's employment ends, their statutory Form P45 can be viewed, printed, or exported here.</p>
                 </div>
               ) : (
                 employees.filter((e) => e.status === "Terminated" || e.leavingDate).map((e) => (
-                  <div key={e.id} className="p-3 border border-gray-200 rounded-lg flex items-center justify-between text-xs hover:bg-gray-50">
+                  <div key={e.id} className="p-3 border border-gray-200 rounded-lg flex items-center justify-between text-xs hover:bg-gray-50 bg-white">
                     <div>
                       <p className="font-bold text-gray-900">{e.name || `${e.firstName} ${e.lastName}`}</p>
-                      <p className="text-gray-500 text-[11px]">Leaving Date: {e.leavingDate || "Recorded"}</p>
+                      <p className="text-gray-500 text-[11px]">Leaving Date: <span className="font-medium text-red-600">{e.leavingDate || "Recorded"}</span> • NINO: <span className="font-mono">{e.nationalInsuranceNumber || "—"}</span></p>
                     </div>
                     <button
-                      onClick={() => window.open(`/api/payroll/reports/p45/${e.id}`, "_blank")}
+                      onClick={() => setSelectedP45EmpId(e.id)}
                       className="btn-SanSuite inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
                     >
-                      <Download size={13} /> Download Form P45
+                      <UserCheck size={13} /> View &amp; Print Form P45
                     </button>
                   </div>
                 ))
@@ -335,6 +350,18 @@ function PayrollReportsContent() {
           </div>
         )}
       </div>
+
+      {/* HMRC Statutory Form P60 Modal */}
+      <HMRCP60Modal
+        employeeId={selectedP60EmpId}
+        onClose={() => setSelectedP60EmpId(null)}
+      />
+
+      {/* HMRC Statutory Form P45 Modal */}
+      <HMRCP45Modal
+        employeeId={selectedP45EmpId}
+        onClose={() => setSelectedP45EmpId(null)}
+      />
     </div>
   );
 }

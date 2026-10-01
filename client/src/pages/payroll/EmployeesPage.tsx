@@ -5,10 +5,11 @@ import ClientPayrollLayout from "./workspace/ClientPayrollLayout";
 import { practicePayrollSidebar } from "./sidebar";
 import {
   Users, Plus, Search, X, CheckCircle2,
-  Trash2, Edit2, AlertCircle, Building2
+  Trash2, Edit2, AlertCircle, Building2, Award, UserCheck
 } from "lucide-react";
 import { useLocation, useRoute } from "wouter";
 import { apiRequest } from "../../lib/queryClient";
+import { HMRCP60Modal, HMRCP45Modal } from "./components/StatutoryCertificates";
 
 export default function EmployeesPage() {
   const [isClientRoute] = useRoute("/payroll/:clientId/employees");
@@ -24,7 +25,7 @@ export default function EmployeesPage() {
   return (
     <AppLayout sidebar={practicePayrollSidebar} module="Payroll">
       <div className="p-6 bg-gray-50 min-h-screen">
-        <div className="max-w-7xl mx-auto">
+        <div className="w-full">
           <EmployeesContent />
         </div>
       </div>
@@ -36,6 +37,8 @@ function EmployeesContent() {
   const qc = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [search, setSearch] = useState("");
+  const [selectedP60EmpId, setSelectedP60EmpId] = useState<number | null>(null);
+  const [selectedP45EmpId, setSelectedP45EmpId] = useState<number | null>(null);
   const [form, setForm] = useState({
     firstName: "",
     lastName: "",
@@ -176,17 +179,37 @@ function EmployeesContent() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => {
-                        if (confirm(`Remove employee ${e.name || e.firstName}?`)) {
-                          deleteEmployee.mutate(e.id);
-                        }
-                      }}
-                      className="text-gray-400 hover:text-red-600 p-1 rounded hover:bg-red-50 cursor-pointer"
-                      title="Remove"
-                    >
-                      <Trash2 size={13} />
-                    </button>
+                    <div className="flex items-center justify-end gap-1.5">
+                      <button
+                        onClick={() => setSelectedP60EmpId(e.id)}
+                        className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded text-[11px] font-semibold inline-flex items-center gap-1 border border-purple-200 cursor-pointer transition-colors"
+                        title="View HMRC P60 Certificate"
+                      >
+                        <Award size={11} /> P60
+                      </button>
+
+                      {(e.status === "Terminated" || e.leavingDate) && (
+                        <button
+                          onClick={() => setSelectedP45EmpId(e.id)}
+                          className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded text-[11px] font-semibold inline-flex items-center gap-1 border border-amber-200 cursor-pointer transition-colors"
+                          title="View HMRC P45 Certificate"
+                        >
+                          <UserCheck size={11} /> P45
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => {
+                          if (confirm(`Remove employee ${e.name || e.firstName}?`)) {
+                            deleteEmployee.mutate(e.id);
+                          }
+                        }}
+                        className="text-gray-400 hover:text-red-600 p-1.5 rounded hover:bg-red-50 cursor-pointer transition-colors"
+                        title="Remove"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -267,6 +290,18 @@ function EmployeesContent() {
           </div>
         </div>
       )}
+
+      {/* HMRC Statutory Form P60 Modal */}
+      <HMRCP60Modal
+        employeeId={selectedP60EmpId}
+        onClose={() => setSelectedP60EmpId(null)}
+      />
+
+      {/* HMRC Statutory Form P45 Modal */}
+      <HMRCP45Modal
+        employeeId={selectedP45EmpId}
+        onClose={() => setSelectedP45EmpId(null)}
+      />
     </div>
   );
 }

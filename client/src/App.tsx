@@ -666,6 +666,7 @@ function AppRoutes() {
       <Route path="/payroll/:clientId/payruns" component={R_PayRunsPage} />
       <Route path="/payroll/:clientId/process" component={R_PayRunsPage} />
       <Route path="/payroll/:clientId/auto-enrolment" component={R_AutoEnrolmentPage} />
+      <Route path="/payroll/:clientId/pensions" component={R_AutoEnrolmentPage} />
       <Route path="/payroll/:clientId/submissions" component={R_PayrollSubmissionsPage} />
       <Route path="/payroll/:clientId/p11d" component={R_P11dFormsPage} />
       <Route path="/payroll/:clientId/reports" component={R_PayrollReportsPage} />

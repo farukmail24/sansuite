@@ -5,7 +5,7 @@ import { apiRequest } from "../../../lib/queryClient";
 import {
   Users, Calculator, Send, CheckCircle2, AlertCircle,
   Calendar, FileText, ArrowRight, Shield, TrendingUp,
-  DollarSign, Clock, Layers, HelpCircle
+  DollarSign, Clock, Layers, HelpCircle, Settings, Building2, ChevronRight
 } from "lucide-react";
 
 export default function ClientPayrollDashboard() {
@@ -45,7 +45,7 @@ function DashboardContent() {
   const monthlyPay = data?.monthlyPay || [];
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6 w-full">
       {/* Welcome & Quick Action Banner */}
       <div className="bg-gradient-to-r from-purple-700 to-indigo-800 rounded-xl p-6 text-white shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -82,61 +82,160 @@ function DashboardContent() {
         </div>
       </div>
 
-      {/* Capium-style Payroll Workflow Stepper */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-xs">
-        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
-          Payroll Operating Workflow
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+      {/* 5-Step Guided Payroll Operating Workflow */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-gray-100 pb-3">
+          <div>
+            <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-purple-600 inline-block"></span>
+              Step-by-Step Payroll Operating Workflow
+            </h3>
+            <p className="text-[11px] text-gray-500 mt-0.5">
+              Follow these 5 statutory steps sequentially to set up and run a fully compliant UK PAYE payroll cycle.
+            </p>
+          </div>
+          <span className="text-[11px] text-purple-700 font-semibold bg-purple-50 px-2.5 py-1 rounded-full border border-purple-200">
+            HMRC PAYE Tax Year {taxYear}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          {/* Step 1: PAYE & Reliefs Setup */}
+          <Link
+            href={`/payroll/${clientId}/settings`}
+            className="p-3.5 rounded-xl border border-gray-200 hover:border-purple-300 hover:bg-purple-50/40 transition-all flex flex-col justify-between cursor-pointer group bg-gray-50/50"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="w-6 h-6 rounded-md bg-purple-600 text-white flex items-center justify-center font-bold text-xs">
+                  1
+                </span>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                  paye?.payeReference ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-amber-50 text-amber-700 border border-amber-200"
+                }`}>
+                  {paye?.payeReference ? "Configured" : "Needs Setup"}
+                </span>
+              </div>
+              <p className="text-xs font-bold text-gray-900 group-hover:text-purple-700 transition-colors">
+                PAYE Scheme &amp; Reliefs
+              </p>
+              <p className="text-[11px] text-gray-500 mt-1 leading-snug">
+                Employer Name, PAYE Ref &amp; £5,000 Employment Allowance.
+              </p>
+            </div>
+            <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] text-purple-700 font-semibold">
+              <span>{paye?.employerName ? "Review Scheme" : "Setup Scheme"}</span>
+              <ChevronRight size={13} className="group-hover:translate-x-0.5 transition-transform" />
+            </div>
+          </Link>
+
+          {/* Step 2: Employees & Tax Codes */}
           <Link
             href={`/payroll/${clientId}/employees`}
-            className="p-3 rounded-lg border border-gray-100 hover:border-purple-300 hover:bg-purple-50/50 transition-all flex items-start gap-3 cursor-pointer group"
+            className="p-3.5 rounded-xl border border-gray-200 hover:border-purple-300 hover:bg-purple-50/40 transition-all flex flex-col justify-between cursor-pointer group bg-gray-50/50"
           >
-            <div className="w-7 h-7 rounded-md bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-xs shrink-0 group-hover:bg-purple-600 group-hover:text-white transition-colors">
-              1
-            </div>
             <div>
-              <p className="text-xs font-bold text-gray-800 group-hover:text-purple-700">Employees & Tax Codes</p>
-              <p className="text-[11px] text-gray-500 mt-0.5">{employees.active} active staff enrolled</p>
+              <div className="flex items-center justify-between mb-2">
+                <span className="w-6 h-6 rounded-md bg-indigo-600 text-white flex items-center justify-center font-bold text-xs">
+                  2
+                </span>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                  employees.total > 0 ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-gray-100 text-gray-600 border border-gray-200"
+                }`}>
+                  {employees.active} Active
+                </span>
+              </div>
+              <p className="text-xs font-bold text-gray-900 group-hover:text-indigo-700 transition-colors">
+                Employees &amp; Tax Codes
+              </p>
+              <p className="text-[11px] text-gray-500 mt-1 leading-snug">
+                NINO, Tax Codes (1257L), Salary, and Bank details for BACS.
+              </p>
+            </div>
+            <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] text-indigo-700 font-semibold">
+              <span>{employees.total > 0 ? "Manage Staff" : "+ Add Staff"}</span>
+              <ChevronRight size={13} className="group-hover:translate-x-0.5 transition-transform" />
             </div>
           </Link>
 
+          {/* Step 3: Workplace Pensions & Auto Enrolment */}
           <Link
-            href={`/payroll/${clientId}/additional`}
-            className="p-3 rounded-lg border border-gray-100 hover:border-purple-300 hover:bg-purple-50/50 transition-all flex items-start gap-3 cursor-pointer group"
+            href={`/payroll/${clientId}/auto-enrolment`}
+            className="p-3.5 rounded-xl border border-gray-200 hover:border-purple-300 hover:bg-purple-50/40 transition-all flex flex-col justify-between cursor-pointer group bg-gray-50/50"
           >
-            <div className="w-7 h-7 rounded-md bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-              2
-            </div>
             <div>
-              <p className="text-xs font-bold text-gray-800 group-hover:text-indigo-700">Additional Pay & Leave</p>
-              <p className="text-[11px] text-gray-500 mt-0.5">Overtime, bonus, SSP & SMP</p>
+              <div className="flex items-center justify-between mb-2">
+                <span className="w-6 h-6 rounded-md bg-teal-600 text-white flex items-center justify-center font-bold text-xs">
+                  3
+                </span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-teal-50 text-teal-700 border border-teal-200">
+                  Auto Enrol
+                </span>
+              </div>
+              <p className="text-xs font-bold text-gray-900 group-hover:text-teal-700 transition-colors">
+                Workplace Pensions
+              </p>
+              <p className="text-[11px] text-gray-500 mt-1 leading-snug">
+                NEST/People's Pension, 5%+3% assessment &amp; TPR notices.
+              </p>
+            </div>
+            <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] text-teal-700 font-semibold">
+              <span>Pensions &amp; Letters</span>
+              <ChevronRight size={13} className="group-hover:translate-x-0.5 transition-transform" />
             </div>
           </Link>
 
+          {/* Step 4: Calculate Pay Run & Payslips */}
           <Link
             href={`/payroll/${clientId}/payruns`}
-            className="p-3 rounded-lg border border-gray-100 hover:border-purple-300 hover:bg-purple-50/50 transition-all flex items-start gap-3 cursor-pointer group"
+            className="p-3.5 rounded-xl border border-gray-200 hover:border-purple-300 hover:bg-purple-50/40 transition-all flex flex-col justify-between cursor-pointer group bg-gray-50/50"
           >
-            <div className="w-7 h-7 rounded-md bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs shrink-0 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
-              3
-            </div>
             <div>
-              <p className="text-xs font-bold text-gray-800 group-hover:text-emerald-700">Calculate & Process</p>
-              <p className="text-[11px] text-gray-500 mt-0.5">Payslips, BACS & nominal journal</p>
+              <div className="flex items-center justify-between mb-2">
+                <span className="w-6 h-6 rounded-md bg-emerald-600 text-white flex items-center justify-center font-bold text-xs">
+                  4
+                </span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  Pay Runs
+                </span>
+              </div>
+              <p className="text-xs font-bold text-gray-900 group-hover:text-emerald-700 transition-colors">
+                Process Pay Run
+              </p>
+              <p className="text-[11px] text-gray-500 mt-1 leading-snug">
+                Auto-calculate PAYE, NI, Pension deductions &amp; payslips.
+              </p>
+            </div>
+            <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] text-emerald-700 font-semibold">
+              <span>Run Payroll</span>
+              <ChevronRight size={13} className="group-hover:translate-x-0.5 transition-transform" />
             </div>
           </Link>
 
+          {/* Step 5: Approve, Submit RTI & BACS */}
           <Link
             href={`/payroll/${clientId}/submissions`}
-            className="p-3 rounded-lg border border-gray-100 hover:border-purple-300 hover:bg-purple-50/50 transition-all flex items-start gap-3 cursor-pointer group"
+            className="p-3.5 rounded-xl border border-gray-200 hover:border-purple-300 hover:bg-purple-50/40 transition-all flex flex-col justify-between cursor-pointer group bg-gray-50/50"
           >
-            <div className="w-7 h-7 rounded-md bg-amber-100 text-amber-700 flex items-center justify-center font-bold text-xs shrink-0 group-hover:bg-amber-600 group-hover:text-white transition-colors">
-              4
-            </div>
             <div>
-              <p className="text-xs font-bold text-gray-800 group-hover:text-amber-700">HMRC RTI Submissions</p>
-              <p className="text-[11px] text-gray-500 mt-0.5">FPS on or before pay day & EPS</p>
+              <div className="flex items-center justify-between mb-2">
+                <span className="w-6 h-6 rounded-md bg-amber-600 text-white flex items-center justify-center font-bold text-xs">
+                  5
+                </span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                  {submissions.fpsCount} Filed
+                </span>
+              </div>
+              <p className="text-xs font-bold text-gray-900 group-hover:text-amber-700 transition-colors">
+                HMRC Filing &amp; BACS
+              </p>
+              <p className="text-[11px] text-gray-500 mt-1 leading-snug">
+                Submit FPS/EPS to HMRC &amp; export bank payment files.
+              </p>
+            </div>
+            <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] text-amber-700 font-semibold">
+              <span>File RTI &amp; BACS</span>
+              <ChevronRight size={13} className="group-hover:translate-x-0.5 transition-transform" />
             </div>
           </Link>
         </div>

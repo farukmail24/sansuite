@@ -728,6 +728,9 @@ export const employees = mysqlTable("employees", {
   ytdEmployeeNi: decimal("ytd_employee_ni", { precision: 15, scale: 2 }).default("0.00"),
   ytdEmployerNi: decimal("ytd_employer_ni", { precision: 15, scale: 2 }).default("0.00"),
   docPassword: varchar("doc_password", { length: 255 }),
+  bankSortCode: varchar("bank_sort_code", { length: 10 }),
+  bankAccountNumber: varchar("bank_account_number", { length: 20 }),
+  bankAccountName: varchar("bank_account_name", { length: 100 }),
   status: varchar("status", { length: 20 }).default("Active"), // Active, Leaver
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -741,6 +744,8 @@ export const payRuns = mysqlTable("pay_runs", {
   endDate: date("end_date"),
   paymentDate: date("payment_date"),
   status: varchar("status", { length: 30 }).default("Draft"), // Draft, Calculated, Approved, Filed
+  notes: text("notes"),
+  isRolledBack: boolean("is_rolled_back").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -769,9 +774,19 @@ export const rtiSubmissions = mysqlTable("rti_submissions", {
   correlationId: varchar("correlation_id", { length: 255 }),
   isZeroFps: boolean("is_zero_fps").default(false),
   employmentAllowanceClaimed: decimal("employment_allowance_claimed", { precision: 12, scale: 2 }).default("0.00"),
+  stateAidSector: varchar("state_aid_sector", { length: 50 }).default("None"),
   cisDeductionsSuffered: decimal("cis_deductions_suffered", { precision: 12, scale: 2 }).default("0.00"),
   statutoryPayRecovered: decimal("statutory_pay_recovered", { precision: 12, scale: 2 }).default("0.00"),
+  smpRecovered: decimal("smp_recovered", { precision: 12, scale: 2 }).default("0.00"),
+  sppRecovered: decimal("spp_recovered", { precision: 12, scale: 2 }).default("0.00"),
+  sapRecovered: decimal("sap_recovered", { precision: 12, scale: 2 }).default("0.00"),
+  shppRecovered: decimal("shpp_recovered", { precision: 12, scale: 2 }).default("0.00"),
+  nicCompensation: decimal("nic_compensation", { precision: 12, scale: 2 }).default("0.00"),
   periodOfInactivity: boolean("period_of_inactivity").default(false),
+  inactivityStartDate: varchar("inactivity_start_date", { length: 20 }),
+  inactivityEndDate: varchar("inactivity_end_date", { length: 20 }),
+  isFinalSubmission: boolean("is_final_submission").default(false),
+  lateReason: varchar("late_reason", { length: 5 }),
   submittedAt: timestamp("submitted_at"),
   status: varchar("status", { length: 20 }).default("Pending"), // Pending, Accepted, Rejected
 });
@@ -1241,28 +1256,8 @@ export const jobs = mysqlTable("jobs", {
   recurringSchedule: varchar("recurring_schedule", { length: 50 }), // Daily, Weekly, Monthly, Yearly, Custom
   commentsJson: json("comments_json"), // array of { id, userId, userName, comment, createdAt }
   filesJson: json("files_json"), // array of { id, fileName, fileUrl, uploadedAt, uploadedBy }
+  emailsJson: json("emails_json"), // array of { id, to, subject, body, sentAt, sentBy, attachments }
   activityLogJson: json("activity_log_json"), // array of { id, action, details, timestamp, user }
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-export const timesheets = mysqlTable("timesheets", {
-  id: int("id").primaryKey().autoincrement(),
-  practiceId: int("practice_id").notNull().references(() => practices.id),
-  userId: int("user_id").notNull().references(() => users.id),
-  jobId: int("job_id").references(() => jobs.id),
-  clientId: int("client_id").references(() => clients.id),
-  date: date("date").notNull(),
-  hours: decimal("hours", { precision: 5, scale: 2 }).notNull(),
-  billable: boolean("billable").default(true),
-  ratePerHour: decimal("rate_per_hour", { precision: 10, scale: 2 }).default("85.00"),
-  costRate: decimal("cost_rate", { precision: 10, scale: 2 }).default("40.00"),
-  taskName: varchar("task_name", { length: 150 }),
-  subtaskName: varchar("subtask_name", { length: 150 }),
-  description: text("description"),
-  status: varchar("status", { length: 30 }).default("Unsubmitted"), // Unsubmitted, PFA, Approved, Rejected, Billed
-  approvedBy: int("approved_by").references(() => users.id),
-  approvedAt: timestamp("approved_at"),
-  rejectionReason: text("rejection_reason"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -1287,6 +1282,30 @@ export const feesInvoices = mysqlTable("fees_invoices", {
   isRecurring: boolean("is_recurring").default(false),
   recurringInterval: varchar("recurring_interval", { length: 50 }), // Monthly, Quarterly, Yearly
   remindersJson: json("reminders_json"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const timesheets = mysqlTable("timesheets", {
+  id: int("id").primaryKey().autoincrement(),
+  practiceId: int("practice_id").notNull().references(() => practices.id),
+  userId: int("user_id").notNull().references(() => users.id),
+  jobId: int("job_id").references(() => jobs.id),
+  clientId: int("client_id").references(() => clients.id),
+  invoiceId: int("invoice_id").references(() => feesInvoices.id),
+  date: date("date").notNull(),
+  hours: decimal("hours", { precision: 5, scale: 2 }).notNull(),
+  billable: boolean("billable").default(true),
+  ratePerHour: decimal("rate_per_hour", { precision: 10, scale: 2 }).default("85.00"),
+  costRate: decimal("cost_rate", { precision: 10, scale: 2 }).default("40.00"),
+  taskName: varchar("task_name", { length: 150 }),
+  subtaskName: varchar("subtask_name", { length: 150 }),
+  description: text("description"),
+  status: varchar("status", { length: 30 }).default("Unsubmitted"), // Unsubmitted, PFA, Approved, Rejected, Billed
+  approvedBy: int("approved_by").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
+  rejectionReason: text("rejection_reason"),
+  withdrawnAt: timestamp("withdrawn_at"),
+  withdrawnBy: int("withdrawn_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -1315,13 +1334,17 @@ export const expenses = mysqlTable("expenses", {
   userId: int("user_id").notNull().references(() => users.id),
   clientId: int("client_id").references(() => clients.id),
   jobId: int("job_id").references(() => jobs.id),
+  billedInvoiceId: int("billed_invoice_id").references(() => feesInvoices.id),
   expenseDate: date("expense_date").notNull(),
   category: varchar("category", { length: 100 }), // Travel, Mileage, Meals, Software, Filing Fees, Client Disbursements
   amount: decimal("amount", { precision: 15, scale: 2 }).notNull(),
+  miles: decimal("miles", { precision: 8, scale: 2 }),
+  mileageRate: decimal("mileage_rate", { precision: 5, scale: 2 }).default("0.45"),
   billable: boolean("billable").default(true),
   status: varchar("status", { length: 30 }).default("Unsubmitted"), // Unsubmitted, PFA, Approved, Rejected, Reimbursed
   approvedBy: int("approved_by").references(() => users.id),
   approvedAt: timestamp("approved_at"),
+  rejectionReason: text("rejection_reason"),
   receiptPath: varchar("receipt_path", { length: 255 }),
   notes: text("notes"),
   isReimbursed: boolean("is_reimbursed").default(false),
@@ -1350,12 +1373,53 @@ export const timeFeesSettings = mysqlTable("time_fees_settings", {
   estimateFooter: text("estimate_footer"),
   emailTemplatesJson: json("email_templates_json"),
   activitiesJson: json("activities_json"),
+  columnCustomizationJson: json("column_customization_json"),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const timeFeesStaffRates = mysqlTable("time_fees_staff_rates", {
+  id: int("id").primaryKey().autoincrement(),
+  practiceId: int("practice_id").notNull().references(() => practices.id),
+  userId: int("user_id").notNull().references(() => users.id),
+  roleTier: varchar("role_tier", { length: 30 }).default("Staff"), // Admin, Manager, Staff
+  capacityHoursPerWeek: decimal("capacity_hours_per_week", { precision: 5, scale: 2 }).default("37.50"),
+  billableRatePerHour: decimal("billable_rate_per_hour", { precision: 10, scale: 2 }).default("75.00"),
+  costRatePerHour: decimal("cost_rate_per_hour", { precision: 10, scale: 2 }).default("35.00"),
+  assignedTasksJson: json("assigned_tasks_json"), // array of allowed task names/codes
+  managerId: int("manager_id").references(() => users.id),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const feesCreditNotes = mysqlTable("fees_credit_notes", {
+  id: int("id").primaryKey().autoincrement(),
+  practiceId: int("practice_id").notNull().references(() => practices.id),
+  invoiceId: int("invoice_id").notNull().references(() => feesInvoices.id),
+  clientId: int("client_id").notNull().references(() => clients.id),
+  creditNoteNumber: varchar("credit_note_number", { length: 50 }).notNull(),
+  creditNoteDate: date("credit_note_date").notNull(),
+  reason: text("reason"),
+  netAmount: decimal("net_amount", { precision: 15, scale: 2 }).default("0.00"),
+  vatAmount: decimal("vat_amount", { precision: 15, scale: 2 }).default("0.00"),
+  totalAmount: decimal("total_amount", { precision: 15, scale: 2 }).default("0.00"),
+  lineItemsJson: json("line_items_json"),
+  status: varchar("status", { length: 30 }).default("Issued"), // Issued, Allocated, Refunded
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const insertFeesInvoiceSchema = createInsertSchema(feesInvoices);
 export const insertExpenseSchema = createInsertSchema(expenses);
 export const insertTimeFeesEstimateSchema = createInsertSchema(timeFeesEstimates);
+export const insertTimeFeesStaffRateSchema = createInsertSchema(timeFeesStaffRates);
+export const insertFeesCreditNoteSchema = createInsertSchema(feesCreditNotes);
+
+export type FeesCreditNote = typeof feesCreditNotes.$inferSelect;
+export type InsertFeesCreditNote = typeof feesCreditNotes.$inferInsert;
+export type FeesInvoice = typeof feesInvoices.$inferSelect;
+export type InsertFeesInvoice = typeof feesInvoices.$inferInsert;
+export type TimeFeesStaffRate = typeof timeFeesStaffRates.$inferSelect;
+export type InsertTimeFeesStaffRate = typeof timeFeesStaffRates.$inferInsert;
 
 // =============================================
 // MTD IT

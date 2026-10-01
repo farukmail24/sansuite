@@ -47,7 +47,7 @@ function AdditionalPayContent() {
   });
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6 w-full">
       {/* Header */}
       <div>
         <h1 className="text-xl font-bold text-gray-900">Additional Pay & Adjustments</h1>
