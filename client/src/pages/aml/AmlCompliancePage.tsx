@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AppLayout from "../../components/layout/AppLayout";
+import { amlSidebar } from "./amlCommon";
 import {
   Shield, CheckCircle2, AlertTriangle, Search,
   Plus, FileText, UserCheck, RefreshCw, Download,
@@ -9,16 +11,23 @@ import {
 import { apiRequest } from "../../lib/queryClient";
 import { useToast } from "../../hooks/useToast";
 
-const sidebar = [
-  { label: "AML Dashboard", icon: <Shield size={15} />, route: "/aml" },
-  { label: "Identity Checks", icon: <UserCheck size={15} />, route: "/aml?tab=checks" },
-  { label: "Risk Matrix", icon: <AlertTriangle size={15} />, route: "/aml?tab=risk" },
-  { label: "PEP & Sanctions", icon: <Search size={15} />, route: "/aml?tab=sanctions" },
-];
-
 export default function AmlCompliancePage() {
+  const [, navigate] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Backward compatibility redirect if tab query parameter is present
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("tab");
+    if (tab === "checks") {
+      navigate("/aml/identity-checks");
+    } else if (tab === "risk") {
+      navigate("/aml/risk-matrix");
+    } else if (tab === "sanctions") {
+      navigate("/aml/sanctions");
+    }
+  }, [navigate]);
 
   const [search, setSearch] = useState("");
   const [showRunCheckModal, setShowRunCheckModal] = useState(false);
@@ -240,7 +249,7 @@ export default function AmlCompliancePage() {
   const isOpenSanctionsActive = amlStatus?.providers?.opensanctions?.configured;
 
   return (
-    <AppLayout sidebar={sidebar} module="Anti-Money Laundering">
+    <AppLayout sidebar={amlSidebar} module="Anti-Money Laundering">
       <div className="bg-slate-50 dark:bg-slate-950 min-h-screen text-xs p-6 space-y-6 w-full mx-auto">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs">

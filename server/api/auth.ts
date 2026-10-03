@@ -178,6 +178,7 @@ router.post("/login", async (req, res) => {
         practiceId: user.practiceId,
         isPortalUser: false,
         twoFactorEnabled: !!user.twoFactorEnabled,
+        permissions: user.permissionsJson ? JSON.parse(user.permissionsJson) : null,
       },
     });
   } catch (error: any) {
@@ -381,6 +382,12 @@ router.get("/me", authMiddleware, async (req: any, res) => {
   try {
     const [user] = await db.select().from(users).where(eq(users.id, req.user.id)).limit(1);
     if (!user) return res.status(404).json({ message: "User not found" });
+    let perms = null;
+    if (user.permissionsJson) {
+      try {
+        perms = typeof user.permissionsJson === "string" ? JSON.parse(user.permissionsJson) : user.permissionsJson;
+      } catch (e) {}
+    }
     res.json({
       id: user.id,
       email: user.email,
@@ -390,6 +397,7 @@ router.get("/me", authMiddleware, async (req: any, res) => {
       role: user.role,
       practiceId: user.practiceId,
       twoFactorEnabled: !!user.twoFactorEnabled,
+      permissions: perms,
     });
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch user" });

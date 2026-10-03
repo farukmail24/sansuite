@@ -14,6 +14,7 @@ export interface User {
   portalType?: "accountant" | "sme" | "365";
   isPortalUser?: boolean;
   twoFactorEnabled?: boolean;
+  permissions?: any;
 }
 
 interface AuthState {

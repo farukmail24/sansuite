@@ -15,7 +15,7 @@ import {
   X, RefreshCw, Layers, Sparkles, Shield, Lock,
   UploadCloud, FileCode, CheckSquare, Palette, Sliders,
   HelpCircle, AlertTriangle, ArrowDownToLine, RefreshCcw,
-  Edit2, PieChart, Bell, ArrowUpRight 
+  Edit2, PieChart, Bell, ArrowUpRight, RotateCcw
 } from "lucide-react";
 import { timeFeesSidebar } from "./sidebar";
 import WipToInvoiceWizard from "../../components/time-fees/WipToInvoiceWizard";
@@ -77,8 +77,8 @@ export default function InvoicesPage() {
 
   const isAdmin = user?.role === "admin" || (user as any)?.isSuperAdmin || (user as any)?.role === "superadmin" || true; // Practice administrator authorized
 
-  // Navigation Sub-Tabs: "invoices" | "wip" | "recurring" | "estimates" | "templates" | "overview" (From sansuite info 9000195170 & 9000236009)
-  const [activeSubTab, setActiveSubTab] = useState<"invoices" | "wip" | "recurring" | "estimates" | "templates" | "overview">("invoices");
+  // Navigation Sub-Tabs: "invoices" | "wip" | "recurring" | "estimates" | "credit_notes" | "templates" | "overview" (From sansuite info 9000195170 & 9000236009)
+  const [activeSubTab, setActiveSubTab] = useState<"invoices" | "wip" | "recurring" | "estimates" | "credit_notes" | "templates" | "overview">("invoices");
 
   // Mode: "list" (Invoices Table) or "create" (Capium-style Create New Invoice)
   const [viewMode, setViewMode] = useState<"list" | "create">("list");
@@ -168,6 +168,36 @@ export default function InvoicesPage() {
   const [recipientEmail, setRecipientEmail] = useState("");
   const [emailSubject, setEmailSubject] = useState("");
   const [emailBody, setEmailBody] = useState("");
+
+  // Credit Notes State (UK Statutory Compliance & Reverse Ledger)
+  const [creditNoteModalInvoice, setCreditNoteModalInvoice] = useState<any | null>(null);
+  const [creditNoteAmount, setCreditNoteAmount] = useState<string>("");
+  const [creditNoteMode, setCreditNoteMode] = useState<"full" | "partial">("full");
+  const [creditNoteReason, setCreditNoteReason] = useState<string>("Fee Renegotiation / Discount");
+  const [creditNoteCustomReason, setCreditNoteCustomReason] = useState<string>("");
+  const [creditNoteDate, setCreditNoteDate] = useState<string>(new Date().toISOString().split("T")[0]);
+  const [selectedCreditNoteForView, setSelectedCreditNoteForView] = useState<any | null>(null);
+  const [creditNoteSearchQuery, setCreditNoteSearchQuery] = useState<string>("");
+
+  // Fetch Credit Notes
+  const { data: creditNotesList = [], isLoading: isLoadingCreditNotes } = useQuery<any[]>({
+    queryKey: ["/api/time-fees/credit-notes"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/time-fees/credit-notes");
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  // Fetch Practice Settings for Email Templates
+  const { data: settingsData } = useQuery<any>({
+    queryKey: ["/api/time-fees/settings"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/time-fees/settings");
+      if (!res.ok) return null;
+      return res.json();
+    },
+  });
 
   // WIP Billing Modal State & Calculations
   const [isWipModalOpen, setIsWipModalOpen] = useState<boolean>(false);
@@ -359,6 +389,56 @@ export default function InvoicesPage() {
     setPaymentReference(`BACS-${inv.invoiceNumber || ""}`);
     setPaymentNotes("");
   };
+
+  // Open Credit Note Modal helper (UK HMRC Compliance & Reverse Ledger)
+  const handleOpenCreditNoteModal = (inv: any) => {
+    setCreditNoteModalInvoice(inv);
+    const due = inv.dueAmount !== undefined && inv.dueAmount !== null ? parseFloat(inv.dueAmount) : parseFloat(inv.totalAmount || "0");
+    setCreditNoteAmount(due > 0 ? due.toFixed(2) : parseFloat(inv.totalAmount || "0").toFixed(2));
+    setCreditNoteMode("full");
+    setCreditNoteReason("Fee Renegotiation / Discount");
+    setCreditNoteCustomReason("");
+    setCreditNoteDate(new Date().toISOString().split("T")[0]);
+  };
+
+  // Issue Credit Note Mutation (POST /api/time-fees/invoices/:id/credit-note)
+  const issueCreditNoteMutation = useMutation({
+    mutationFn: async () => {
+      if (!creditNoteModalInvoice) return;
+      const credAmt = parseFloat(creditNoteAmount || "0");
+      if (credAmt <= 0) throw new Error("Credit note amount must be greater than £0.00");
+
+      const reason = creditNoteReason === "Other"
+        ? (creditNoteCustomReason || "Fee adjustment / cancellation")
+        : `${creditNoteReason}${creditNoteCustomReason ? `: ${creditNoteCustomReason}` : ""}`;
+
+      const res = await apiRequest("POST", `/api/time-fees/invoices/${creditNoteModalInvoice.id}/credit-note`, {
+        creditAmount: credAmt,
+        creditDate: creditNoteDate,
+        reason,
+        lineItems: creditNoteModalInvoice.lineItemsJson || [],
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed to issue credit note");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/time-fees/invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/time-fees/credit-notes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/time-fees/reports/invoices-debtors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/time-fees/dashboard-stats"] });
+      toast({
+        title: "Credit Note Issued",
+        description: data.message || `Credit Note ${data.creditNoteNumber} issued successfully.`,
+      });
+      setCreditNoteModalInvoice(null);
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to Issue Credit Note", description: err.message, type: "error" });
+    },
+  });
 
   // Create Invoice Mutation
   const createInvoiceMutation = useMutation({
@@ -583,8 +663,33 @@ export default function InvoicesPage() {
   const handleOpenEmailModal = (inv: any) => {
     setEmailModalInvoice(inv);
     setRecipientEmail("accounts@" + (inv.clientName || "client").toLowerCase().replace(/[^a-z0-9]/g, "") + ".co.uk");
-    setEmailSubject(`Fee Invoice ${inv.invoiceNumber} - ${inv.clientName}`);
-    setEmailBody(`Dear Client,\n\nPlease find attached your fee invoice ${inv.invoiceNumber} for £${parseFloat(inv.totalAmount || "0").toFixed(2)}.\n\nYou can pay online instantly via SanSuitePay.\n\nKind regards,\nPractice Accounts Team`);
+
+    const tpl = settingsData?.settings?.emailTemplatesJson?.invoice_dispatch;
+    const practiceName = settingsData?.practice?.name || "SanSuite Practice";
+    const bankDetails = settingsData?.settings?.bankDetails || "Bank: Barclays Bank UK\nSort Code: 20-00-00\nAccount: 12345678";
+
+    if (tpl) {
+      const subject = (tpl.subject || "Fee Invoice {InvoiceNo} from {PracticeName}")
+        .replace(/{InvoiceNo}/g, inv.invoiceNumber || "")
+        .replace(/{ClientName}/g, inv.clientName || "Valued Client")
+        .replace(/{PracticeName}/g, practiceName);
+
+      const body = (tpl.body || "")
+        .replace(/{InvoiceNo}/g, inv.invoiceNumber || "")
+        .replace(/{ClientName}/g, inv.clientName || "Valued Client")
+        .replace(/{InvoiceDate}/g, inv.date ? new Date(inv.date).toLocaleDateString("en-GB") : new Date().toLocaleDateString("en-GB"))
+        .replace(/{DueDate}/g, inv.dueDate ? new Date(inv.dueDate).toLocaleDateString("en-GB") : "30 days net")
+        .replace(/{TotalAmount}/g, parseFloat(inv.totalAmount || "0").toFixed(2))
+        .replace(/{DueAmount}/g, parseFloat(inv.dueAmount || inv.totalAmount || "0").toFixed(2))
+        .replace(/{PracticeName}/g, practiceName)
+        .replace(/{BankDetails}/g, bankDetails);
+
+      setEmailSubject(subject);
+      setEmailBody(body);
+    } else {
+      setEmailSubject(`Fee Invoice ${inv.invoiceNumber} - ${inv.clientName}`);
+      setEmailBody(`Dear ${inv.clientName || "Client"},\n\nPlease find attached fee invoice ${inv.invoiceNumber} for £${parseFloat(inv.totalAmount || "0").toFixed(2)}.\n\nBank Payment Details:\n${bankDetails}\n\nKind regards,\n${practiceName} Accounts Team`);
+    }
   };
 
   const selectedPdfTemplate = PDF_TEMPLATES.find((p) => p.id === selectedPdfTemplateId) || PDF_TEMPLATES[0];
@@ -593,7 +698,7 @@ export default function InvoicesPage() {
     <AppLayout sidebar={activeSidebar} module={activeModuleName}>
       <div className="bg-slate-50 dark:bg-slate-950 min-h-screen text-xs p-6 space-y-5 w-full">
         
-        {/* Sub-Tabs: Invoices | Recurring Invoices | Estimates | Invoice Templates (Admin) | Overview */}
+        {/* Sub-Tabs: Invoices | Recurring Invoices | Estimates | Credit Notes | Invoice Templates (Admin) | Overview */}
         <div className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-800 pb-2">
           <button
             onClick={() => { setActiveSubTab("invoices"); setViewMode("list"); }}
@@ -624,6 +729,24 @@ export default function InvoicesPage() {
             }`}
           >
             Estimates / Quotes
+          </button>
+          <button
+            onClick={() => setActiveSubTab("credit_notes")}
+            className={`px-4 py-2 font-bold text-xs rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+              activeSubTab === "credit_notes"
+                ? "bg-indigo-600 text-white shadow-xs"
+                : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+            }`}
+          >
+            <RotateCcw size={13} />
+            <span>Credit Notes</span>
+            {creditNotesList.length > 0 && (
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                activeSubTab === "credit_notes" ? "bg-white/20 text-white" : "bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300"
+              }`}>
+                {creditNotesList.length}
+              </span>
+            )}
           </button>
           <button
             onClick={() => setActiveSubTab("templates")}
@@ -1173,6 +1296,10 @@ export default function InvoicesPage() {
                                     className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold ${
                                       effectiveStatus === "Paid"
                                         ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                                        : effectiveStatus === "Credited"
+                                        ? "bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200"
+                                        : effectiveStatus === "Partially Credited"
+                                        ? "bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-950/60 dark:text-fuchsia-300"
                                         : effectiveStatus === "Partial"
                                         ? "bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300"
                                         : effectiveStatus === "Overdue"
@@ -1187,7 +1314,7 @@ export default function InvoicesPage() {
                                 </td>
                                 <td className="py-3 px-4 text-center">
                                   <div className="flex items-center justify-center gap-1.5">
-                                    {inv.status !== "Paid" && (
+                                    {inv.status !== "Paid" && inv.status !== "Credited" && (
                                       <>
                                         <button
                                           onClick={() => handleOpenPaymentModal(inv)}
@@ -1205,6 +1332,15 @@ export default function InvoicesPage() {
                                           <Bell size={13} />
                                         </button>
                                       </>
+                                    )}
+                                    {inv.status !== "Credited" && inv.status !== "Void" && (
+                                      <button
+                                        onClick={() => handleOpenCreditNoteModal(inv)}
+                                        className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-slate-800 rounded cursor-pointer transition-colors"
+                                        title="Issue Statutory Credit Note"
+                                      >
+                                        <RotateCcw size={13} />
+                                      </button>
                                     )}
                                     <button
                                       onClick={() => handleOpenEmailModal(inv)}
@@ -1525,6 +1661,207 @@ export default function InvoicesPage() {
                                   title="Delete Estimate"
                                 >
                                   <Trash2 size={13} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* TAB: CREDIT NOTES & REVERSE LEDGER (UK Statutory Accounting & HMRC Parity) */}
+        {activeSubTab === "credit_notes" && (() => {
+          const filteredCreditNotes = creditNotesList.filter((cn: any) => {
+            const matchesSearch =
+              !creditNoteSearchQuery ||
+              cn.creditNoteNumber?.toLowerCase().includes(creditNoteSearchQuery.toLowerCase()) ||
+              cn.invoiceNumber?.toLowerCase().includes(creditNoteSearchQuery.toLowerCase()) ||
+              cn.clientName?.toLowerCase().includes(creditNoteSearchQuery.toLowerCase()) ||
+              cn.reason?.toLowerCase().includes(creditNoteSearchQuery.toLowerCase());
+            return matchesSearch;
+          });
+
+          const totalCreditedAmount = creditNotesList.reduce((sum: number, cn: any) => sum + parseFloat(cn.totalAmount || "0"), 0);
+          const totalCreditedVat = creditNotesList.reduce((sum: number, cn: any) => sum + parseFloat(cn.vatAmount || "0"), 0);
+          const uniqueAdjustedInvoices = new Set(creditNotesList.map((cn: any) => cn.invoiceId)).size;
+
+          return (
+            <div className="space-y-5">
+              {/* Header Title & Subtitle */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    Credit Notes & Debtors Ledger Adjustments
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 font-semibold">
+                      UK HMRC Compliance
+                    </span>
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Formal statutory credit notes for disputed fees, bill renegotiations, and VAT adjustments with automatic client ledger reversal.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => { setActiveSubTab("invoices"); setViewMode("list"); }}
+                    className="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
+                  >
+                    <Plus size={14} />
+                    <span>Issue from Invoices</span>
+                  </button>
+                  <button
+                    onClick={() => window.print()}
+                    className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg transition-colors cursor-pointer"
+                    title="Print Credit Notes Ledger"
+                  >
+                    <Printer size={15} />
+                  </button>
+                </div>
+              </div>
+
+              {/* KPI Cards Row */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-1">
+                  <span className="text-[11px] font-medium text-slate-400">Total Credit Notes</span>
+                  <p className="text-xl font-bold text-purple-600">{creditNotesList.length}</p>
+                  <span className="text-[10px] text-purple-600 font-medium">HMRC Statutory Series</span>
+                </div>
+
+                <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-1">
+                  <span className="text-[11px] font-medium text-slate-400">Total Gross Credited</span>
+                  <p className="text-xl font-bold text-rose-600">£{totalCreditedAmount.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                  <span className="text-[10px] text-rose-600 font-medium">Debtors Ledger Reduced</span>
+                </div>
+
+                <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-1">
+                  <span className="text-[11px] font-medium text-slate-400">VAT Reversal (20%)</span>
+                  <p className="text-xl font-bold text-amber-600">£{totalCreditedVat.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                  <span className="text-[10px] text-amber-600 font-medium">Box 4 VAT Reclaimed</span>
+                </div>
+
+                <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-1">
+                  <span className="text-[11px] font-medium text-slate-400">Invoices Adjusted</span>
+                  <p className="text-xl font-bold text-emerald-600">{uniqueAdjustedInvoices}</p>
+                  <span className="text-[10px] text-emerald-600 font-medium">Auto-Reconciled</span>
+                </div>
+              </div>
+
+              {/* Search Toolbar */}
+              <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs flex items-center justify-between gap-3">
+                <div className="relative w-full sm:w-80">
+                  <Search className="absolute left-3 top-2.5 text-slate-400" size={13} />
+                  <input
+                    type="text"
+                    placeholder="Search by CN number, invoice ref, client..."
+                    value={creditNoteSearchQuery}
+                    onChange={(e) => setCreditNoteSearchQuery(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+                <div className="text-xs text-slate-500 font-medium">
+                  Showing {filteredCreditNotes.length} of {creditNotesList.length} records
+                </div>
+              </div>
+
+              {/* Table / Clean Zero State */}
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
+                {isLoadingCreditNotes ? (
+                  <div className="py-12 text-center text-slate-400">
+                    <RefreshCw size={20} className="animate-spin mx-auto mb-2 text-purple-600" />
+                    <span>Loading credit notes ledger...</span>
+                  </div>
+                ) : filteredCreditNotes.length === 0 ? (
+                  <div className="py-16 text-center space-y-3">
+                    <div className="w-12 h-12 mx-auto rounded-full bg-purple-50 dark:bg-purple-950/50 text-purple-600 flex items-center justify-center">
+                      <RotateCcw size={22} />
+                    </div>
+                    <div className="max-w-md mx-auto space-y-1">
+                      <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200">No Credit Notes Issued</h4>
+                      <p className="text-xs text-slate-500">
+                        {creditNoteSearchQuery
+                          ? "No credit notes match your search criteria. Try a different query."
+                          : "All client fee notes are active. When a fee is renegotiated, discounted, or disputed, you can issue an official credit note directly from the Invoices table to adjust the balance."}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => { setActiveSubTab("invoices"); setViewMode("list"); }}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-xs shadow-xs cursor-pointer"
+                    >
+                      View Issued Invoices
+                    </button>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                          <th className="py-3 px-4">CN Number</th>
+                          <th className="py-3 px-4">Original Invoice</th>
+                          <th className="py-3 px-4">Client Name</th>
+                          <th className="py-3 px-4">Issue Date</th>
+                          <th className="py-3 px-4">Reason / Notes</th>
+                          <th className="py-3 px-4 text-right">Net Credited</th>
+                          <th className="py-3 px-4 text-right">VAT Credited</th>
+                          <th className="py-3 px-4 text-right">Total Credited</th>
+                          <th className="py-3 px-4 text-center">Status</th>
+                          <th className="py-3 px-4 text-center">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {filteredCreditNotes.map((cn: any) => (
+                          <tr key={cn.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                            <td className="py-3 px-4 font-mono font-bold text-purple-600 dark:text-purple-400">
+                              {cn.creditNoteNumber}
+                            </td>
+                            <td className="py-3 px-4 font-mono text-indigo-600 dark:text-indigo-400">
+                              {cn.invoiceNumber || `INV-#${cn.invoiceId}`}
+                            </td>
+                            <td className="py-3 px-4 font-semibold text-slate-900 dark:text-slate-100">
+                              {cn.clientName || "Client"}
+                            </td>
+                            <td className="py-3 px-4 text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                              {cn.creditNoteDate ? new Date(cn.creditNoteDate).toLocaleDateString("en-GB") : "-"}
+                            </td>
+                            <td className="py-3 px-4 text-slate-500 max-w-xs truncate" title={cn.reason}>
+                              {cn.reason || "Fee adjustment"}
+                            </td>
+                            <td className="py-3 px-4 text-right font-mono text-slate-700 dark:text-slate-300">
+                              -£{parseFloat(cn.netAmount || "0").toFixed(2)}
+                            </td>
+                            <td className="py-3 px-4 text-right font-mono text-amber-600">
+                              -£{parseFloat(cn.vatAmount || "0").toFixed(2)}
+                            </td>
+                            <td className="py-3 px-4 text-right font-mono font-bold text-rose-600 dark:text-rose-400">
+                              -£{parseFloat(cn.totalAmount || "0").toFixed(2)}
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                                {cn.status || "Issued"}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <div className="flex items-center justify-center gap-1.5">
+                                <button
+                                  onClick={() => setSelectedCreditNoteForView(cn)}
+                                  className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-slate-800 rounded cursor-pointer transition-colors"
+                                  title="View / Print Statutory Credit Note"
+                                >
+                                  <Eye size={13} />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setSelectedCreditNoteForView(cn);
+                                    setTimeout(() => window.print(), 300);
+                                  }}
+                                  className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-800 rounded cursor-pointer transition-colors"
+                                  title="Print Document"
+                                >
+                                  <Printer size={13} />
                                 </button>
                               </div>
                             </td>
@@ -2768,6 +3105,343 @@ export default function InvoicesPage() {
                       </>
                     )}
                   </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: ISSUE STATUTORY CREDIT NOTE (UK Parity & Reverse Ledger) */}
+        {creditNoteModalInvoice && (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+              {/* Modal Header */}
+              <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-gradient-to-r from-purple-50 via-slate-50 to-rose-50 dark:from-purple-950/30 dark:via-slate-900 dark:to-rose-950/30 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-purple-600 text-white shadow-xs">
+                    <RotateCcw size={16} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                      Issue Credit Note: {creditNoteModalInvoice.invoiceNumber}
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      UK HMRC Statutory Credit & Reverse Ledger Accounting
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCreditNoteModalInvoice(null)}
+                  className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-6 space-y-4 text-xs">
+                {/* Invoice Summary Card */}
+                <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 grid grid-cols-2 gap-2 text-[11px]">
+                  <div>
+                    <span className="text-slate-400 block">Client</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200">{creditNoteModalInvoice.clientName}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block">Invoice Date</span>
+                    <span className="font-semibold text-slate-700 dark:text-slate-300">
+                      {creditNoteModalInvoice.date ? new Date(creditNoteModalInvoice.date).toLocaleDateString("en-GB") : "Recent"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block">Original Gross Total</span>
+                    <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                      £{parseFloat(creditNoteModalInvoice.totalAmount || "0").toFixed(2)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block">Current Outstanding Due</span>
+                    <span className="font-mono font-bold text-amber-600">
+                      £{parseFloat(creditNoteModalInvoice.dueAmount || creditNoteModalInvoice.totalAmount || "0").toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Credit Mode Toggle */}
+                <div>
+                  <label className="font-semibold text-slate-700 dark:text-slate-300 block mb-1">Credit Type</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreditNoteMode("full");
+                        const due = creditNoteModalInvoice.dueAmount !== undefined && creditNoteModalInvoice.dueAmount !== null
+                          ? parseFloat(creditNoteModalInvoice.dueAmount)
+                          : parseFloat(creditNoteModalInvoice.totalAmount || "0");
+                        setCreditNoteAmount((due > 0 ? due : parseFloat(creditNoteModalInvoice.totalAmount || "0")).toFixed(2));
+                      }}
+                      className={`py-2 px-3 rounded-lg font-bold text-xs border transition-all cursor-pointer ${
+                        creditNoteMode === "full"
+                          ? "bg-purple-600 text-white border-purple-600 shadow-xs"
+                          : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700"
+                      }`}
+                    >
+                      Full Credit Note (100%)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCreditNoteMode("partial")}
+                      className={`py-2 px-3 rounded-lg font-bold text-xs border transition-all cursor-pointer ${
+                        creditNoteMode === "partial"
+                          ? "bg-purple-600 text-white border-purple-600 shadow-xs"
+                          : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700"
+                      }`}
+                    >
+                      Partial Credit Amount
+                    </button>
+                  </div>
+                </div>
+
+                {/* Credit Amount Input & Date */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                      Credit Amount (£ Gross) <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      value={creditNoteAmount}
+                      disabled={creditNoteMode === "full"}
+                      onChange={(e) => setCreditNoteAmount(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-mono font-bold focus:outline-none focus:ring-1 focus:ring-purple-500 disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-semibold text-slate-700 dark:text-slate-300 block mb-1">Credit Note Date</label>
+                    <input
+                      type="date"
+                      value={creditNoteDate}
+                      onChange={(e) => setCreditNoteDate(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:ring-1 focus:ring-purple-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Reason Dropdown */}
+                <div>
+                  <label className="font-semibold text-slate-700 dark:text-slate-300 block mb-1">Reason for Credit Note</label>
+                  <select
+                    value={creditNoteReason}
+                    onChange={(e) => setCreditNoteReason(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-medium cursor-pointer"
+                  >
+                    <option value="Fee Renegotiation / Discount">Fee Renegotiation / Client Discount</option>
+                    <option value="Disputed WIP / Time Hours">Disputed WIP / Billable Hours Adjustment</option>
+                    <option value="Cancelled Engagement / Scope Change">Cancelled Engagement / Scope Reduction</option>
+                    <option value="Billing / VAT Rate Error">Billing / VAT Calculation Error</option>
+                    <option value="Goodwill Credit">Goodwill Credit / Commercial Settlement</option>
+                    <option value="Other">Other (Custom Explanation)</option>
+                  </select>
+                </div>
+
+                {/* Optional Custom Reason Details */}
+                <div>
+                  <label className="font-semibold text-slate-700 dark:text-slate-300 block mb-1">Detailed Explanation (Printed on Credit Note)</label>
+                  <textarea
+                    rows={2}
+                    value={creditNoteCustomReason}
+                    onChange={(e) => setCreditNoteCustomReason(e.target.value)}
+                    placeholder="Enter explicit reason or agreed terms with client..."
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                  />
+                </div>
+
+                {/* Reverse Ledger Breakdown */}
+                {(() => {
+                  const grossVal = parseFloat(creditNoteAmount || "0");
+                  const netVal = grossVal / 1.20;
+                  const vatVal = grossVal - netVal;
+                  return (
+                    <div className="p-3 bg-purple-50/70 dark:bg-purple-950/30 rounded-xl border border-purple-200 dark:border-purple-800/50 space-y-1.5">
+                      <div className="flex justify-between text-[11px] text-purple-900 dark:text-purple-300">
+                        <span>Credited Net (Excl VAT):</span>
+                        <span className="font-mono font-bold">-£{netVal.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-[11px] text-purple-900 dark:text-purple-300">
+                        <span>HMRC VAT (20%) Output Reversal:</span>
+                        <span className="font-mono font-bold">-£{vatVal.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs font-bold text-rose-700 dark:text-rose-300 border-t border-purple-200 dark:border-purple-800 pt-1">
+                        <span>Total Debtors Adjustment:</span>
+                        <span className="font-mono">-£{grossVal.toFixed(2)} CR</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCreditNoteModalInvoice(null)}
+                  className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={issueCreditNoteMutation.isPending || parseFloat(creditNoteAmount || "0") <= 0}
+                  onClick={() => issueCreditNoteMutation.mutate()}
+                  className="px-5 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-rose-600 hover:from-purple-700 hover:to-rose-700 text-white font-bold shadow-md cursor-pointer disabled:opacity-50 flex items-center gap-1.5 transition-all"
+                >
+                  {issueCreditNoteMutation.isPending ? (
+                    <>
+                      <RefreshCw size={13} className="animate-spin" />
+                      <span>Issuing Credit Note...</span>
+                    </>
+                  ) : (
+                    <>
+                      <RotateCcw size={13} />
+                      <span>Issue Statutory Credit Note</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: STATUTORY UK CREDIT NOTE PRINTABLE PREVIEW */}
+        {selectedCreditNoteForView && (
+          <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
+            <div className="bg-white text-slate-900 rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+              {/* Header Actions */}
+              <div className="px-6 py-3 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Receipt size={16} className="text-purple-600" />
+                  <span className="font-bold text-xs uppercase tracking-wider text-slate-700">
+                    Statutory UK Credit Note Preview
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => window.print()}
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <Printer size={13} />
+                    <span>Print Credit Note</span>
+                  </button>
+                  <button
+                    onClick={() => setSelectedCreditNoteForView(null)}
+                    className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Printable Body */}
+              <div className="p-8 overflow-y-auto space-y-6 text-xs bg-white text-slate-900" id="printable-credit-note">
+                {/* Document Top Bar */}
+                <div className="flex justify-between items-start border-b-2 border-purple-600 pb-6">
+                  <div>
+                    <h1 className="text-2xl font-black tracking-tight text-purple-700">CREDIT NOTE</h1>
+                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">Statutory Document — HMRC Compliant</p>
+                  </div>
+                  <div className="text-right space-y-0.5">
+                    <p className="font-bold text-sm text-slate-900">{settingsData?.practice?.name || "SanSuite Practice"}</p>
+                    <p className="text-slate-500">Chartered Certified Accountants</p>
+                    <p className="text-slate-500">United Kingdom</p>
+                    <p className="text-[11px] font-mono text-slate-400">VAT Reg No: GB 982 7162 55</p>
+                  </div>
+                </div>
+
+                {/* Metadata Grid */}
+                <div className="grid grid-cols-2 gap-6 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Issued To (Client)</span>
+                    <p className="font-bold text-slate-900 text-sm mt-0.5">{selectedCreditNoteForView.clientName}</p>
+                    <p className="text-slate-500">{selectedCreditNoteForView.clientEmail || "client@domain.co.uk"}</p>
+                    <p className="text-slate-500">{selectedCreditNoteForView.clientAddress || "United Kingdom"}</p>
+                  </div>
+                  <div className="space-y-1 text-right">
+                    <div>
+                      <span className="text-slate-400 text-[11px]">Credit Note Number: </span>
+                      <span className="font-mono font-bold text-purple-700 text-sm">{selectedCreditNoteForView.creditNoteNumber}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[11px]">Credit Issue Date: </span>
+                      <span className="font-medium text-slate-800">
+                        {selectedCreditNoteForView.creditNoteDate ? new Date(selectedCreditNoteForView.creditNoteDate).toLocaleDateString("en-GB") : "-"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[11px]">Original Tax Invoice: </span>
+                      <span className="font-mono font-bold text-indigo-600">
+                        {selectedCreditNoteForView.invoiceNumber || `INV-#${selectedCreditNoteForView.invoiceId}`}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[11px]">Adjustment Reason: </span>
+                      <span className="font-medium text-slate-700">{selectedCreditNoteForView.reason || "Fee Adjustment"}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Line Item Table */}
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200">
+                      <tr>
+                        <th className="py-2.5 px-4">Description of Fee Adjustment</th>
+                        <th className="py-2.5 px-4 text-center">VAT Rate</th>
+                        <th className="py-2.5 px-4 text-right">Net Credited</th>
+                        <th className="py-2.5 px-4 text-right">VAT Credited</th>
+                        <th className="py-2.5 px-4 text-right">Total Credited</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      <tr>
+                        <td className="py-3 px-4">
+                          <p className="font-bold text-slate-800">Fee Credit Note adjustment against Invoice {selectedCreditNoteForView.invoiceNumber}</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5">{selectedCreditNoteForView.reason || "Client settlement adjustment"}</p>
+                        </td>
+                        <td className="py-3 px-4 text-center text-slate-600">20.0%</td>
+                        <td className="py-3 px-4 text-right font-mono text-slate-700">-£{parseFloat(selectedCreditNoteForView.netAmount || "0").toFixed(2)}</td>
+                        <td className="py-3 px-4 text-right font-mono text-amber-700">-£{parseFloat(selectedCreditNoteForView.vatAmount || "0").toFixed(2)}</td>
+                        <td className="py-3 px-4 text-right font-mono font-bold text-rose-700">-£{parseFloat(selectedCreditNoteForView.totalAmount || "0").toFixed(2)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Totals Summary */}
+                <div className="flex justify-end">
+                  <div className="w-72 bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2 text-xs">
+                    <div className="flex justify-between text-slate-600">
+                      <span>Total Net Credited:</span>
+                      <span className="font-mono font-semibold">-£{parseFloat(selectedCreditNoteForView.netAmount || "0").toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-slate-600">
+                      <span>Total VAT Output Reversed (20%):</span>
+                      <span className="font-mono font-semibold">-£{parseFloat(selectedCreditNoteForView.vatAmount || "0").toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm font-black text-rose-700 border-t border-slate-200 pt-2">
+                      <span>Total Amount Credited:</span>
+                      <span className="font-mono">-£{parseFloat(selectedCreditNoteForView.totalAmount || "0").toFixed(2)} CR</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer notes */}
+                <div className="pt-4 border-t border-slate-200 text-[11px] text-slate-500 space-y-1">
+                  <p className="font-semibold text-slate-700">Statutory Notice:</p>
+                  <p>
+                    This credit note is issued in accordance with UK VAT Regulations 1995 (Regulation 38). It reduces your outstanding liability for the referenced invoice. If this invoice has already been settled in full, the credited amount will remain as a credit on your ledger or refunded upon request.
+                  </p>
                 </div>
               </div>
             </div>

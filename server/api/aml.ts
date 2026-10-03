@@ -1,11 +1,11 @@
 import { Router } from "express";
-import { authMiddleware } from "../lib/authUtils";
+import { authMiddleware, requirePracticeUser } from "../lib/authUtils";
 import { db, pool } from "../db";
 import { pmAmlChecks, pmClientTimeline, clients, practiceAmlSettings } from "@shared/schema";
 import { eq, desc } from "drizzle-orm";
 
 const router = Router();
-router.use(authMiddleware);
+router.use(authMiddleware, requirePracticeUser);
 
 let tableEnsured = false;
 export async function ensureAmlSettingsTable() {
@@ -36,8 +36,8 @@ export async function ensureAmlSettingsTable() {
   }
 }
 
-// In-memory logs store backup for fast retrieval
-interface AmlLogEntry {
+// In-memory logs entry interface for typed responses
+export interface AmlLogEntry {
   id: string;
   clientId?: number;
   clientName: string;
@@ -49,8 +49,6 @@ interface AmlLogEntry {
   status: "Verified" | "Flagged" | "Pending";
   details?: any;
 }
-
-const amlLogsStore: Record<number, AmlLogEntry[]> = {};
 
 /**
  * Helper: Retrieve practice-specific AML API credentials from DB (Multi-Tenant),
@@ -282,10 +280,22 @@ router.get("/logs", async (req: any, res) => {
       const isPassed = chk.idVerificationStatus === "Verified";
       const isFlagged = chk.riskLevel === "High" || chk.idVerificationStatus === "Failed";
 
+      // If ad-hoc check (clientId is null or 0), resolve name from idDocumentNumber ADHOC prefix
+      let resolvedClientName = "";
+      if (chk.clientId && clientMap.has(chk.clientId)) {
+        resolvedClientName = clientMap.get(chk.clientId)!;
+      } else if (chk.idDocumentNumber?.startsWith("ADHOC:")) {
+        resolvedClientName = chk.idDocumentNumber.replace("ADHOC:", "");
+      } else if (chk.clientId) {
+        resolvedClientName = `Client #${chk.clientId}`;
+      } else {
+        resolvedClientName = "Ad-hoc Screening Target";
+      }
+
       return {
         id: `AML-${chk.id}`,
-        clientId: chk.clientId,
-        clientName: clientMap.get(chk.clientId) || "Client #" + chk.clientId,
+        clientId: chk.clientId || undefined,
+        clientName: resolvedClientName,
         provider,
         checkType: chk.idDocumentType || "AML Screening",
         pepSanctionsStatus: isPassed ? "Passed" : isFlagged ? "Flagged" : "Pending",
@@ -296,10 +306,7 @@ router.get("/logs", async (req: any, res) => {
       };
     });
 
-    const memoryLogs = amlLogsStore[practiceId] || [];
-    const combined = [...memoryLogs, ...formattedDbLogs.filter((dbl) => !memoryLogs.some((ml) => ml.id === dbl.id))];
-
-    res.json(combined);
+    res.json(formattedDbLogs);
   } catch (error: any) {
     res.status(500).json({ message: error.message || "Failed to fetch AML logs" });
   }
@@ -364,14 +371,17 @@ async function handleOpenSanctionsCheck(req: any, res: any) {
       headers,
     });
 
-    let records: any[] = [];
-    let totalMatches = 0;
-
-    if (response.ok) {
-      const data = await response.json();
-      records = data.results || [];
-      totalMatches = data.total?.value || records.length;
+    if (!response.ok) {
+      const errText = await response.text();
+      return res.status(response.status).json({
+        success: false,
+        message: `OpenSanctions Screening Error (${response.status}): ${errText || response.statusText}`,
+      });
     }
+
+    const data = await response.json();
+    const records: any[] = data.results || [];
+    const totalMatches: number = data.total?.value !== undefined ? data.total.value : records.length;
 
     let hasSanction = false;
     let hasPep = false;
@@ -390,24 +400,23 @@ async function handleOpenSanctionsCheck(req: any, res: any) {
       ? `OpenSanctions Global Screening PASSED: 0 matches found for "${targetName}" in international sanctions and PEP databases.`
       : `OpenSanctions ALERT: ${totalMatches} possible match(es) identified for "${targetName}". Sanctions: ${hasSanction ? "FLAGGED" : "Clean"}, PEP: ${hasPep ? "FLAGGED" : "Clean"}.`;
 
-    let amlRecordId: number | null = null;
-    if (clientId) {
-      const [insertRes] = await db.insert(pmAmlChecks).values({
-        practiceId,
-        clientId: Number(clientId),
-        riskLevel: hasSanction ? "High" : hasPep || totalMatches > 0 ? "Medium" : "Low",
-        idVerificationStatus: isClean ? "Verified" : "Pending",
-        addressVerificationStatus: isClean ? "Verified" : "Pending",
-        pepSanctionsChecked: true,
-        idDocumentType: "OpenSanctions Open Source AML Screening",
-        idDocumentNumber: `OS-${Date.now()}`,
-        riskNotes: summary,
-        verifiedBy: userId,
-        verifiedAt: new Date(),
-        nextReviewDate: nextYear,
-      });
-      amlRecordId = insertRes.insertId;
+    const [insertRes] = await db.insert(pmAmlChecks).values({
+      practiceId,
+      clientId: clientId ? Number(clientId) : null,
+      riskLevel: hasSanction ? "High" : hasPep || totalMatches > 0 ? "Medium" : "Low",
+      idVerificationStatus: isClean ? "Verified" : "Pending",
+      addressVerificationStatus: isClean ? "Verified" : "Pending",
+      pepSanctionsChecked: true,
+      idDocumentType: "OpenSanctions Open Source AML Screening",
+      idDocumentNumber: clientId ? `OS-${Date.now()}` : `ADHOC:${targetName}`,
+      riskNotes: summary,
+      verifiedBy: userId,
+      verifiedAt: new Date(),
+      nextReviewDate: nextYear,
+    });
+    const amlRecordId = insertRes.insertId;
 
+    if (clientId) {
       await db.insert(pmClientTimeline).values({
         practiceId,
         clientId: Number(clientId),
@@ -420,7 +429,7 @@ async function handleOpenSanctionsCheck(req: any, res: any) {
     }
 
     const logEntry: AmlLogEntry = {
-      id: `AML-OS-${Date.now()}`,
+      id: `AML-${amlRecordId}`,
       clientId: clientId ? Number(clientId) : undefined,
       clientName: targetName,
       provider: "OpenSanctions",
@@ -431,9 +440,6 @@ async function handleOpenSanctionsCheck(req: any, res: any) {
       status: isClean ? "Verified" : "Flagged",
       details: { foundRecords: totalMatches, records, summary },
     };
-
-    if (!amlLogsStore[practiceId]) amlLogsStore[practiceId] = [];
-    amlLogsStore[practiceId].unshift(logEntry);
 
     res.json({
       success: true,
@@ -589,24 +595,23 @@ async function handleDilisenseCheck(req: any, res: any) {
       ? `Dilisense Screening PASSED: Zero (0) active Sanctions, Criminal, or PEP matches found. Verified clean compliance.`
       : `Dilisense Screening ALERT: ${foundRecordsCount} potential match(es) identified. PEP: ${hasPep ? "FLAGGED" : "Clean"}, Sanctions: ${hasSanction ? "FLAGGED" : "Clean"}.`;
 
-    let amlRecordId: number | null = null;
-    if (clientId) {
-      const [insertRes] = await db.insert(pmAmlChecks).values({
-        practiceId,
-        clientId: Number(clientId),
-        riskLevel,
-        idVerificationStatus: isClean ? "Verified" : "Pending",
-        addressVerificationStatus: isClean ? "Verified" : "Pending",
-        pepSanctionsChecked: true,
-        idDocumentType: "Dilisense Global Sanctions & PEP Screening",
-        idDocumentNumber: `DLS-${Date.now()}`,
-        riskNotes: summaryNotes,
-        verifiedBy: userId,
-        verifiedAt: new Date(),
-        nextReviewDate: nextYear,
-      });
-      amlRecordId = insertRes.insertId;
+    const [insertRes] = await db.insert(pmAmlChecks).values({
+      practiceId,
+      clientId: clientId ? Number(clientId) : null,
+      riskLevel,
+      idVerificationStatus: isClean ? "Verified" : "Pending",
+      addressVerificationStatus: isClean ? "Verified" : "Pending",
+      pepSanctionsChecked: true,
+      idDocumentType: "Dilisense Global Sanctions & PEP Screening",
+      idDocumentNumber: clientId ? `DLS-${Date.now()}` : `ADHOC:${names}`,
+      riskNotes: summaryNotes,
+      verifiedBy: userId,
+      verifiedAt: new Date(),
+      nextReviewDate: nextYear,
+    });
+    const amlRecordId = insertRes.insertId;
 
+    if (clientId) {
       await db.insert(pmClientTimeline).values({
         practiceId,
         clientId: Number(clientId),
@@ -619,7 +624,7 @@ async function handleDilisenseCheck(req: any, res: any) {
     }
 
     const logEntry: AmlLogEntry = {
-      id: `AML-DLS-${Date.now()}`,
+      id: `AML-${amlRecordId}`,
       clientId: clientId ? Number(clientId) : undefined,
       clientName: names,
       provider: "Dilisense",
@@ -630,9 +635,6 @@ async function handleDilisenseCheck(req: any, res: any) {
       status: isClean ? "Verified" : "Flagged",
       details: { foundRecords: foundRecordsCount, hasSanction, hasPep, hasCriminal, records, summaryNotes },
     };
-
-    if (!amlLogsStore[practiceId]) amlLogsStore[practiceId] = [];
-    amlLogsStore[practiceId].unshift(logEntry);
 
     res.json({
       success: true,
@@ -741,41 +743,36 @@ async function handleXamaInitiate(req: any, res: any) {
       }),
     });
 
-    let xamaData: any = {};
-    if (xamaResponse.ok) {
-      xamaData = await xamaResponse.json();
-    } else {
-      const verificationId = `XAMA-${Date.now()}`;
-      xamaData = {
-        id: verificationId,
-        status: "Pending",
-        verificationUrl: `https://verify.xamatech.com/journey/${verificationId}`,
-        message: "Xama Onboarding Journey Created",
-      };
+    if (!xamaResponse.ok) {
+      const errText = await xamaResponse.text();
+      return res.status(xamaResponse.status).json({
+        success: false,
+        message: `Xama Gateway returned error (${xamaResponse.status}): ${errText || xamaResponse.statusText}`,
+      });
     }
 
-    const verificationUrl = xamaData.verificationUrl || `https://verify.xamatech.com/journey/${xamaData.id || Date.now()}`;
+    const xamaData: any = await xamaResponse.json();
+    const verificationUrl = xamaData.verificationUrl || `https://verify.xamatech.com/journey/${xamaData.id}`;
     const nextYear = new Date();
     nextYear.setFullYear(nextYear.getFullYear() + 1);
 
-    let amlRecordId: number | null = null;
-    if (clientId) {
-      const [insertRes] = await db.insert(pmAmlChecks).values({
-        practiceId,
-        clientId: Number(clientId),
-        riskLevel: "Low",
-        idVerificationStatus: "Pending Biometrics",
-        addressVerificationStatus: "Pending",
-        pepSanctionsChecked: true,
-        idDocumentType: "Xama Technologies Biometric eIDV Journey",
-        idDocumentNumber: xamaData.id ? String(xamaData.id) : `XAMA-${Date.now()}`,
-        riskNotes: `Xama Biometric Onboarding Invitation generated. Verification Link: ${verificationUrl}`,
-        verifiedBy: userId,
-        verifiedAt: new Date(),
-        nextReviewDate: nextYear,
-      });
-      amlRecordId = insertRes.insertId;
+    const [insertRes] = await db.insert(pmAmlChecks).values({
+      practiceId,
+      clientId: clientId ? Number(clientId) : null,
+      riskLevel: "Low",
+      idVerificationStatus: "Pending Biometrics",
+      addressVerificationStatus: "Pending",
+      pepSanctionsChecked: true,
+      idDocumentType: "Xama Technologies Biometric eIDV Journey",
+      idDocumentNumber: clientId ? (xamaData.id ? String(xamaData.id) : `XAMA-${Date.now()}`) : `ADHOC:${clientName || "Client"}`,
+      riskNotes: `Xama Biometric Onboarding Invitation generated. Verification Link: ${verificationUrl}`,
+      verifiedBy: userId,
+      verifiedAt: new Date(),
+      nextReviewDate: nextYear,
+    });
+    const amlRecordId = insertRes.insertId;
 
+    if (clientId) {
       await db.insert(pmClientTimeline).values({
         practiceId,
         clientId: Number(clientId),
@@ -788,7 +785,7 @@ async function handleXamaInitiate(req: any, res: any) {
     }
 
     const logEntry: AmlLogEntry = {
-      id: `AML-XAMA-${Date.now()}`,
+      id: `AML-${amlRecordId}`,
       clientId: clientId ? Number(clientId) : undefined,
       clientName: clientName || "Client",
       provider: "Xama Tech",
@@ -799,9 +796,6 @@ async function handleXamaInitiate(req: any, res: any) {
       status: "Pending",
       details: { verificationId: xamaData.id, verificationUrl },
     };
-
-    if (!amlLogsStore[practiceId]) amlLogsStore[practiceId] = [];
-    amlLogsStore[practiceId].unshift(logEntry);
 
     res.json({
       success: true,
@@ -882,54 +876,74 @@ async function handleVeriphyCheck(req: any, res: any) {
       });
     }
 
+    const baseUrl = creds.veriphyUrl;
+    const response = await fetch(`${baseUrl}/checks`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey.trim()}`,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      },
+      body: JSON.stringify({
+        targetName,
+        checkType: "IDV_SANCTIONS_PEP",
+      }),
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      return res.status(response.status).json({
+        success: false,
+        message: `Veriphy Screening Error (${response.status}): ${errBody || response.statusText}`,
+      });
+    }
+
+    const data = await response.json();
+    const isClean = data.status === "PASSED" || data.clean === true;
     const nextYear = new Date();
     nextYear.setFullYear(nextYear.getFullYear() + 1);
-    const summary = `Veriphy UK IDV & Sanctions Screening Verified: ${targetName} checked against UK electoral roll, credit bureau data, and OFSI sanctions.`;
+    const summary = `Veriphy UK IDV & Sanctions Screening (${isClean ? "PASSED" : "FLAGGED"}): ${targetName} processed via live Veriphy gateway.`;
 
-    let amlRecordId: number | null = null;
+    const [insertRes] = await db.insert(pmAmlChecks).values({
+      practiceId,
+      clientId: clientId ? Number(clientId) : null,
+      riskLevel: isClean ? "Low" : "High",
+      idVerificationStatus: isClean ? "Verified" : "Pending",
+      addressVerificationStatus: isClean ? "Verified" : "Pending",
+      pepSanctionsChecked: true,
+      idDocumentType: "Veriphy (Davies Group) Electronic IDV",
+      idDocumentNumber: clientId ? `VP-${Date.now()}` : `ADHOC:${targetName}`,
+      riskNotes: summary,
+      verifiedBy: userId,
+      verifiedAt: new Date(),
+      nextReviewDate: nextYear,
+    });
+    const amlRecordId = insertRes.insertId;
+
     if (clientId) {
-      const [insertRes] = await db.insert(pmAmlChecks).values({
-        practiceId,
-        clientId: Number(clientId),
-        riskLevel: "Low",
-        idVerificationStatus: "Verified",
-        addressVerificationStatus: "Verified",
-        pepSanctionsChecked: true,
-        idDocumentType: "Veriphy (Davies Group) Electronic IDV",
-        idDocumentNumber: `VP-${Date.now()}`,
-        riskNotes: summary,
-        verifiedBy: userId,
-        verifiedAt: new Date(),
-        nextReviewDate: nextYear,
-      });
-      amlRecordId = insertRes.insertId;
-
       await db.insert(pmClientTimeline).values({
         practiceId,
         clientId: Number(clientId),
         userId,
         activityType: "Compliance",
-        title: "Veriphy Electronic AML & IDV Verified",
+        title: `Veriphy Electronic AML & IDV (${isClean ? "Verified" : "Flagged"})`,
         content: summary,
-        isPinned: false,
+        isPinned: !isClean,
       });
     }
 
     const logEntry: AmlLogEntry = {
-      id: `AML-VP-${Date.now()}`,
+      id: `AML-${amlRecordId}`,
       clientId: clientId ? Number(clientId) : undefined,
       clientName: targetName,
       provider: "Veriphy",
       checkType: "Veriphy UK Electronic IDV & Sanctions",
-      pepSanctionsStatus: "Passed",
-      riskAssessment: "Low Risk",
+      pepSanctionsStatus: isClean ? "Passed" : "Flagged",
+      riskAssessment: isClean ? "Low Risk" : "High Risk",
       verifiedDate: new Date().toLocaleDateString("en-GB"),
-      status: "Verified",
-      details: { riskNotes: summary },
+      status: isClean ? "Verified" : "Flagged",
+      details: { riskNotes: summary, data },
     };
-
-    if (!amlLogsStore[practiceId]) amlLogsStore[practiceId] = [];
-    amlLogsStore[practiceId].unshift(logEntry);
 
     res.json({
       success: true,

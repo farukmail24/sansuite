@@ -1,18 +1,64 @@
 import { Router } from "express";
 import { db } from "../db";
-import { users, clients, contacts } from "@shared/schema";
+import { users, clients, contacts, practiceRoles } from "@shared/schema";
 import { eq, desc, and, inArray } from "drizzle-orm";
-import { authMiddleware } from "../lib/authUtils";
+import { authMiddleware, requirePracticeUser } from "../lib/authUtils";
 import bcrypt from "bcryptjs";
 
 const router = Router();
-router.use(authMiddleware);
+router.use(authMiddleware, requirePracticeUser);
 
-// In-memory permissions store for granular user permissions per practice user
-const userPermissionsStore: Record<number, any> = {};
+const MODULE_KEYS = [
+  "practice_management",
+  "bookkeeping",
+  "payroll",
+  "accounts_production",
+  "corporation_tax",
+  "self_assessment",
+  "time_fees",
+  "company_secretarial",
+  "mtd_vat",
+  "charity_accounts",
+  "esign",
+  "portal_365",
+  "aml",
+  "onboarding",
+  "mtd_it",
+];
 
-// In-memory extra client metadata store (secondary emails, multiple addresses, SIC codes, etc.)
-const clientExtraDetailsStore: Record<number, any> = {};
+const getDefaultCrudPermissions = (role: string) => {
+  const isSuper = role === "admin" || role === "super_accountant";
+  const isSenior = role === "accountant";
+  const isJunior = role === "staff";
+  const isAuditor = role === "auditor";
+
+  const crudMap: Record<string, { view: boolean; create: boolean; edit: boolean; delete: boolean; approve: boolean }> = {};
+
+  MODULE_KEYS.forEach((k) => {
+    if (isSuper) {
+      crudMap[k] = { view: true, create: true, edit: true, delete: true, approve: true };
+    } else if (isSenior) {
+      crudMap[k] = { view: true, create: true, edit: true, delete: k !== "practice_management", approve: true };
+    } else if (isJunior) {
+      // Junior staff: View, Create, and Edit own work, but NO Delete and NO Approve
+      crudMap[k] = { view: true, create: true, edit: true, delete: false, approve: false };
+    } else if (isAuditor) {
+      // Auditor: Read-only audit trail
+      crudMap[k] = { view: true, create: false, edit: false, delete: false, approve: false };
+    } else {
+      // Client or restricted portal user
+      crudMap[k] = {
+        view: k === "portal_365" || k === "bookkeeping" || k === "payroll" || k === "esign",
+        create: k === "portal_365" || k === "bookkeeping" || k === "esign",
+        edit: k === "portal_365" || k === "bookkeeping",
+        delete: false,
+        approve: false,
+      };
+    }
+  });
+
+  return crudMap;
+};
 
 // Default initial permissions template
 const getDefaultPermissions = (role: string) => {
@@ -28,14 +74,16 @@ const getDefaultPermissions = (role: string) => {
     amlOfficer: isSuper,
     assignedClientIds: [],
     clientManagerClientIds: [],
+    crudPermissions: getDefaultCrudPermissions(role),
     modulePermissions: {
+      portal_365: isSuper || isAccountant || isStaff || isClient,
       bookkeeping: isSuper || isAccountant || isStaff || isClient,
       bk_sales: isSuper || isAccountant || isStaff || isClient,
       bk_purchase: isSuper || isAccountant || isStaff || isClient,
       bk_assets: isSuper || isAccountant || isStaff,
       bk_tasks: isSuper || isAccountant || isStaff,
-      bk_bank: isSuper || isAccountant || isStaff,
-      bk_contacts: isSuper || isAccountant || isStaff,
+      bk_bank: isSuper || isAccountant || isStaff || isClient,
+      bk_contacts: isSuper || isAccountant || isStaff || isClient,
       bk_schedule: isSuper || isAccountant || isStaff,
       bk_reports: isSuper || isAccountant || isStaff || isClient,
       bk_settings: isSuper || isAccountant,
@@ -44,6 +92,7 @@ const getDefaultPermissions = (role: string) => {
       bk_cis: isSuper || isAccountant || isStaff,
       bk_inventory: isSuper || isAccountant || isStaff,
       payroll: isSuper || isAccountant || isStaff || isClient,
+      esign: isSuper || isAccountant || isStaff || isClient,
       mtd_vat: isSuper || isAccountant || isStaff,
       accounts_production: isSuper || isAccountant || isStaff,
       corporation_tax: isSuper || isAccountant || isStaff,
@@ -52,6 +101,9 @@ const getDefaultPermissions = (role: string) => {
       company_secretarial: isSuper || isAccountant || isStaff,
       time_fees: isSuper || isAccountant || isStaff,
       charity_accounts: isSuper || isAccountant,
+      aml: isSuper || isAccountant || isStaff,
+      onboarding: isSuper || isAccountant || isStaff,
+      mtd_it: isSuper || isAccountant || isStaff,
     },
   };
 };
@@ -107,8 +159,6 @@ router.get("/clients", async (req: any, res) => {
       let extraData: any = {};
       if (c.extraDetailsJson) {
         try { extraData = JSON.parse(c.extraDetailsJson); } catch (e) {}
-      } else if (clientExtraDetailsStore[c.id]) {
-        extraData = clientExtraDetailsStore[c.id];
       }
       return {
         ...c,
@@ -190,7 +240,6 @@ router.post("/clients", async (req: any, res) => {
     });
 
     const newClientId = result.insertId;
-    clientExtraDetailsStore[newClientId] = extra;
 
     res.json({
       id: newClientId,
@@ -250,13 +299,10 @@ router.patch("/clients/:id", async (req: any, res) => {
       let existingExtra = {};
       if (existingClient?.extraDetailsJson) {
         try { existingExtra = JSON.parse(existingClient.extraDetailsJson); } catch (e) {}
-      } else if (clientExtraDetailsStore[clientId]) {
-        existingExtra = clientExtraDetailsStore[clientId];
       }
       const mergedExtra = { ...existingExtra, ...extra };
       updates.extraDetailsJson = JSON.stringify(mergedExtra);
       if (mergedExtra.vatScheme !== undefined) updates.vatScheme = mergedExtra.vatScheme || null;
-      clientExtraDetailsStore[clientId] = mergedExtra;
     }
 
     if (Object.keys(updates).length > 0) {
@@ -281,8 +327,6 @@ router.delete("/clients/:id", async (req: any, res) => {
     await db
       .delete(clients)
       .where(and(eq(clients.id, clientId), eq(clients.practiceId, practiceId)));
-
-    delete clientExtraDetailsStore[clientId];
 
     res.json({ message: "Client removed from practice registry." });
   } catch (error: any) {
@@ -334,7 +378,21 @@ router.post("/clients/import-csv", async (req: any, res) => {
       const cCode = (item.clientCode || item.clientId || `CL${String(nextIdCounter).padStart(3, "0")}`).trim();
       const { nextCsDue, nextAccountsDue } = computeStatutoryDueDates(item.yearEnd);
 
-      const [result] = await db.insert(clients).values({
+      const extraMeta = {
+        secondaryEmail: item.secondaryEmail || "",
+        tradingAddress: item.tradingAddress || "",
+        overseasAddress: item.overseasAddress || "",
+        sicCodes: item.sicCodes || item.sic || "",
+        vatScheme: item.vatScheme || "Standard",
+        vatSubmitType: item.vatSubmitType || "Quarterly (MTD)",
+        accountsOfficeRef: item.accountsOfficeRef || "",
+        payeRef: item.payeRef || "",
+        businessStartDate: item.businessStartDate || "",
+        bookStartDate: item.bookStartDate || "",
+        yearEnd: item.yearEnd || "",
+      };
+
+      await db.insert(clients).values({
         practiceId,
         clientCode: cCode,
         clientName: cName,
@@ -351,21 +409,9 @@ router.post("/clients/import-csv", async (req: any, res) => {
         isActive: true,
         nextCsDue,
         nextAccountsDue,
+        vatScheme: extraMeta.vatScheme || null,
+        extraDetailsJson: JSON.stringify(extraMeta),
       });
-
-      clientExtraDetailsStore[result.insertId] = {
-        secondaryEmail: item.secondaryEmail || "",
-        tradingAddress: item.tradingAddress || "",
-        overseasAddress: item.overseasAddress || "",
-        sicCodes: item.sicCodes || item.sic || "",
-        vatScheme: item.vatScheme || "Standard",
-        vatSubmitType: item.vatSubmitType || "Quarterly (MTD)",
-        accountsOfficeRef: item.accountsOfficeRef || "",
-        payeRef: item.payeRef || "",
-        businessStartDate: item.businessStartDate || "",
-        bookStartDate: item.bookStartDate || "",
-        yearEnd: item.yearEnd || "",
-      };
 
       nextIdCounter++;
       createdCount++;
@@ -384,9 +430,6 @@ router.post("/clients/import-csv", async (req: any, res) => {
 // CONTACTS MANAGEMENT ROUTES (My Admin > Contacts)
 // =============================================
 
-// In-memory extra contact metadata store (prefix, sharePercent, jobTitle, altEmail, etc.)
-const contactExtraDetailsStore: Record<number, any> = {};
-
 // GET /api/myadmin/contacts - Fetch full practice contacts directory
 router.get("/contacts", async (req: any, res) => {
   try {
@@ -402,6 +445,11 @@ router.get("/contacts", async (req: any, res) => {
         email: contacts.email,
         phone: contacts.phone,
         address: contacts.address,
+        city: contacts.city,
+        postcode: contacts.postcode,
+        country: contacts.country,
+        designation: contacts.designation,
+        notes: contacts.notes,
         vatNumber: contacts.vatNumber,
         createdAt: contacts.createdAt,
         clientName: clients.clientName,
@@ -412,22 +460,30 @@ router.get("/contacts", async (req: any, res) => {
       .where(eq(contacts.practiceId, practiceId))
       .orderBy(desc(contacts.createdAt));
 
-    const enriched = allContacts.map((c) => ({
-      ...c,
-      extra: contactExtraDetailsStore[c.id] || {
-        prefix: "Mr",
-        firstName: c.name.split(" ")[0] || c.name,
-        lastName: c.name.split(" ").slice(1).join(" ") || "",
-        jobTitle: "",
-        city: "",
-        postcode: "",
-        country: "United Kingdom",
-        sharePercent: "",
-        shareClass: "Ordinary",
-        niNumber: "",
-        dob: "",
-      },
-    }));
+    const enriched = allContacts.map((c) => {
+      let extraData: any = {};
+      if (c.notes) {
+        try { extraData = JSON.parse(c.notes); } catch (e) {}
+      }
+      return {
+        ...c,
+        extra: {
+          prefix: extraData.prefix || "Mr",
+          firstName: extraData.firstName || c.name.split(" ")[0] || c.name,
+          middleName: extraData.middleName || "",
+          lastName: extraData.lastName || c.name.split(" ").slice(1).join(" ") || "",
+          jobTitle: extraData.jobTitle || c.designation || "",
+          city: c.city || extraData.city || "",
+          postcode: c.postcode || extraData.postcode || "",
+          country: c.country || extraData.country || "United Kingdom",
+          sharePercent: extraData.sharePercent || "",
+          shareClass: extraData.shareClass || "Ordinary",
+          niNumber: extraData.niNumber || "",
+          dob: extraData.dob || "",
+          ...extraData,
+        },
+      };
+    });
 
     res.json(enriched);
   } catch (error) {
@@ -463,19 +519,7 @@ router.post("/contacts", async (req: any, res) => {
       return res.status(400).json({ message: "Contact name is required." });
     }
 
-    const [result] = await db.insert(contacts).values({
-      practiceId,
-      clientId: clientId ? parseInt(clientId) : null,
-      contactType,
-      name: fullName,
-      email: email?.trim() || null,
-      phone: phone?.trim() || null,
-      address: address?.trim() || null,
-      vatNumber: vatNumber?.trim() || null,
-    });
-
-    const newContactId = result.insertId;
-    contactExtraDetailsStore[newContactId] = {
+    const contactMeta = {
       prefix: prefix || "Mr",
       firstName: firstName || fullName.split(" ")[0] || fullName,
       middleName: middleName || "",
@@ -488,7 +532,26 @@ router.post("/contacts", async (req: any, res) => {
       shareClass: extra.shareClass || "Ordinary",
       niNumber: extra.niNumber || "",
       dob: extra.dob || "",
+      ...extra,
     };
+
+    const [result] = await db.insert(contacts).values({
+      practiceId,
+      clientId: clientId ? parseInt(clientId) : null,
+      contactType,
+      name: fullName,
+      email: email?.trim() || null,
+      phone: phone?.trim() || null,
+      address: address?.trim() || null,
+      city: city?.trim() || null,
+      postcode: postcode?.trim() || null,
+      country: country || "United Kingdom",
+      designation: extra.jobTitle?.trim() || null,
+      notes: JSON.stringify(contactMeta),
+      vatNumber: vatNumber?.trim() || null,
+    });
+
+    const newContactId = result.insertId;
 
     res.json({
       id: newContactId,
@@ -513,6 +576,9 @@ router.patch("/contacts/:id", async (req: any, res) => {
       email,
       phone,
       address,
+      city,
+      postcode,
+      country,
       clientId,
       vatNumber,
       extra,
@@ -524,24 +590,40 @@ router.patch("/contacts/:id", async (req: any, res) => {
     if (email !== undefined) updates.email = email;
     if (phone !== undefined) updates.phone = phone;
     if (address !== undefined) updates.address = address;
+    if (city !== undefined) updates.city = city;
+    if (postcode !== undefined) updates.postcode = postcode;
+    if (country !== undefined) updates.country = country;
     if (clientId !== undefined) updates.clientId = clientId ? parseInt(clientId) : null;
     if (vatNumber !== undefined) updates.vatNumber = vatNumber;
+
+    if (extra || prefix || firstName || lastName || city || postcode || country) {
+      const [existingContact] = await db.select().from(contacts).where(and(eq(contacts.id, contactId), eq(contacts.practiceId, practiceId))).limit(1);
+      let existingExtra: any = {};
+      if (existingContact?.notes) {
+        try { existingExtra = JSON.parse(existingContact.notes); } catch (e) {}
+      }
+      const mergedExtra = {
+        ...existingExtra,
+        ...(prefix ? { prefix } : {}),
+        ...(firstName ? { firstName } : {}),
+        ...(lastName ? { lastName } : {}),
+        ...(city ? { city } : {}),
+        ...(postcode ? { postcode } : {}),
+        ...(country ? { country } : {}),
+        ...(extra || {}),
+      };
+      updates.notes = JSON.stringify(mergedExtra);
+      if (mergedExtra.jobTitle) updates.designation = mergedExtra.jobTitle;
+      if (mergedExtra.city) updates.city = mergedExtra.city;
+      if (mergedExtra.postcode) updates.postcode = mergedExtra.postcode;
+      if (mergedExtra.country) updates.country = mergedExtra.country;
+    }
 
     if (Object.keys(updates).length > 0) {
       await db
         .update(contacts)
         .set(updates)
         .where(and(eq(contacts.id, contactId), eq(contacts.practiceId, practiceId)));
-    }
-
-    if (extra || prefix || firstName || lastName) {
-      contactExtraDetailsStore[contactId] = {
-        ...(contactExtraDetailsStore[contactId] || {}),
-        ...(prefix ? { prefix } : {}),
-        ...(firstName ? { firstName } : {}),
-        ...(lastName ? { lastName } : {}),
-        ...(extra || {}),
-      };
     }
 
     res.json({ message: "Contact updated successfully." });
@@ -559,8 +641,6 @@ router.delete("/contacts/:id", async (req: any, res) => {
     await db
       .delete(contacts)
       .where(and(eq(contacts.id, contactId), eq(contacts.practiceId, practiceId)));
-
-    delete contactExtraDetailsStore[contactId];
 
     res.json({ message: "Contact deleted successfully." });
   } catch (error: any) {
@@ -598,17 +678,7 @@ router.post("/contacts/import-csv", async (req: any, res) => {
         if (found) matchedClientId = found.id;
       }
 
-      const [result] = await db.insert(contacts).values({
-        practiceId,
-        clientId: matchedClientId,
-        contactType: item.type || item.contactType || "Director",
-        name: rawName,
-        email: item.email || null,
-        phone: item.phone || item.phoneNo || null,
-        address: item.address || null,
-      });
-
-      contactExtraDetailsStore[result.insertId] = {
+      const meta = {
         prefix,
         firstName: fName || rawName.split(" ")[0] || rawName,
         lastName: lName || rawName.split(" ").slice(1).join(" ") || "",
@@ -621,6 +691,21 @@ router.post("/contacts/import-csv", async (req: any, res) => {
         niNumber: item.niNumber || "",
         dob: item.dob || "",
       };
+
+      await db.insert(contacts).values({
+        practiceId,
+        clientId: matchedClientId,
+        contactType: item.type || item.contactType || "Director",
+        name: rawName,
+        email: item.email || null,
+        phone: item.phone || item.phoneNo || null,
+        address: item.address || null,
+        city: meta.city || null,
+        postcode: meta.postcode || null,
+        country: meta.country || "United Kingdom",
+        designation: meta.jobTitle || null,
+        notes: JSON.stringify(meta),
+      });
 
       createdCount++;
     }
@@ -643,7 +728,7 @@ router.get("/users", async (req: any, res) => {
   try {
     const practiceId = req.user?.practiceId || 1;
 
-    let allUsers = await db
+    const allUsers = await db
       .select({
         id: users.id,
         firstName: users.firstName,
@@ -660,85 +745,10 @@ router.get("/users", async (req: any, res) => {
       .where(eq(users.practiceId, practiceId))
       .orderBy(desc(users.createdAt));
 
-    // If no users exist, seed default practice team members
-    if (allUsers.length === 0) {
-      const defaultHash = await bcrypt.hash("SanSuite@2026", 10);
-      const seedUsers = [
-        {
-          practiceId,
-          email: "james.sterling@demoaccounting.co.uk",
-          passwordHash: defaultHash,
-          firstName: "James",
-          lastName: "Sterling",
-          phone: "020 7946 0123",
-          role: "admin",
-          isActive: true,
-        },
-        {
-          practiceId,
-          email: "sarah.jenkins@demoaccounting.co.uk",
-          passwordHash: defaultHash,
-          firstName: "Sarah",
-          lastName: "Jenkins",
-          phone: "020 7946 0456",
-          role: "accountant",
-          isActive: true,
-        },
-        {
-          practiceId,
-          email: "david.miller@demoaccounting.co.uk",
-          passwordHash: defaultHash,
-          firstName: "David",
-          lastName: "Miller",
-          phone: "020 7946 0789",
-          role: "staff",
-          isActive: true,
-        },
-        {
-          practiceId,
-          email: "emma.watson@demoaccounting.co.uk",
-          passwordHash: defaultHash,
-          firstName: "Emma",
-          lastName: "Watson",
-          phone: "020 7946 0999",
-          role: "staff",
-          isActive: true,
-        },
-      ];
-
-      for (const u of seedUsers) {
-        const defaultPerms = getDefaultPermissions(u.role);
-        const [inserted] = await db.insert(users).values({
-          ...u,
-          permissionsJson: JSON.stringify(defaultPerms),
-        });
-        userPermissionsStore[inserted.insertId] = defaultPerms;
-      }
-
-      allUsers = await db
-        .select({
-          id: users.id,
-          firstName: users.firstName,
-          lastName: users.lastName,
-          email: users.email,
-          phone: users.phone,
-          role: users.role,
-          isActive: users.isActive,
-          lastLogin: users.lastLogin,
-          createdAt: users.createdAt,
-          permissionsJson: users.permissionsJson,
-        })
-        .from(users)
-        .where(eq(users.practiceId, practiceId))
-        .orderBy(desc(users.createdAt));
-    }
-
     const enrichedUsers = allUsers.map((u: any) => {
       let perms = getDefaultPermissions(u.role);
       if (u.permissionsJson) {
         try { perms = JSON.parse(u.permissionsJson); } catch (e) {}
-      } else if (userPermissionsStore[u.id]) {
-        perms = userPermissionsStore[u.id];
       }
       return {
         ...u,
@@ -755,6 +765,12 @@ router.get("/users", async (req: any, res) => {
 // POST /api/myadmin/users - Create new user with permissions
 router.post("/users", async (req: any, res) => {
   try {
+    const requestingRole = req.user?.role || "staff";
+    const isSuper = requestingRole === "admin" || requestingRole === "super_accountant";
+    if (!isSuper) {
+      return res.status(403).json({ message: "Access denied. Only Practice Admins can create or modify users and permissions." });
+    }
+
     const {
       firstName,
       lastName,
@@ -791,7 +807,6 @@ router.post("/users", async (req: any, res) => {
     });
 
     const newUserId = result.insertId;
-    userPermissionsStore[newUserId] = finalPerms;
 
     res.json({
       id: newUserId,
@@ -805,6 +820,13 @@ router.post("/users", async (req: any, res) => {
 // PATCH /api/myadmin/users/:id - Update user details & permissions
 router.patch("/users/:id", async (req: any, res) => {
   try {
+    const requestingRole = req.user?.role || "staff";
+    const isSuper = requestingRole === "admin" || requestingRole === "super_accountant";
+    if (!isSuper) {
+      return res.status(403).json({ message: "Access denied. Only Practice Admins can modify users and permissions." });
+    }
+
+    const practiceId = req.user.practiceId;
     const userId = parseInt(req.params.id);
     const {
       firstName,
@@ -815,6 +837,16 @@ router.patch("/users/:id", async (req: any, res) => {
       password,
       permissions,
     } = req.body;
+
+    const [existingUser] = await db
+      .select()
+      .from(users)
+      .where(and(eq(users.id, userId), eq(users.practiceId, practiceId)))
+      .limit(1);
+
+    if (!existingUser) {
+      return res.status(404).json({ message: "User not found in practice directory." });
+    }
 
     const updates: any = {};
     if (firstName !== undefined) updates.firstName = firstName;
@@ -827,20 +859,19 @@ router.patch("/users/:id", async (req: any, res) => {
     }
 
     if (permissions) {
-      const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-      let existingPerms = getDefaultPermissions(role || u?.role || "staff");
-      if (u?.permissionsJson) {
-        try { existingPerms = JSON.parse(u.permissionsJson); } catch (e) {}
-      } else if (userPermissionsStore[userId]) {
-        existingPerms = userPermissionsStore[userId];
+      let existingPerms = getDefaultPermissions(role || existingUser.role || "staff");
+      if (existingUser.permissionsJson) {
+        try { existingPerms = JSON.parse(existingUser.permissionsJson); } catch (e) {}
       }
       const mergedPerms = { ...existingPerms, ...permissions };
       updates.permissionsJson = JSON.stringify(mergedPerms);
-      userPermissionsStore[userId] = mergedPerms;
     }
 
     if (Object.keys(updates).length > 0) {
-      await db.update(users).set(updates).where(eq(users.id, userId));
+      await db
+        .update(users)
+        .set(updates)
+        .where(and(eq(users.id, userId), eq(users.practiceId, practiceId)));
     }
 
     res.json({ message: "User updated successfully" });
@@ -852,9 +883,19 @@ router.patch("/users/:id", async (req: any, res) => {
 // DELETE /api/myadmin/users/:id
 router.delete("/users/:id", async (req: any, res) => {
   try {
+    const requestingRole = req.user?.role || "staff";
+    const isSuper = requestingRole === "admin" || requestingRole === "super_accountant";
+    if (!isSuper) {
+      return res.status(403).json({ message: "Access denied. Only Practice Admins can delete users." });
+    }
+
+    const practiceId = req.user.practiceId;
     const userId = parseInt(req.params.id);
-    await db.delete(users).where(eq(users.id, userId));
-    delete userPermissionsStore[userId];
+
+    await db
+      .delete(users)
+      .where(and(eq(users.id, userId), eq(users.practiceId, practiceId)));
+
     res.json({ message: "User deleted successfully" });
   } catch (error) {
     res.status(500).json({ message: "Failed to delete user" });
@@ -864,6 +905,12 @@ router.delete("/users/:id", async (req: any, res) => {
 // POST /api/myadmin/users/import-csv - Bulk import users
 router.post("/users/import-csv", async (req: any, res) => {
   try {
+    const requestingRole = req.user?.role || "staff";
+    const isSuper = requestingRole === "admin" || requestingRole === "super_accountant";
+    if (!isSuper) {
+      return res.status(403).json({ message: "Access denied. Only Practice Admins can import users." });
+    }
+
     const { usersList } = req.body;
     if (!Array.isArray(usersList) || usersList.length === 0) {
       return res.status(400).json({ message: "No valid users provided in import list." });
@@ -878,7 +925,7 @@ router.post("/users/import-csv", async (req: any, res) => {
 
       const existing = await db.select().from(users).where(eq(users.email, cleanEmail));
       if (existing.length === 0) {
-        const [result] = await db.insert(users).values({
+        await db.insert(users).values({
           practiceId: req.user.practiceId,
           email: cleanEmail,
           passwordHash: defaultPass,
@@ -890,7 +937,6 @@ router.post("/users/import-csv", async (req: any, res) => {
           permissionsJson: JSON.stringify(getDefaultPermissions(item.role || "staff")),
         });
 
-        userPermissionsStore[result.insertId] = getDefaultPermissions(item.role || "staff");
         createdCount++;
       }
     }
@@ -904,4 +950,87 @@ router.post("/users/import-csv", async (req: any, res) => {
   }
 });
 
+// =============================================
+// MULTI-TENANT PRACTICE CUSTOM ROLES
+// =============================================
+
+// GET /api/myadmin/roles - Fetch custom practice roles for tenant
+router.get("/roles", async (req: any, res) => {
+  try {
+    const practiceId = req.user?.practiceId || 1;
+    const customRoles = await db
+      .select()
+      .from(practiceRoles)
+      .where(eq(practiceRoles.practiceId, practiceId))
+      .orderBy(desc(practiceRoles.createdAt));
+
+    res.json(customRoles);
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to fetch practice roles", error: error.message });
+  }
+});
+
+// POST /api/myadmin/roles - Create custom practice role template
+router.post("/roles", async (req: any, res) => {
+  try {
+    const practiceId = req.user?.practiceId || 1;
+    const requestingRole = req.user?.role || "staff";
+    const isSuper = requestingRole === "admin" || requestingRole === "super_accountant";
+    if (!isSuper) {
+      return res.status(403).json({ message: "Access denied. Only Practice Admins can create custom roles." });
+    }
+
+    const { roleName, description, baseTier = "staff", badge, permissionsJson } = req.body;
+
+    if (!roleName || !roleName.trim()) {
+      return res.status(400).json({ message: "Role name is required." });
+    }
+
+    const roleCode = "custom_" + roleName.trim().toLowerCase().replace(/[^a-z0-9]/g, "_");
+
+    const [result] = await db.insert(practiceRoles).values({
+      practiceId,
+      roleName: roleName.trim(),
+      roleCode,
+      badge: badge || "Custom Practice Role",
+      badgeColor: "bg-teal-50 text-teal-800 border-teal-200",
+      description: description || `Custom practice role: ${roleName.trim()}`,
+      baseTier: baseTier || "staff",
+      permissionsJson: typeof permissionsJson === "string" ? permissionsJson : JSON.stringify(permissionsJson || {}),
+    });
+
+    res.json({
+      id: result.insertId,
+      roleCode,
+      roleName: roleName.trim(),
+      message: "Custom practice role created successfully.",
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to create custom practice role", error: error.message });
+  }
+});
+
+// DELETE /api/myadmin/roles/:id - Delete custom practice role
+router.delete("/roles/:id", async (req: any, res) => {
+  try {
+    const practiceId = req.user?.practiceId || 1;
+    const requestingRole = req.user?.role || "staff";
+    const isSuper = requestingRole === "admin" || requestingRole === "super_accountant";
+    if (!isSuper) {
+      return res.status(403).json({ message: "Access denied. Only Practice Admins can delete custom roles." });
+    }
+
+    const roleId = parseInt(req.params.id);
+
+    await db
+      .delete(practiceRoles)
+      .where(and(eq(practiceRoles.id, roleId), eq(practiceRoles.practiceId, practiceId)));
+
+    res.json({ message: "Custom practice role deleted successfully." });
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to delete practice role", error: error.message });
+  }
+});
+
 export default router;
+

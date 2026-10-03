@@ -32,6 +32,19 @@ export const users = mysqlTable("users", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const practiceRoles = mysqlTable("practice_roles", {
+  id: int("id").primaryKey().autoincrement(),
+  practiceId: int("practice_id").notNull(),
+  roleName: varchar("role_name", { length: 100 }).notNull(),
+  roleCode: varchar("role_code", { length: 50 }).notNull(),
+  badge: varchar("badge", { length: 50 }).default("Custom Practice Role"),
+  badgeColor: varchar("badge_color", { length: 100 }).default("bg-teal-50 text-teal-800 border-teal-200"),
+  description: text("description"),
+  baseTier: varchar("base_tier", { length: 50 }).default("staff"),
+  permissionsJson: longtext("permissions_json"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const firmDetails = mysqlTable("firm_details", {
   id: int("id").primaryKey().autoincrement(),
   practiceId: int("practice_id").notNull().references(() => practices.id),
@@ -2736,7 +2749,7 @@ export const pmLoeDocuments = mysqlTable("pm_loe_documents", {
 export const pmAmlChecks = mysqlTable("pm_aml_checks", {
   id: int("id").primaryKey().autoincrement(),
   practiceId: int("practice_id").notNull().references(() => practices.id),
-  clientId: int("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  clientId: int("client_id").references(() => clients.id, { onDelete: "cascade" }),
   riskLevel: varchar("risk_level", { length: 20 }).default("Low"), // Low, Medium, High
   idVerificationStatus: varchar("id_verification_status", { length: 50 }).default("Verified"), // Verified, Pending, Failed
   addressVerificationStatus: varchar("address_verification_status", { length: 50 }).default("Verified"),

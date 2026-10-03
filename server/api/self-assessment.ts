@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db } from "../db";
+import { db, pool } from "../db";
 import {
   sa100Returns, sa800Returns, selfAssessmentClients, clients, practices,
   insertSa100ReturnSchema, insertSa800ReturnSchema,
@@ -7,12 +7,12 @@ import {
   employees, payeSchemes, cisReturnLines
 } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
-import { authMiddleware } from "../lib/authUtils";
+import { authMiddleware, requirePracticeUser } from "../lib/authUtils";
 import { nanoid } from "nanoid";
 import crypto from "crypto";
 
 const router = Router();
-router.use(authMiddleware);
+router.use(authMiddleware, requirePracticeUser);
 
 // ====================================================
 // HELPER: CALCULATE STATUTORY SA302 TAX
@@ -502,60 +502,81 @@ function formatReturnRecord(ret: any) {
   };
 }
 
-// In-memory / practice settings cache
-const saSettingsStore: Record<number, any> = {};
+// ====================================================
+// 0. SELF ASSESSMENT SETTINGS, TEMPLATES & LETTERHEAD (MySQL system_settings)
+// ====================================================
+const DEFAULT_SA_SETTINGS = {
+  senderId: "",
+  testMode: true,
+  defaultTaxYear: "2025/2026",
+  enablePasswordProtection: true,
+  passwordFormat: "nino_dob",
+  emailNotificationSender: "",
+  taxDueLetterhead: {
+    practiceName: "",
+    headerText: "Statutory Self Assessment Tax Payment Notice",
+    introNotice: "Please find below the calculation of your statutory Self Assessment liability and official payment instructions.",
+    signoffText: "Should you have any questions or require an adjustment to your Payments on Account, please contact our tax department.",
+    includeFirmBankDetails: false,
+    firmBankName: "",
+    firmSortCode: "",
+    firmAccountNo: "",
+  },
+  emailTemplates: [
+    {
+      id: "sa100_approval",
+      name: "SA100 Draft Ready for Client Approval",
+      subject: "Action Required: Your {TaxYear} Self Assessment Return is Ready for Review",
+      body: "Dear {ClientName},\n\nWe have prepared your Self Assessment tax return for the tax year {TaxYear}. Before we can submit this to HMRC, please review your calculation and confirm your approval.\n\nYour Unique Taxpayer Reference (UTR): {UTR}\nTotal Tax Due by 31 January: £{TotalDueBy31Jan}\n\nPlease click the link below to review and digitally sign your return.\n\nKind regards,\n{FirmName}",
+    },
+    {
+      id: "hmrc_accepted",
+      name: "HMRC Submission Accepted Confirmation",
+      subject: "Confirmed: Your {TaxYear} Self Assessment Return Filed Successfully",
+      body: "Dear {ClientName},\n\nGood news! Your Self Assessment return for {TaxYear} has been officially received and accepted by HM Revenue & Customs.\n\nHMRC Reference / Payment Ref: {PaymentReference}\nAmount Payable by 31 January: £{TotalDueBy31Jan}\n\nPlease ensure your payment is made quoting your reference to avoid HMRC interest.\n\nKind regards,\n{FirmName}",
+    },
+    {
+      id: "payment_reminder_jan",
+      name: "31 January Balancing Payment & 1st PoA Reminder",
+      subject: "Urgent Tax Reminder: HMRC Payment Due by 31 January",
+      body: "Dear {ClientName},\n\nThis is a reminder that your Self Assessment tax payment of £{TotalDueBy31Jan} for {TaxYear} is due to HMRC by midnight on 31 January.\n\nPayment Reference: {PaymentReference}\nHMRC Sort Code: 08-32-10 | Account No: 12001039\n\nPlease quote your reference {PaymentReference} on your bank transfer.\n\nKind regards,\n{FirmName}",
+    },
+    {
+      id: "payment_reminder_july",
+      name: "31 July Second Payment on Account Reminder",
+      subject: "Tax Reminder: Second Payment on Account Due by 31 July",
+      body: "Dear {ClientName},\n\nThis is a reminder that your second Payment on Account of £{SecondPoADue} for the upcoming tax year is due to HMRC by 31 July.\n\nPayment Reference: {PaymentReference}\nHMRC Sort Code: 08-32-10 | Account No: 12001039\n\nKind regards,\n{FirmName}",
+    },
+  ],
+};
 
-// ====================================================
-// 0. SELF ASSESSMENT SETTINGS, TEMPLATES & LETTERHEAD
-// ====================================================
 router.get("/settings", async (req: any, res) => {
   try {
     const practiceId = req.user?.practiceId || 1;
-    const current = saSettingsStore[practiceId] || {
-      senderId: "HMRC-AGENT-7781",
-      testMode: true,
-      defaultTaxYear: "2025/2026",
-      enablePasswordProtection: true,
-      passwordFormat: "nino_dob",
-      emailNotificationSender: "tax-filings@sansuite.co.uk",
-      taxDueLetterhead: {
-        practiceName: "SanSuite Practice Tax Services",
-        headerText: "Statutory Self Assessment Tax Payment Notice",
-        introNotice: "Please find below the calculation of your statutory Self Assessment liability and official payment instructions.",
-        signoffText: "Should you have any questions or require an adjustment to your Payments on Account, please contact our tax department.",
-        includeFirmBankDetails: false,
-        firmBankName: "Barclays Bank UK PLC",
-        firmSortCode: "20-04-15",
-        firmAccountNo: "29104756",
-      },
-      emailTemplates: [
-        {
-          id: "sa100_approval",
-          name: "SA100 Draft Ready for Client Approval",
-          subject: "Action Required: Your {TaxYear} Self Assessment Return is Ready for Review",
-          body: "Dear {ClientName},\n\nWe have prepared your Self Assessment tax return for the tax year {TaxYear}. Before we can submit this to HMRC, please review your calculation and confirm your approval.\n\nYour Unique Taxpayer Reference (UTR): {UTR}\nTotal Tax Due by 31 January: £{TotalDueBy31Jan}\n\nPlease click the link below to review and digitally sign your return.\n\nKind regards,\n{FirmName}",
-        },
-        {
-          id: "hmrc_accepted",
-          name: "HMRC Submission Accepted Confirmation",
-          subject: "Confirmed: Your {TaxYear} Self Assessment Return Filed Successfully",
-          body: "Dear {ClientName},\n\nGood news! Your Self Assessment return for {TaxYear} has been officially received and accepted by HM Revenue & Customs.\n\nHMRC Reference / Payment Ref: {PaymentReference}\nAmount Payable by 31 January: £{TotalDueBy31Jan}\n\nPlease ensure your payment is made quoting your reference to avoid HMRC interest.\n\nKind regards,\n{FirmName}",
-        },
-        {
-          id: "payment_reminder_jan",
-          name: "31 January Balancing Payment & 1st PoA Reminder",
-          subject: "Urgent Tax Reminder: HMRC Payment Due by 31 January",
-          body: "Dear {ClientName},\n\nThis is a reminder that your Self Assessment tax payment of £{TotalDueBy31Jan} for {TaxYear} is due to HMRC by midnight on 31 January.\n\nPayment Reference: {PaymentReference}\nHMRC Sort Code: 08-32-10 | Account No: 12001039\n\nPlease quote your reference {PaymentReference} on your bank transfer.\n\nKind regards,\n{FirmName}",
-        },
-        {
-          id: "payment_reminder_july",
-          name: "31 July Second Payment on Account Reminder",
-          subject: "Tax Reminder: Second Payment on Account Due by 31 July",
-          body: "Dear {ClientName},\n\nThis is a reminder that your second Payment on Account of £{SecondPoADue} for the upcoming tax year is due to HMRC by 31 July.\n\nPayment Reference: {PaymentReference}\nHMRC Sort Code: 08-32-10 | Account No: 12001039\n\nKind regards,\n{FirmName}",
-        },
-      ],
-    };
-    res.json(current);
+    const settingKey = `sa_settings_${practiceId}`;
+
+    const [rows]: any = await pool.query(
+      "SELECT value FROM system_settings WHERE `key` = ?",
+      [settingKey]
+    );
+
+    if (rows && rows.length > 0 && rows[0].value) {
+      try {
+        const parsed = JSON.parse(rows[0].value);
+        return res.json({
+          ...DEFAULT_SA_SETTINGS,
+          ...parsed,
+          taxDueLetterhead: {
+            ...DEFAULT_SA_SETTINGS.taxDueLetterhead,
+            ...(parsed.taxDueLetterhead || {}),
+          },
+        });
+      } catch (err) {
+        console.error("Error parsing sa_settings JSON:", err);
+      }
+    }
+
+    res.json(DEFAULT_SA_SETTINGS);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -564,12 +585,44 @@ router.get("/settings", async (req: any, res) => {
 router.post("/settings", async (req: any, res) => {
   try {
     const practiceId = req.user?.practiceId || 1;
-    saSettingsStore[practiceId] = {
-      ...(saSettingsStore[practiceId] || {}),
+    const userId = req.user?.id || null;
+    const settingKey = `sa_settings_${practiceId}`;
+
+    // Read existing to merge cleanly
+    const [existingRows]: any = await pool.query(
+      "SELECT value FROM system_settings WHERE `key` = ?",
+      [settingKey]
+    );
+
+    let existingData = {};
+    if (existingRows && existingRows.length > 0 && existingRows[0].value) {
+      try {
+        existingData = JSON.parse(existingRows[0].value);
+      } catch (_) {}
+    }
+
+    const merged = {
+      ...DEFAULT_SA_SETTINGS,
+      ...existingData,
       ...req.body,
+      taxDueLetterhead: {
+        ...DEFAULT_SA_SETTINGS.taxDueLetterhead,
+        ...((existingData as any).taxDueLetterhead || {}),
+        ...(req.body.taxDueLetterhead || {}),
+      },
       updatedAt: new Date().toISOString(),
     };
-    res.json({ success: true, message: "Self Assessment settings updated successfully." });
+
+    await pool.query(
+      "INSERT INTO system_settings (`key`, value, updated_by) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value), updated_by = VALUES(updated_by)",
+      [settingKey, JSON.stringify(merged), userId]
+    );
+
+    res.json({
+      success: true,
+      message: "Self Assessment settings saved and persisted successfully in MySQL database.",
+      settings: merged,
+    });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

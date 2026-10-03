@@ -138,7 +138,13 @@ import CalendarPage from "./pages/practice/CalendarPage";
 import SchedulePage from "./pages/practice/SchedulePage";
 import CapacityPage from "./pages/practice/CapacityPage";
 import AmlCompliancePage from "./pages/aml/AmlCompliancePage";
+import AmlIdentityChecksPage from "./pages/aml/AmlIdentityChecksPage";
+import AmlRiskMatrixPage from "./pages/aml/AmlRiskMatrixPage";
+import AmlPepSanctionsPage from "./pages/aml/AmlPepSanctionsPage";
 import OnboardingPage from "./pages/onboarding/OnboardingPage";
+import OnboardingMigrationPage from "./pages/onboarding/OnboardingMigrationPage";
+import OnboardingPipelinePage from "./pages/onboarding/OnboardingPipelinePage";
+import OnboardingTemplatesPage from "./pages/onboarding/OnboardingTemplatesPage";
 // Module imports
 import SalesInvoicesList from "./pages/bookkeeping/sales/SalesInvoicesList";
 import SalesInvoiceCreator from "./pages/bookkeeping/sales/SalesInvoiceCreator";
@@ -207,6 +213,18 @@ import SolutionDetailPage from "./pages/marketing/SolutionDetailPage";
 // ---------------------------------------------------------------------------
 function makePrivate(Component: React.ComponentType<any>): React.ComponentType<any> {
   return function PrivateWrapper(props: any) {
+    const { isAuthenticated, user } = useAuth();
+    if (!isAuthenticated) return <Redirect to="/login" />;
+    const isPortalClient = user?.isPortalUser || user?.role === "portal_client" || user?.role === "sme_client" || user?.role === "client";
+    if (isPortalClient) {
+      return <Redirect to={user?.portalType === "sme" ? "/sme/dashboard" : "/365/workspace"} />;
+    }
+    return <Component {...props} />;
+  };
+}
+
+function makePortalPrivate(Component: React.ComponentType<any>): React.ComponentType<any> {
+  return function PortalPrivateWrapper(props: any) {
     const { isAuthenticated } = useAuth();
     if (!isAuthenticated) return <Redirect to="/login" />;
     return <Component {...props} />;
@@ -219,8 +237,8 @@ function RootGateway() {
   if (user?.isPortalUser || user?.portalType === "sme") {
     return <Redirect to="/sme/dashboard" />;
   }
-  if (user?.portalType === "365") {
-    return <Redirect to="/portal/workspace" />;
+  if (user?.portalType === "365" || user?.role === "client") {
+    return <Redirect to="/365/workspace" />;
   }
   return <EcosystemDashboard />;
 }
@@ -250,7 +268,13 @@ const R_SchedulePage = makePrivate(SchedulePage);
 const R_CalendarPage = makePrivate(CalendarPage);
 const R_ActivityPage = makePrivate(ActivityPage);
 const R_AmlCompliancePage = makePrivate(AmlCompliancePage);
+const R_AmlIdentityChecksPage = makePrivate(AmlIdentityChecksPage);
+const R_AmlRiskMatrixPage = makePrivate(AmlRiskMatrixPage);
+const R_AmlPepSanctionsPage = makePrivate(AmlPepSanctionsPage);
 const R_OnboardingPage = makePrivate(OnboardingPage);
+const R_OnboardingMigrationPage = makePrivate(OnboardingMigrationPage);
+const R_OnboardingPipelinePage = makePrivate(OnboardingPipelinePage);
+const R_OnboardingTemplatesPage = makePrivate(OnboardingTemplatesPage);
 
 // Admin
 const R_MyAdminPage = makePrivate(MyAdminPage);
@@ -402,14 +426,14 @@ const R_CompanySecretarialHome = makePrivate(CompanySecretarialHome);
 const R_FormationWizard = makePrivate(FormationWizard);
 const R_CompanyClientPage = makePrivate(CompanyClientPage);
 const R_Portal365Home = makePrivate(Portal365Home);
-const R_ClientPortalDashboard = makePrivate(ClientPortalDashboard);
-const R_Client365WorkspacePage = makePrivate(Client365WorkspacePage);
-const R_SmeDashboardPage = makePrivate(SmeDashboardPage);
-const R_SmeInvoicesPage = makePrivate(SmeInvoicesPage);
-const R_SmePurchasesPage = makePrivate(SmePurchasesPage);
-const R_SmeBankPage = makePrivate(SmeBankPage);
-const R_SmePayrollPage = makePrivate(SmePayrollPage);
-const R_SmeDocumentsPage = makePrivate(SmeDocumentsPage);
+const R_ClientPortalDashboard = makePortalPrivate(ClientPortalDashboard);
+const R_Client365WorkspacePage = makePortalPrivate(Client365WorkspacePage);
+const R_SmeDashboardPage = makePortalPrivate(SmeDashboardPage);
+const R_SmeInvoicesPage = makePortalPrivate(SmeInvoicesPage);
+const R_SmePurchasesPage = makePortalPrivate(SmePurchasesPage);
+const R_SmeBankPage = makePortalPrivate(SmeBankPage);
+const R_SmePayrollPage = makePortalPrivate(SmePayrollPage);
+const R_SmeDocumentsPage = makePortalPrivate(SmeDocumentsPage);
 const R_eSignHome = makePrivate(EsignHome);
 
 // Time & Fees
@@ -766,8 +790,19 @@ function AppRoutes() {
       <Route path="/esign/public/:token" component={PublicSignPage} />
       <Route path="/aml" component={R_AmlCompliancePage} />
       <Route path="/practice/aml" component={R_AmlCompliancePage} />
+      <Route path="/aml/identity-checks" component={R_AmlIdentityChecksPage} />
+      <Route path="/aml/checks" component={R_AmlIdentityChecksPage} />
+      <Route path="/aml/risk-matrix" component={R_AmlRiskMatrixPage} />
+      <Route path="/aml/risk" component={R_AmlRiskMatrixPage} />
+      <Route path="/aml/sanctions" component={R_AmlPepSanctionsPage} />
+      <Route path="/aml/pep-sanctions" component={R_AmlPepSanctionsPage} />
       <Route path="/onboarding" component={R_OnboardingPage} />
       <Route path="/practice/onboarding" component={R_OnboardingPage} />
+      <Route path="/onboarding/migration" component={R_OnboardingMigrationPage} />
+      <Route path="/onboarding/data-migration" component={R_OnboardingMigrationPage} />
+      <Route path="/onboarding/pipeline" component={R_OnboardingPipelinePage} />
+      <Route path="/onboarding/templates" component={R_OnboardingTemplatesPage} />
+      <Route path="/onboarding/import-templates" component={R_OnboardingTemplatesPage} />
 
       {/* Help Center Routes */}
       <Route path="/help/knowledge-base" component={R_KnowledgeBasePage} />

@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, pool } from "../db";
 import { pmDeadlines, pmClientPeriods, clients, pmServices, users, pmConversations, pmClientTimeline, firmDetails } from "@shared/schema";
 import { eq, and, sql, desc, asc, lte, gte, inArray } from "drizzle-orm";
-import { authMiddleware } from "../lib/authUtils";
+import { authMiddleware, getUserAssignedClientIds } from "../lib/authUtils";
 import { emailService } from "../lib/emailService";
 
 const router = Router();
@@ -235,8 +235,13 @@ router.get("/", async (req: any, res) => {
 
     const allDeadlines = await query;
 
+    const assignedIds = getUserAssignedClientIds(req.user);
+
     // Apply in-memory filtering for flexible query parameters
     let filtered = allDeadlines;
+    if (assignedIds !== null) {
+      filtered = filtered.filter(d => assignedIds.includes(d.clientId));
+    }
     if (status && status !== "All") {
       filtered = filtered.filter(d => d.status?.toLowerCase() === (status as string).toLowerCase());
     }

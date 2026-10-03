@@ -59,7 +59,7 @@ router.get("/:reportId", async (req: any, res) => {
         category = "Clients";
         columns = ["Client ID", "Client Name", "Client Type", "Client Manager", "Client Contact", "Status", "UTR No", "Auth Code / Reg", "AML Result", "Next Due Date"];
 
-        const clientRows = await db
+        const clientList = await db
           .select({
             id: clients.id,
             clientCode: clients.clientCode,
@@ -72,13 +72,36 @@ router.get("/:reportId", async (req: any, res) => {
             phone: clients.phone,
             tradingStatus: clients.tradingStatus,
             nextAccountsDue: clients.nextAccountsDue,
-            amlStatus: sql<string>`COALESCE(${pmAmlChecks.riskLevel}, 'Low Risk')`,
-            idStatus: sql<string>`COALESCE(${pmAmlChecks.idVerificationStatus}, 'Verified')`,
           })
           .from(clients)
-          .leftJoin(pmAmlChecks, eq(clients.id, pmAmlChecks.clientId))
           .where(eq(clients.practiceId, practiceId))
           .orderBy(clients.clientName);
+
+        const allAml = await db
+          .select({
+            clientId: pmAmlChecks.clientId,
+            riskLevel: pmAmlChecks.riskLevel,
+            idVerificationStatus: pmAmlChecks.idVerificationStatus,
+          })
+          .from(pmAmlChecks)
+          .where(eq(pmAmlChecks.practiceId, practiceId))
+          .orderBy(desc(pmAmlChecks.verifiedAt), desc(pmAmlChecks.id));
+
+        const latestAmlMap = new Map<number, any>();
+        for (const a of allAml) {
+          if (a.clientId && !latestAmlMap.has(a.clientId)) {
+            latestAmlMap.set(a.clientId, a);
+          }
+        }
+
+        const clientRows = clientList.map(c => {
+          const aml = latestAmlMap.get(c.id);
+          return {
+            ...c,
+            amlStatus: aml ? (aml.riskLevel || "Low") : "Not Assessed",
+            idStatus: aml ? (aml.idVerificationStatus || "Verified") : "Pending Check",
+          };
+        });
 
         let filtered = clientRows;
         if (type && type !== "All") {
@@ -216,32 +239,52 @@ router.get("/:reportId", async (req: any, res) => {
         category = "Clients";
         columns = ["Client ID", "Client Name", "Entity Type", "AML Status", "Risk Score", "PEP Screening", "Next Check Date", "Verified By"];
 
-        const amlData = await db
+        const clientListAml = await db
           .select({
             clientId: clients.id,
             clientCode: clients.clientCode,
             clientName: clients.clientName,
             clientType: clients.clientType,
+          })
+          .from(clients)
+          .where(eq(clients.practiceId, practiceId))
+          .orderBy(clients.clientName);
+
+        const allAmlChecks = await db
+          .select({
+            id: pmAmlChecks.id,
+            clientId: pmAmlChecks.clientId,
             riskLevel: pmAmlChecks.riskLevel,
             idStatus: pmAmlChecks.idVerificationStatus,
             pepChecked: pmAmlChecks.pepSanctionsChecked,
             nextReview: pmAmlChecks.nextReviewDate,
           })
-          .from(clients)
-          .leftJoin(pmAmlChecks, eq(clients.id, pmAmlChecks.clientId))
-          .where(eq(clients.practiceId, practiceId));
+          .from(pmAmlChecks)
+          .where(eq(pmAmlChecks.practiceId, practiceId))
+          .orderBy(desc(pmAmlChecks.verifiedAt), desc(pmAmlChecks.id));
 
-        rows = amlData.map(a => ({
-          id: a.clientId,
-          col1: a.clientCode || `CL-${a.clientId}`,
-          col2: a.clientName,
-          col3: a.clientType,
-          col4: a.idStatus || "Verified",
-          col5: a.riskLevel || "Low Risk",
-          col6: a.pepChecked !== false ? "Clear (No Match)" : "Pending Check",
-          col7: a.nextReview ? new Date(a.nextReview).toLocaleDateString("en-GB") : "31/12/2026",
-          col8: "Compliance Officer",
-        }));
+        const latestAmlChecksMap = new Map<number, any>();
+        for (const a of allAmlChecks) {
+          if (a.clientId && !latestAmlChecksMap.has(a.clientId)) {
+            latestAmlChecksMap.set(a.clientId, a);
+          }
+        }
+
+        rows = clientListAml.map(a => {
+          const chk = latestAmlChecksMap.get(a.clientId);
+          const hasCheck = Boolean(chk);
+          return {
+            id: a.clientId,
+            col1: a.clientCode || `CL-${a.clientId}`,
+            col2: a.clientName,
+            col3: a.clientType || "Limited Company",
+            col4: hasCheck ? (chk.idStatus || "Verified") : "Pending Check",
+            col5: hasCheck ? (chk.riskLevel || "Low Risk") : "Not Assessed",
+            col6: hasCheck ? (chk.pepChecked !== false ? "Clear (No Match)" : "Flagged") : "Pending Check",
+            col7: chk?.nextReview ? new Date(chk.nextReview).toLocaleDateString("en-GB") : "Action Required",
+            col8: hasCheck ? "Compliance Officer" : "-",
+          };
+        });
         break;
       }
 

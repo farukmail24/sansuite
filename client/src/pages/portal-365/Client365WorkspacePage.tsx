@@ -240,7 +240,7 @@ export default function Client365WorkspacePage() {
     <div className="min-h-screen bg-slate-50 flex flex-col">
       {/* Top Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
-        <div className="px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <div className="px-6 lg:px-10 h-16 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2.5">
               <img
@@ -309,7 +309,7 @@ export default function Client365WorkspacePage() {
         </div>
 
         {/* Tab Navigation */}
-        <div className="px-4 sm:px-6 lg:px-8 flex items-center gap-1 border-t border-gray-100 overflow-x-auto py-1">
+        <div className="px-6 lg:px-10 flex items-center gap-1 border-t border-gray-100 overflow-x-auto py-1">
           <button
             onClick={() => setActiveTab("receipts")}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
@@ -385,7 +385,7 @@ export default function Client365WorkspacePage() {
       </header>
 
       {/* Main Workspace Body */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      <main className="flex-1 w-full px-6 lg:px-10 py-6 space-y-6">
         {/* KPI Strip */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">

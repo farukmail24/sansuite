@@ -139,7 +139,7 @@ export default function ClientPortalDashboard() {
     <AppLayout sidebar={portal365Sidebar} module="365 PORTAL">
       <div className="bg-gray-50 min-h-screen pb-12">
         {/* Header */}
-        <div className="bg-white px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+        <div className="bg-white px-6 lg:px-10 py-4 border-b border-gray-200 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
               onClick={() => navigate("/365/clients")}
@@ -162,7 +162,7 @@ export default function ClientPortalDashboard() {
           </button>
         </div>
 
-        <div className="p-6 max-w-6xl mx-auto space-y-6">
+        <div className="w-full px-6 lg:px-10 py-6 space-y-6">
           {/* Stats Row (Authentic Zero-Mock Data) */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-center gap-4">

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AppLayout from "../../components/layout/AppLayout";
 import { apiRequest } from "../../lib/queryClient";
@@ -8,7 +8,9 @@ import {
   BarChart3, Clock, Briefcase, FileText, Settings, Receipt,
   Plus, Trash2, CheckCircle2, AlertCircle, Search, DollarSign,
   Calendar, Check, X, Shield, Car, Send, ArrowRight,
-  PieChart, Building2, User, HelpCircle, FileCheck
+  PieChart, Building2, User, HelpCircle, FileCheck,
+  UploadCloud, Paperclip, Eye, ExternalLink, Download,
+  XCircle, FileUp, Image, Loader2
 } from "lucide-react";
 
 import { timeFeesSidebar } from "./sidebar";
@@ -26,6 +28,7 @@ export default function ExpensesPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Tab: "all" | "Unsubmitted" | "PFA" | "Approved" | "Reimbursed"
   const [activeTab, setActiveTab] = useState<string>("all");
@@ -35,6 +38,8 @@ export default function ExpensesPage() {
 
   // Modal State
   const [showModal, setShowModal] = useState(false);
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
+  const [activeReceiptExpense, setActiveReceiptExpense] = useState<any | null>(null);
   const [expenseForm, setExpenseForm] = useState({
     clientId: "",
     jobId: "",
@@ -47,6 +52,8 @@ export default function ExpensesPage() {
     routeEnd: "",
     billable: true,
     notes: "",
+    receiptPath: "",
+    receiptFilename: "",
   });
 
   // Rejection Modal
@@ -102,6 +109,53 @@ export default function ExpensesPage() {
     }));
   };
 
+  // Handle Receipt File Upload
+  const handleFileUpload = async (file: File) => {
+    if (!file) return;
+    const allowed = ["image/png", "image/jpeg", "image/jpg", "image/webp", "application/pdf"];
+    if (!allowed.includes(file.type.toLowerCase())) {
+      toast({
+        title: "Unsupported File Type",
+        description: "Please upload a valid receipt image (PNG, JPG, WEBP) or PDF document.",
+      });
+      return;
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      toast({
+        title: "File Too Large",
+        description: "Receipt attachment cannot exceed 15MB.",
+      });
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("receipt", file);
+
+    setUploadingReceipt(true);
+    try {
+      const res = await fetch("/api/time-fees/expenses/upload-receipt", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to upload receipt");
+
+      setExpenseForm((prev) => ({
+        ...prev,
+        receiptPath: data.file.path,
+        receiptFilename: data.file.originalName || data.file.filename,
+      }));
+      toast({
+        title: "Receipt Attached",
+        description: `${data.file.originalName || "Receipt document"} successfully uploaded.`,
+      });
+    } catch (err: any) {
+      toast({ title: "Upload Failed", description: err.message, type: "error" });
+    } finally {
+      setUploadingReceipt(false);
+    }
+  };
+
   // Create Expense Mutation
   const createExpenseMutation = useMutation({
     mutationFn: async (submitForApproval: boolean) => {
@@ -119,7 +173,10 @@ export default function ExpensesPage() {
         expenseDate: expenseForm.expenseDate,
         category: expenseForm.category,
         amount: amt.toFixed(2),
+        miles: expenseForm.category === "Mileage" ? expenseForm.miles : undefined,
+        mileageRate: expenseForm.category === "Mileage" ? expenseForm.mileageRate : undefined,
         billable: expenseForm.billable,
+        receiptPath: expenseForm.receiptPath || undefined,
         status: submitForApproval ? "PFA" : "Unsubmitted",
         notes: fullNotes,
       };
@@ -150,6 +207,8 @@ export default function ExpensesPage() {
         routeEnd: "",
         billable: true,
         notes: "",
+        receiptPath: "",
+        receiptFilename: "",
       });
     },
     onError: (err: any) => {
@@ -427,6 +486,7 @@ export default function ExpensesPage() {
                     <th className="py-3 px-4">Category</th>
                     <th className="py-3 px-4">Client / Job</th>
                     <th className="py-3 px-4">Description / Route</th>
+                    <th className="py-3 px-3 text-center">Receipt</th>
                     <th className="py-3 px-4 text-right">Amount (£)</th>
                     <th className="py-3 px-4">Status</th>
                     <th className="py-3 px-4 text-center">Actions</th>
@@ -475,6 +535,20 @@ export default function ExpensesPage() {
                         </td>
                         <td className="py-3 px-4 text-slate-600 dark:text-slate-400 max-w-xs truncate" title={exp.notes}>
                           {exp.notes || "-"}
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          {exp.receiptPath ? (
+                            <button
+                              onClick={() => setActiveReceiptExpense(exp)}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/80 dark:text-indigo-300 font-semibold text-[10px] cursor-pointer transition-colors shadow-2xs border border-indigo-200/60 dark:border-indigo-800/60"
+                              title="Inspect Receipt Proof"
+                            >
+                              <Paperclip size={11} className="text-indigo-600 dark:text-indigo-400" />
+                              <span>Proof</span>
+                            </button>
+                          ) : (
+                            <span className="text-slate-300 dark:text-slate-700 text-[10px] select-none">-</span>
+                          )}
                         </td>
                         <td className="py-3 px-4 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
                           £{parseFloat(exp.amount || "0").toFixed(2)}
@@ -706,6 +780,97 @@ export default function ExpensesPage() {
                   </div>
                 )}
 
+                {/* Proof of Receipt / Attachment */}
+                <div>
+                  <label className="font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                    Proof of Receipt / Attachment
+                  </label>
+                  
+                  {expenseForm.receiptPath ? (
+                    <div className="flex items-center justify-between p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                      <div className="flex items-center gap-2.5 truncate">
+                        <div className="p-1.5 bg-emerald-100 dark:bg-emerald-900/60 rounded text-emerald-700 dark:text-emerald-300">
+                          <Paperclip size={14} />
+                        </div>
+                        <div className="truncate">
+                          <p className="font-semibold text-emerald-900 dark:text-emerald-200 text-xs truncate">
+                            {expenseForm.receiptFilename || "receipt-document"}
+                          </p>
+                          <span className="text-[10px] text-emerald-600 dark:text-emerald-400">Attached to claim</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <a
+                          href={expenseForm.receiptPath}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 dark:text-emerald-300 hover:underline flex items-center gap-1"
+                        >
+                          <Eye size={12} /> View
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => setExpenseForm((prev) => ({ ...prev, receiptPath: "", receiptFilename: "" }))}
+                          className="p-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded cursor-pointer"
+                          title="Remove attachment"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleFileUpload(file);
+                        }}
+                      />
+                      <div
+                        onClick={() => fileInputRef.current?.click()}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const file = e.dataTransfer.files?.[0];
+                          if (file) handleFileUpload(file);
+                        }}
+                        className={`p-4 rounded-xl border-2 border-dashed transition-all flex flex-col items-center justify-center gap-2 cursor-pointer text-center ${
+                          uploadingReceipt
+                            ? "bg-slate-100 dark:bg-slate-800 border-slate-300"
+                            : "bg-slate-50 dark:bg-slate-800/40 border-slate-300 dark:border-slate-700 hover:border-indigo-400 hover:bg-indigo-50/20"
+                        }`}
+                      >
+                        {uploadingReceipt ? (
+                          <>
+                            <Loader2 size={20} className="animate-spin text-indigo-600" />
+                            <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">
+                              Uploading document to secure vault...
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <div className="w-8 h-8 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                              <UploadCloud size={16} />
+                            </div>
+                            <div>
+                              <p className="font-semibold text-xs text-slate-800 dark:text-slate-200">
+                                Click or drag receipt here
+                              </p>
+                              <p className="text-[10px] text-slate-400 mt-0.5">
+                                Supports PNG, JPG, WEBP, PDF (up to 15MB)
+                              </p>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* Notes */}
                 <div>
                   <label className="font-semibold text-slate-700 dark:text-slate-300 block mb-1">Notes / Merchant / Receipt Ref</label>
@@ -743,6 +908,186 @@ export default function ExpensesPage() {
                 >
                   {createExpenseMutation.isPending ? "Saving..." : "Save & Submit PFA"}
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: RECEIPT INSPECTOR / LIGHTBOX */}
+        {activeReceiptExpense && (
+          <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-4xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
+                    <Receipt size={16} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                      Expense Receipt Inspector
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-mono">
+                        EXP-{activeReceiptExpense.id}
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      Claimed by {activeReceiptExpense.firstName || ''} {activeReceiptExpense.lastName || 'Staff Member'} on {new Date(activeReceiptExpense.expenseDate).toLocaleDateString("en-GB")}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <a
+                    href={activeReceiptExpense.receiptPath}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
+                    title="Open Document in New Tab"
+                  >
+                    <ExternalLink size={14} />
+                  </a>
+                  <button
+                    onClick={() => setActiveReceiptExpense(null)}
+                    className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Body: Split View */}
+              <div className="grid grid-cols-1 md:grid-cols-12 flex-1 overflow-hidden">
+                {/* Left 7 cols: Document Lightbox View */}
+                <div className="md:col-span-7 bg-slate-950/90 p-4 flex items-center justify-center min-h-[380px] max-h-[620px] overflow-auto border-r border-slate-200 dark:border-slate-800">
+                  {activeReceiptExpense.receiptPath.toLowerCase().endsWith(".pdf") ? (
+                    <iframe
+                      src={activeReceiptExpense.receiptPath}
+                      className="w-full h-full min-h-[480px] rounded-lg border border-slate-800 bg-white"
+                      title="Receipt PDF Preview"
+                    />
+                  ) : (
+                    <img
+                      src={activeReceiptExpense.receiptPath}
+                      alt="Receipt Voucher"
+                      className="max-h-[520px] max-w-full object-contain rounded-lg shadow-lg border border-slate-800"
+                    />
+                  )}
+                </div>
+
+                {/* Right 5 cols: Claim Audit Details & Actions */}
+                <div className="md:col-span-5 p-5 space-y-4 overflow-y-auto max-h-[620px] bg-white dark:bg-slate-900 text-xs">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                      Claim Amount
+                    </span>
+                    <p className="text-2xl font-mono font-bold text-slate-900 dark:text-slate-100">
+                      £{parseFloat(activeReceiptExpense.amount || "0").toFixed(2)}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500 font-medium">Category</span>
+                      <span className="px-2 py-0.5 rounded font-semibold text-[10px] bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300">
+                        {activeReceiptExpense.category}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500 font-medium">Current Status</span>
+                      <span className={`px-2 py-0.5 rounded-full font-semibold text-[10px] ${
+                        activeReceiptExpense.status === "Approved"
+                          ? "bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300"
+                          : activeReceiptExpense.status === "Reimbursed" || activeReceiptExpense.isReimbursed
+                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                          : activeReceiptExpense.status === "PFA"
+                          ? "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
+                          : activeReceiptExpense.status === "Rejected"
+                          ? "bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300"
+                          : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                      }`}>
+                        {activeReceiptExpense.status || "Unsubmitted"}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500 font-medium">Client / Job</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">
+                        {activeReceiptExpense.clientName || "Internal Practice Expense"}
+                        {activeReceiptExpense.jobName ? ` (${activeReceiptExpense.jobName})` : ""}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500 font-medium">Billing Treatment</span>
+                      <span className={`font-semibold ${activeReceiptExpense.billable ? "text-emerald-600" : "text-slate-500"}`}>
+                        {activeReceiptExpense.billable ? "Billable Client WIP" : "Non-billable Practice Overhead"}
+                      </span>
+                    </div>
+
+                    {activeReceiptExpense.category === "Mileage" && (
+                      <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-1">
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Distance</span>
+                          <span className="font-mono font-bold">{activeReceiptExpense.miles || "0"} miles</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Statutory Rate</span>
+                          <span className="font-mono">£{activeReceiptExpense.mileageRate || "0.45"}/mi</span>
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <span className="text-slate-500 font-medium block mb-1">Claim Notes / Description</span>
+                      <div className="p-2.5 bg-slate-50 dark:bg-slate-800 rounded-lg text-slate-700 dark:text-slate-300 leading-relaxed">
+                        {activeReceiptExpense.notes || "No notes provided with this claim."}
+                      </div>
+                    </div>
+
+                    {activeReceiptExpense.rejectionReason && (
+                      <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-lg">
+                        <span className="font-bold text-rose-700 dark:text-rose-400 block mb-0.5 flex items-center gap-1">
+                          <AlertCircle size={12} /> Reason for Rejection
+                        </span>
+                        <p className="text-rose-600 dark:text-rose-300">{activeReceiptExpense.rejectionReason}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Quick Decision Bar inside Lightbox */}
+                  {activeReceiptExpense.status === "PFA" && (
+                    <div className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                        Manager Action
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            approveMutation.mutate([activeReceiptExpense.id]);
+                            setActiveReceiptExpense(null);
+                          }}
+                          disabled={approveMutation.isPending}
+                          className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg cursor-pointer flex items-center justify-center gap-1.5 shadow-xs transition-colors"
+                        >
+                          <CheckCircle2 size={13} /> Approve Claim
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const id = activeReceiptExpense.id;
+                            setActiveReceiptExpense(null);
+                            setRejectExpenseId(id);
+                          }}
+                          className="py-2 px-3 bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200 dark:border-rose-800 font-bold rounded-lg cursor-pointer flex items-center gap-1 transition-colors"
+                        >
+                          <XCircle size={13} /> Reject
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>

@@ -270,6 +270,31 @@ export default function TimesheetPage() {
     }
   });
 
+  // 1-Click Timesheet Submission Reminder Bot Mutation (Capium Freshdesk Parity)
+  const sendRemindersMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/time-fees/timesheets/send-reminders");
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed to send reminders");
+      }
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: "Timesheet Reminders Dispatched",
+        description: data.message || `Dispatched reminders to ${data.remindersSent} staff members.`,
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Reminder Bot Notice",
+        description: err.message,
+        type: "error",
+      });
+    },
+  });
+
   // Week days calculation
   const weekDays = useMemo(() => {
     return Array.from({ length: 7 }).map((_, i) => {
@@ -391,7 +416,7 @@ export default function TimesheetPage() {
               ))}
             </div>
 
-            {/* Filter controls */}
+            {/* Filter controls & 1-Click Reminder Bot */}
             <div className="flex items-center gap-2">
               <input
                 type="text"
@@ -410,6 +435,20 @@ export default function TimesheetPage() {
                   <option key={c.id} value={c.id}>{c.clientName}</option>
                 ))}
               </select>
+
+              <button
+                onClick={() => sendRemindersMutation.mutate()}
+                disabled={sendRemindersMutation.isPending}
+                className="bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs whitespace-nowrap"
+                title="Audit staff weekly timesheets and dispatch automated email reminders to all staff with unsubmitted hours"
+              >
+                {sendRemindersMutation.isPending ? (
+                  <RotateCcw size={13} className="animate-spin text-purple-600" />
+                ) : (
+                  <Send size={13} className="text-purple-600" />
+                )}
+                <span>Send Reminders</span>
+              </button>
             </div>
           </div>
 
@@ -726,6 +765,50 @@ export default function TimesheetPage() {
                       <option key={j.id} value={j.id}>{j.jobName}</option>
                     ))}
                   </select>
+
+                  {/* Job Budget Overrun Sentinel Live Indicator */}
+                  {newEntry.jobId && (() => {
+                    const selJob = jobs.find((j: any) => j.id === parseInt(newEntry.jobId));
+                    if (!selJob) return null;
+                    const est = parseFloat(selJob.estimatedHours || "0");
+                    const act = parseFloat(selJob.actualHours || "0");
+                    const logH = parseFloat(newEntry.hours) || 0;
+                    const newTotal = act + logH;
+                    const willOverrun = newTotal > est && est > 0;
+
+                    return (
+                      <div className={`p-3 rounded-xl border mt-2 space-y-1 ${
+                        willOverrun
+                          ? "bg-rose-50 border-rose-200 text-rose-900"
+                          : "bg-indigo-50 border-indigo-200 text-indigo-900"
+                      }`}>
+                        <div className="flex items-center justify-between text-[11px] font-bold">
+                          <span className="flex items-center gap-1.5">
+                            {willOverrun ? (
+                              <AlertCircle size={14} className="text-rose-600" />
+                            ) : (
+                              <Clock size={14} className="text-indigo-600" />
+                            )}
+                            {willOverrun ? "Budget Overrun Sentinel" : "Job Hours Budget Tracker"}
+                          </span>
+                          <span className="font-mono">
+                            {act.toFixed(1)}h logged / {est.toFixed(1)}h budget
+                          </span>
+                        </div>
+                        <p className="text-[10px] leading-relaxed opacity-90">
+                          {willOverrun ? (
+                            <>
+                              Logging <span className="font-bold font-mono">{logH.toFixed(2)}h</span> will bring total hours to <span className="font-bold font-mono">{newTotal.toFixed(1)}h</span> (+{(newTotal - est).toFixed(1)}h over estimated budget).
+                            </>
+                          ) : (
+                            <>
+                              <span className="font-bold font-mono">{(est - newTotal).toFixed(1)}h</span> capacity remaining after this entry.
+                            </>
+                          )}
+                        </p>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">

@@ -9,13 +9,13 @@ import {
   pmAmlStaffTraining, firmDetails, practiceServices, clientServiceAssignments
 } from "@shared/schema";
 import { eq, and, sql, desc, inArray } from "drizzle-orm";
-import { authMiddleware } from "../lib/authUtils";
+import { authMiddleware, getUserAssignedClientIds, requirePracticeUser } from "../lib/authUtils";
 import { getPracticeAmlCredentials } from "./aml";
 import { emailService } from "../lib/emailService";
 import { smsService } from "../lib/smsService";
 
 const router = Router();
-router.use(authMiddleware);
+router.use(authMiddleware, requirePracticeUser);
 
 // --- CLIENTS (Shared & Practice Specific) ---
 router.get("/clients", async (req: any, res) => {
@@ -23,7 +23,16 @@ router.get("/clients", async (req: any, res) => {
     const practiceId = req.user.practiceId;
     const { status, type, search } = req.query;
 
-    let result = await db.select().from(clients).where(eq(clients.practiceId, practiceId)).orderBy(desc(clients.createdAt));
+    const assignedIds = getUserAssignedClientIds(req.user);
+    if (assignedIds !== null && assignedIds.length === 0) {
+      return res.json([]);
+    }
+
+    const queryWhere = assignedIds !== null
+      ? and(eq(clients.practiceId, practiceId), inArray(clients.id, assignedIds))
+      : eq(clients.practiceId, practiceId);
+
+    let result = await db.select().from(clients).where(queryWhere).orderBy(desc(clients.createdAt));
 
     if (status && status !== "All") {
       result = result.filter(c => c.tradingStatus?.toLowerCase() === (status as string).toLowerCase());
@@ -98,6 +107,12 @@ router.get("/clients/:id", async (req: any, res) => {
     const practiceId = req.user.practiceId;
     const clientId = parseInt(req.params.id);
     if (isNaN(clientId)) return res.status(400).json({ message: "Invalid client ID" });
+
+    const assignedIds = getUserAssignedClientIds(req.user);
+    if (assignedIds !== null && !assignedIds.includes(clientId)) {
+      return res.status(403).json({ message: "Access denied. You are not assigned to this client." });
+    }
+
     const [client] = await db
       .select()
       .from(clients)
@@ -115,6 +130,12 @@ router.get("/clients/:id/360", async (req: any, res) => {
   try {
     const practiceId = req.user.practiceId;
     const clientId = parseInt(req.params.id);
+    if (isNaN(clientId)) return res.status(400).json({ message: "Invalid client ID" });
+
+    const assignedIds = getUserAssignedClientIds(req.user);
+    if (assignedIds !== null && !assignedIds.includes(clientId)) {
+      return res.status(403).json({ message: "Access denied. You are not assigned to this client." });
+    }
 
     const clientRows = await db.select().from(clients).where(and(eq(clients.id, clientId), eq(clients.practiceId, practiceId))).limit(1);
     if (clientRows.length === 0) return res.status(404).json({ message: "Client not found" });
@@ -167,8 +188,13 @@ router.get("/clients/:id/360", async (req: any, res) => {
       .where(eq(pmClientTimeline.clientId, clientId))
       .orderBy(desc(pmClientTimeline.isPinned), desc(pmClientTimeline.createdAt));
 
-    // AML Check
-    const aml = await db.select().from(pmAmlChecks).where(eq(pmAmlChecks.clientId, clientId)).limit(1);
+    // AML Check - fetch most recent check
+    const aml = await db
+      .select()
+      .from(pmAmlChecks)
+      .where(and(eq(pmAmlChecks.practiceId, practiceId), eq(pmAmlChecks.clientId, clientId)))
+      .orderBy(desc(pmAmlChecks.verifiedAt), desc(pmAmlChecks.id))
+      .limit(1);
 
     // Custom Fields
     const customFields = await db
@@ -764,7 +790,12 @@ router.get("/clients/:id/aml", async (req: any, res) => {
     const practiceId = req.user.practiceId;
     const clientId = parseInt(req.params.id);
 
-    const checks = await db.select().from(pmAmlChecks).where(and(eq(pmAmlChecks.practiceId, practiceId), eq(pmAmlChecks.clientId, clientId))).limit(1);
+    const checks = await db
+      .select()
+      .from(pmAmlChecks)
+      .where(and(eq(pmAmlChecks.practiceId, practiceId), eq(pmAmlChecks.clientId, clientId)))
+      .orderBy(desc(pmAmlChecks.verifiedAt), desc(pmAmlChecks.id))
+      .limit(1);
     res.json(checks[0] || null);
   } catch (error: any) {
     res.status(500).json({ message: error.message || "Failed to fetch AML checks" });
@@ -777,7 +808,12 @@ router.post("/clients/:id/aml", async (req: any, res) => {
     const clientId = parseInt(req.params.id);
     const { riskLevel, idVerificationStatus, addressVerificationStatus, pepSanctionsChecked, idDocumentType, idDocumentNumber, riskNotes } = req.body;
 
-    const existing = await db.select().from(pmAmlChecks).where(eq(pmAmlChecks.clientId, clientId)).limit(1);
+    const existing = await db
+      .select()
+      .from(pmAmlChecks)
+      .where(and(eq(pmAmlChecks.practiceId, practiceId), eq(pmAmlChecks.clientId, clientId)))
+      .orderBy(desc(pmAmlChecks.verifiedAt), desc(pmAmlChecks.id))
+      .limit(1);
 
     if (existing.length > 0) {
       await db
@@ -823,9 +859,21 @@ router.get("/tasks", async (req: any, res) => {
     const practiceId = req.user.practiceId;
     const clientId = req.query.clientId;
 
+    const assignedIds = getUserAssignedClientIds(req.user);
+    if (assignedIds !== null && assignedIds.length === 0) {
+      return res.json([]);
+    }
+
     const conditions = [eq(tasks.practiceId, practiceId)];
+    if (assignedIds !== null) {
+      conditions.push(inArray(tasks.clientId, assignedIds));
+    }
     if (clientId) {
-      conditions.push(eq(tasks.clientId, parseInt(clientId as string)));
+      const parsedCid = parseInt(clientId as string);
+      if (assignedIds !== null && !assignedIds.includes(parsedCid)) {
+        return res.json([]);
+      }
+      conditions.push(eq(tasks.clientId, parsedCid));
     }
 
     const result = await db

@@ -8,8 +8,18 @@ import {
   ArrowLeft, Download, UploadCloud, Lock, Key, Trash2, Edit3,
   Building2, Briefcase, FileText, Check, X, RefreshCw, Layers,
   Sliders, Info, UserCheck, UserX, ExternalLink, SlidersHorizontal,
-  ChevronRight, Save, FileSpreadsheet, Eye, HelpCircle, AlertTriangle
+  ChevronRight, ChevronDown, Save, FileSpreadsheet, Eye, HelpCircle, AlertTriangle,
+  BookOpen, Calculator, Landmark, Timer, FileSignature, CheckSquare, XSquare, Plus,
+  Link2, Smartphone
 } from "lucide-react";
+
+export interface CrudActionPerms {
+  view: boolean;
+  create: boolean;
+  edit: boolean;
+  delete: boolean;
+  approve: boolean;
+}
 
 export interface UserPermissions {
   autoAssign: boolean;
@@ -19,6 +29,7 @@ export interface UserPermissions {
   assignedClientIds: number[];
   clientManagerClientIds: number[];
   modulePermissions: Record<string, boolean>;
+  crudPermissions?: Record<string, CrudActionPerms>;
 }
 
 export interface PracticeUser {
@@ -50,7 +61,24 @@ export interface PracticeClient {
   isActive?: boolean;
 }
 
+export interface PracticeRoleItem {
+  id: number;
+  practiceId: number;
+  roleName: string;
+  roleCode: string;
+  badge?: string;
+  badgeColor?: string;
+  description?: string;
+  baseTier?: string;
+  permissionsJson?: string;
+}
+
 const DEFAULT_MODULE_PERMS: Record<string, boolean> = {
+  portal_365: true,
+  p365_workspace: true,
+  p365_documents: true,
+  p365_messaging: true,
+  p365_approval: true,
   bookkeeping: true,
   bk_sales: true,
   bk_purchase: true,
@@ -70,6 +98,10 @@ const DEFAULT_MODULE_PERMS: Record<string, boolean> = {
   pay_runs: true,
   pay_hmrc: true,
   pay_p60_p45: true,
+  esign: true,
+  es_envelopes: true,
+  es_otp: true,
+  es_audit_trail: true,
   mtd_vat: true,
   accounts_production: true,
   corporation_tax: true,
@@ -85,8 +117,402 @@ const DEFAULT_MODULE_PERMS: Record<string, boolean> = {
   tf_invoices: true,
   tf_rates: true,
   tf_expenses: true,
+  aml: true,
+  aml_screening: true,
+  aml_risk_assess: true,
+  aml_reports: true,
+  onboarding: true,
+  ob_checklist: true,
+  ob_agent_auth: true,
+  ob_clearance: true,
+  mtd_it: true,
+  mtd_it_updates: true,
+  mtd_it_cryst: true,
   charity_accounts: false,
 };
+
+// Strict client preset: only client-authorized workspaces/modules are enabled
+const DEFAULT_CLIENT_MODULE_PERMS: Record<string, boolean> = {
+  portal_365: true,
+  p365_workspace: true,
+  p365_documents: true,
+  p365_messaging: true,
+  p365_approval: true,
+  bookkeeping: true,
+  bk_sales: true,
+  bk_purchase: true,
+  bk_assets: false,
+  bk_tasks: false,
+  bk_bank: true,
+  bk_contacts: true,
+  bk_schedule: false,
+  bk_reports: true,
+  bk_settings: false,
+  bk_quick_entry: false,
+  bk_vat: false,
+  bk_cis: false,
+  bk_inventory: false,
+  payroll: true,
+  pay_employees: false,
+  pay_runs: false,
+  pay_hmrc: false,
+  pay_p60_p45: true,
+  esign: true,
+  es_envelopes: true,
+  es_otp: true,
+  es_audit_trail: true,
+  practice_management: false,
+  pm_tasks: false,
+  pm_deadlines: false,
+  pm_billing: false,
+  pm_aml: false,
+  time_fees: false,
+  tf_timesheets: false,
+  tf_invoices: false,
+  tf_rates: false,
+  tf_expenses: false,
+  aml: false,
+  aml_screening: false,
+  aml_risk_assess: false,
+  aml_reports: false,
+  onboarding: false,
+  ob_checklist: false,
+  ob_agent_auth: false,
+  ob_clearance: false,
+  mtd_it: false,
+  mtd_it_updates: false,
+  mtd_it_cryst: false,
+  accounts_production: false,
+  corporation_tax: false,
+  self_assessment: false,
+  mtd_vat: false,
+  company_secretarial: false,
+  charity_accounts: false,
+};
+
+const getInitialModulePermsForRole = (role: string) => {
+  if (role === "client") {
+    return { ...DEFAULT_CLIENT_MODULE_PERMS };
+  }
+  return { ...DEFAULT_MODULE_PERMS };
+};
+
+export interface SubFeatureItem {
+  id: string;
+  label: string;
+  desc: string;
+}
+
+export interface CrudModuleItem {
+  key: string;
+  name: string;
+  category: "Compliance & Statutory" | "Operations & Practice" | "Finance & Invoicing";
+  description: string;
+  icon: any;
+  subFeatures: SubFeatureItem[];
+}
+
+export const CRUD_MODULE_CATALOG: CrudModuleItem[] = [
+  {
+    key: "practice_management",
+    name: "Practice Management",
+    category: "Operations & Practice",
+    description: "Client KYC/AML verification, firm deadlining, task workflows & staff allocation.",
+    icon: Briefcase,
+    subFeatures: [
+      { id: "pm_tasks", label: "Tasks & Workflows", desc: "Staff task assignments, kanban workflows & review status" },
+      { id: "pm_deadlines", label: "Statutory Deadlines", desc: "HMRC & Companies House auto-deadlines tracker" },
+      { id: "pm_billing", label: "Practice Billing", desc: "Fee schedules, engagement letters & recurring billing" },
+      { id: "pm_aml", label: "KYC & AML Compliance", desc: "Anti-money laundering risk scoring & ID checks" },
+    ],
+  },
+  {
+    key: "time_fees",
+    name: "Time & Fees",
+    category: "Operations & Practice",
+    description: "Staff timesheet logging, stopwatch tracking, client hourly billing & Friday PFA review.",
+    icon: Timer,
+    subFeatures: [
+      { id: "tf_timesheets", label: "Timesheets & Live Stopwatch", desc: "Real-time stopwatch & staff timesheet logging" },
+      { id: "tf_invoices", label: "Invoices & WIP Billing", desc: "Unbilled WIP conversion to sales invoices" },
+      { id: "tf_rates", label: "Staff Rates & Job Budgets", desc: "Staff chargeable rates and client project budgets" },
+      { id: "tf_expenses", label: "Staff Expenses", desc: "Out-of-pocket expenses & client reimbursements" },
+    ],
+  },
+  {
+    key: "bookkeeping",
+    name: "Bookkeeping & Bank Feeds",
+    category: "Finance & Invoicing",
+    description: "Sales invoices, purchase bills, bank transaction reconciliation, and ledger audit.",
+    icon: Landmark,
+    subFeatures: [
+      { id: "bk_sales", label: "Sales Invoices & Credit Notes", desc: "Customer invoices, quotes & aged debtor ledger" },
+      { id: "bk_purchase", label: "Purchase Bills & Receipts", desc: "Supplier bills, POs & aged creditor ledger" },
+      { id: "bk_bank", label: "Bank Feeds & Reconciliation", desc: "Open banking feeds, rule matching & bank rec" },
+      { id: "bk_assets", label: "Fixed Asset Register", desc: "Asset depreciation schedules & disposals" },
+      { id: "bk_quick_entry", label: "Quick Batch Entry", desc: "Rapid keyboard-driven transaction entry" },
+      { id: "bk_vat", label: "VAT Returns & MTD Bridge", desc: "Standard, flat rate & cash accounting returns" },
+      { id: "bk_cis", label: "CIS Subcontractors", desc: "HMRC CIS deduction statements & monthly CIS300" },
+      { id: "bk_inventory", label: "Stock & Inventory", desc: "Item valuation, stock movements & tracking" },
+      { id: "bk_contacts", label: "Customers & Suppliers", desc: "Client, vendor & contractor master directory" },
+      { id: "bk_schedule", label: "Recurring Schedules", desc: "Automated recurring journals & invoices" },
+      { id: "bk_reports", label: "Management Reports", desc: "Profit & Loss, Balance Sheet & Trial Balance" },
+      { id: "bk_settings", label: "Financial Settings & COA", desc: "Chart of accounts & financial year controls" },
+    ],
+  },
+  {
+    key: "accounts_production",
+    name: "Accounts Production (FRS 102/105)",
+    category: "Compliance & Statutory",
+    description: "Trial balance import, statutory notes, balance sheet disclosures & Companies House filing.",
+    icon: FileText,
+    subFeatures: [
+      { id: "ap_trial_balance", label: "Trial Balance Sync", desc: "Direct import from bookkeeping or CSV trial balance" },
+      { id: "ap_disclosures", label: "Statutory Notes", desc: "Accounting policies, employee counts & director advances" },
+      { id: "ap_filing", label: "Companies House Filing", desc: "Direct iXBRL electronic gateway submission" },
+      { id: "ap_micro_entity", label: "FRS 102 1A / FRS 105", desc: "Small company and micro-entity statutory compliance" },
+    ],
+  },
+  {
+    key: "corporation_tax",
+    name: "Corporation Tax (CT600)",
+    category: "Compliance & Statutory",
+    description: "CT600 computations, capital allowances, super-deduction & live HMRC CT filing.",
+    icon: Calculator,
+    subFeatures: [
+      { id: "ct_computations", label: "CT600 Computations", desc: "Trading profit/loss adjustments and disallowables" },
+      { id: "ct_allowances", label: "Capital Allowances", desc: "Annual Investment Allowance (AIA) & writing-down pool" },
+      { id: "ct_hmrc_filing", label: "HMRC Online Gateway", desc: "CT600 computation XML + iXBRL accounts transmission" },
+      { id: "ct_losses", label: "Loss Relief & Group", desc: "Carried-forward loss relief, terminal & group relief" },
+    ],
+  },
+  {
+    key: "payroll",
+    name: "Payroll RTI & Pensions",
+    category: "Compliance & Statutory",
+    description: "PAYE pay runs, payslip generation, pension auto-enrolment & HMRC FPS/EPS transmissions.",
+    icon: Users,
+    subFeatures: [
+      { id: "pay_employees", label: "Employees & CIS Workers", desc: "Employee directory, tax codes & starter details" },
+      { id: "pay_runs", label: "Execute Pay Runs", desc: "Gross to net pay calculations & pension enrolment" },
+      { id: "pay_hmrc", label: "HMRC RTI Filings", desc: "Live Full Payment Submission - FPS / EPS" },
+      { id: "pay_p60_p45", label: "P60 & P45 Distribution", desc: "Year-end P60s and employee leaving forms" },
+    ],
+  },
+  {
+    key: "self_assessment",
+    name: "Self Assessment (SA100)",
+    category: "Compliance & Statutory",
+    description: "Individual, partnership & trustee tax returns, payment on account & HMRC SA submission.",
+    icon: FileSpreadsheet,
+    subFeatures: [
+      { id: "sa_sa100", label: "SA100 Individual Returns", desc: "Employment, sole trader, rental & dividend income" },
+      { id: "sa_sa800", label: "SA800 Partnership Returns", desc: "Partnership statement and profit share allocation" },
+      { id: "sa_sa302", label: "SA302 Tax Computation", desc: "Official HMRC tax calculation breakdown" },
+      { id: "sa_hmrc_filing", label: "Live HMRC SA Submission", desc: "Online gateway transmission of personal returns" },
+    ],
+  },
+  {
+    key: "mtd_vat",
+    name: "MTD for VAT",
+    category: "Compliance & Statutory",
+    description: "9-box VAT return generation, digital audit links & HMRC MTD submission.",
+    icon: Landmark,
+    subFeatures: [
+      { id: "vat_returns", label: "9-Box VAT Returns", desc: "Automated digital calculation of Boxes 1 through 9" },
+      { id: "vat_audit_links", label: "Digital Audit Trail", desc: "HM Revenue & Customs digital link compliance" },
+      { id: "vat_hmrc_filing", label: "HMRC MTD Direct Gateway", desc: "Tokenized API submission of VAT returns" },
+    ],
+  },
+  {
+    key: "company_secretarial",
+    name: "Company Secretarial",
+    category: "Operations & Practice",
+    description: "CS01 Confirmation statements, officer appointments, PSC registers & share capital.",
+    icon: Building2,
+    subFeatures: [
+      { id: "cs_cs01", label: "Confirmation Statement (CS01)", desc: "Annual company statement to Companies House" },
+      { id: "cs_officers", label: "Officers & PSC Registers", desc: "Director appointments, terminations & PSC changes" },
+      { id: "cs_share_capital", label: "Share Capital Management", desc: "Share allotments, transfers & certificates" },
+    ],
+  },
+  {
+    key: "charity_accounts",
+    name: "Charity Accounts (SORP)",
+    category: "Compliance & Statutory",
+    description: "Charity commission compliant SOFA statements and fund accounting schedules.",
+    icon: BookOpen,
+    subFeatures: [
+      { id: "ca_sofa", label: "SOFA Statements", desc: "Statement of Financial Activities under Charities SORP" },
+      { id: "ca_funds", label: "Fund Accounting", desc: "Restricted, unrestricted and endowment funds" },
+      { id: "ca_commission", label: "Charity Commission Filing", desc: "Annual return and trustee report compliance" },
+    ],
+  },
+  {
+    key: "esign",
+    name: "CapiSign / E-Signatures",
+    category: "Operations & Practice",
+    description: "Statutory client sign-off envelopes, SMS OTP verification and digital audit trail.",
+    icon: FileSignature,
+    subFeatures: [
+      { id: "es_envelopes", label: "E-Signature Envelopes", desc: "Multi-signatory document dispatch" },
+      { id: "es_otp", label: "SMS OTP Verification", desc: "Secure two-factor client authentication" },
+      { id: "es_audit_trail", label: "Cryptographic Audit Trail", desc: "Legally binding certificate of completion" },
+    ],
+  },
+  {
+    key: "portal_365",
+    name: "Client Portal 365",
+    category: "Operations & Practice",
+    description: "Client collaboration hub, SME self-service accounting, document repository & portal communications.",
+    icon: Link2,
+    subFeatures: [
+      { id: "p365_workspace", label: "Client 365 Workspace", desc: "SME receipt capture, sales quotes & bank upload" },
+      { id: "p365_documents", label: "Document Exchange", desc: "Upload and download client verification documents" },
+      { id: "p365_messaging", label: "Portal Communications", desc: "Direct messaging between client and practice accountant" },
+      { id: "p365_approval", label: "E-Approval Requests", desc: "Fast approval for draft tax returns & accounts" },
+    ],
+  },
+  {
+    key: "aml",
+    name: "AML & Compliance",
+    category: "Operations & Practice",
+    description: "Automated PEP & Sanctions watchlist screening, photo ID verification and firm AML compliance registers.",
+    icon: Shield,
+    subFeatures: [
+      { id: "aml_screening", label: "PEP & Sanctions Screening", desc: "Veriphy, OpenSanctions & Xama identity checks" },
+      { id: "aml_risk_assess", label: "Firm AML Risk Assessment", desc: "Firm-wide & client risk scoring methodologies" },
+      { id: "aml_reports", label: "AML Register & Reporting", desc: "Statutory compliance registers & audit inspection reports" },
+    ],
+  },
+  {
+    key: "onboarding",
+    name: "Client Onboarding Hub",
+    category: "Operations & Practice",
+    description: "Client onboarding checklists, HMRC 64-8 agent authorizations, and professional clearance requests.",
+    icon: UserPlus,
+    subFeatures: [
+      { id: "ob_checklist", label: "Onboarding Checklists", desc: "Engagement step completion & KYC document collection" },
+      { id: "ob_agent_auth", label: "HMRC 64-8 Agent Authorisation", desc: "Agent auth codes & HMRC gateway linking" },
+      { id: "ob_clearance", label: "Professional Clearance", desc: "Outgoing accountant handover & clearance requests" },
+    ],
+  },
+  {
+    key: "mtd_it",
+    name: "MTD for Income Tax",
+    category: "Compliance & Statutory",
+    description: "Quarterly updates, digital record bridging and year-end crystallization submissions for HMRC ITSA.",
+    icon: Smartphone,
+    subFeatures: [
+      { id: "mtd_it_updates", label: "Quarterly Periodic Updates", desc: "Three-month income and expense digital submissions" },
+      { id: "mtd_it_cryst", label: "Year-End Final Declaration", desc: "Crystallisation statement and final tax position" },
+    ],
+  },
+];
+
+export const DEFAULT_CRUD_PERMS: Record<string, CrudActionPerms> = {
+  practice_management: { view: true, create: true, edit: true, delete: false, approve: false },
+  time_fees: { view: true, create: true, edit: true, delete: false, approve: false },
+  bookkeeping: { view: true, create: true, edit: true, delete: false, approve: false },
+  accounts_production: { view: true, create: true, edit: true, delete: false, approve: false },
+  corporation_tax: { view: true, create: true, edit: true, delete: false, approve: false },
+  payroll: { view: true, create: true, edit: true, delete: false, approve: false },
+  self_assessment: { view: true, create: true, edit: true, delete: false, approve: false },
+  mtd_vat: { view: true, create: true, edit: true, delete: false, approve: false },
+  company_secretarial: { view: true, create: true, edit: true, delete: false, approve: false },
+  charity_accounts: { view: false, create: false, edit: false, delete: false, approve: false },
+  esign: { view: true, create: true, edit: true, delete: false, approve: false },
+  portal_365: { view: true, create: true, edit: true, delete: false, approve: false },
+  aml: { view: true, create: true, edit: true, delete: false, approve: false },
+  onboarding: { view: true, create: true, edit: true, delete: false, approve: false },
+  mtd_it: { view: true, create: true, edit: true, delete: false, approve: false },
+};
+
+export const ROLE_PRESETS = [
+  {
+    id: "super_accountant",
+    name: "Super Accountant",
+    badge: "Full Practice Authority",
+    badgeColor: "bg-purple-100 text-purple-800 border-purple-200",
+    description: "Full administrative control. Can View, Create, Edit, Delete, and legally Approve / Sign-Off across all practice modules.",
+    getPermissions: (): Record<string, CrudActionPerms> => {
+      const map: Record<string, CrudActionPerms> = {};
+      CRUD_MODULE_CATALOG.forEach((m) => {
+        map[m.key] = { view: true, create: true, edit: true, delete: true, approve: true };
+      });
+      return map;
+    },
+    getModuleAccess: (): Record<string, boolean> => ({ ...DEFAULT_MODULE_PERMS }),
+  },
+  {
+    id: "accountant",
+    name: "Accountant",
+    badge: "Review & Sign-Off",
+    badgeColor: "bg-indigo-100 text-indigo-800 border-indigo-200",
+    description: "Production and review access with Sign-Off / Approval rights across assigned client accounts. Cannot delete master firm configurations.",
+    getPermissions: (): Record<string, CrudActionPerms> => {
+      const map: Record<string, CrudActionPerms> = {};
+      CRUD_MODULE_CATALOG.forEach((m) => {
+        map[m.key] = {
+          view: true,
+          create: true,
+          edit: true,
+          delete: m.key !== "practice_management" && m.key !== "charity_accounts",
+          approve: true,
+        };
+      });
+      return map;
+    },
+    getModuleAccess: (): Record<string, boolean> => ({ ...DEFAULT_MODULE_PERMS }),
+  },
+  {
+    id: "staff",
+    name: "Staff",
+    badge: "Preparation & Data Entry",
+    badgeColor: "bg-amber-100 text-amber-800 border-amber-200",
+    description: "Data entry, draft filings, and timesheet logging. Restricted from permanent record Deletion and cannot self-Approve / Sign-Off.",
+    getPermissions: (): Record<string, CrudActionPerms> => {
+      const map: Record<string, CrudActionPerms> = {};
+      CRUD_MODULE_CATALOG.forEach((m) => {
+        const isCharity = m.key === "charity_accounts";
+        map[m.key] = {
+          view: !isCharity,
+          create: !isCharity,
+          edit: !isCharity,
+          delete: false,
+          approve: false,
+        };
+      });
+      return map;
+    },
+    getModuleAccess: (): Record<string, boolean> => ({
+      ...DEFAULT_MODULE_PERMS,
+      charity_accounts: false,
+    }),
+  },
+  {
+    id: "client",
+    name: "Client",
+    badge: "Client Portal 365",
+    badgeColor: "bg-emerald-100 text-emerald-800 border-emerald-200",
+    description: "Client Portal 365 access for bookkeeping receipts, sales invoices, payroll records, and electronic document sign-offs.",
+    getPermissions: (): Record<string, CrudActionPerms> => {
+      const map: Record<string, CrudActionPerms> = {};
+      CRUD_MODULE_CATALOG.forEach((m) => {
+        const isClientModule = m.key === "portal_365" || m.key === "bookkeeping" || m.key === "payroll" || m.key === "esign";
+        map[m.key] = {
+          view: isClientModule,
+          create: isClientModule && m.key !== "payroll",
+          edit: isClientModule && m.key !== "payroll",
+          delete: false,
+          approve: false,
+        };
+      });
+      return map;
+    },
+    getModuleAccess: (): Record<string, boolean> => ({ ...DEFAULT_CLIENT_MODULE_PERMS }),
+  },
+];
 
 export default function UsersAndRolesManager() {
   const { toast } = useToast();
@@ -105,8 +531,14 @@ export default function UsersAndRolesManager() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
-  // Split-Screen Editor Tab: "companies" | "modules" (From Capium info Article 9000149683 & img_4 / img_5 / img_6)
-  const [editorPermTab, setEditorPermTab] = useState<"companies" | "modules">("companies");
+  // Split-Screen Editor Tab: 1: "companies" | 2: "modules_permissions" (Unified CRUD + Sub-Features)
+  const [editorPermTab, setEditorPermTab] = useState<"companies" | "modules_permissions">("companies");
+  const [expandedModules, setExpandedModules] = useState<Record<string, boolean>>({
+    bookkeeping: true,
+    payroll: false,
+    practice_management: false,
+    time_fees: false,
+  });
   const [companySearch, setCompanySearch] = useState("");
 
   // Split-Screen Form State
@@ -146,6 +578,7 @@ export default function UsersAndRolesManager() {
       assignedClientIds: [],
       clientManagerClientIds: [],
       modulePermissions: { ...DEFAULT_MODULE_PERMS },
+      crudPermissions: { ...DEFAULT_CRUD_PERMS },
     },
   });
 
@@ -157,6 +590,15 @@ export default function UsersAndRolesManager() {
   const [importStep, setImportStep] = useState<1 | 2 | 3>(1);
   const [csvText, setCsvText] = useState("");
   const [parsedCsvUsers, setParsedCsvUsers] = useState<any[]>([]);
+
+  // Custom Role Modal & Creation State
+  const [showCustomRoleModal, setShowCustomRoleModal] = useState(false);
+  const [customRoleForm, setCustomRoleForm] = useState({
+    roleName: "",
+    description: "",
+    baseTier: "staff",
+    useCurrentMatrix: true,
+  });
 
   // Queries
   const { data: users = [], isLoading: isLoadingUsers } = useQuery<PracticeUser[]>({
@@ -172,6 +614,49 @@ export default function UsersAndRolesManager() {
     queryFn: async () => {
       const res = await apiRequest("GET", "/api/myadmin/clients");
       return res.json();
+    },
+  });
+
+  const { data: customRoles = [] } = useQuery<PracticeRoleItem[]>({
+    queryKey: ["/api/myadmin/roles"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/myadmin/roles");
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  // Custom Role Mutations
+  const createCustomRoleMutation = useMutation({
+    mutationFn: async (payload: { roleName: string; description: string; baseTier: string; permissionsJson: any }) => {
+      const res = await apiRequest("POST", "/api/myadmin/roles", payload);
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed to create custom role");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/myadmin/roles"] });
+      toast({ title: "Custom Role Template Saved", description: `Role '${data.roleName}' is now active for your practice.` });
+      setShowCustomRoleModal(false);
+      setCustomRoleForm({ roleName: "", description: "", baseTier: "staff", useCurrentMatrix: true });
+      setUserForm((p) => ({ ...p, role: data.roleCode }));
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to Save Role", description: err.message, type: "error" });
+    },
+  });
+
+  const deleteCustomRoleMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("DELETE", `/api/myadmin/roles/${id}`);
+      if (!res.ok) throw new Error("Failed to delete role");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/myadmin/roles"] });
+      toast({ title: "Custom Role Deleted", description: "The practice role template has been removed." });
     },
   });
 
@@ -293,10 +778,22 @@ export default function UsersAndRolesManager() {
   const handleOpenEdit = (user?: PracticeUser) => {
     if (user) {
       setSelectedUser(user);
+      const userRole = user.role || "staff";
+      const preset = ROLE_PRESETS.find((p) => p.id === userRole);
+      let defaultCrud = preset ? preset.getPermissions() : { ...DEFAULT_CRUD_PERMS };
+
+      const customMatch = customRoles.find((c) => c.roleCode === userRole);
+      if (customMatch?.permissionsJson) {
+        try {
+          const parsed = JSON.parse(customMatch.permissionsJson);
+          if (parsed.crudPermissions) defaultCrud = parsed.crudPermissions;
+        } catch (e) {}
+      }
+
       setUserForm({
         id: user.id,
         email: user.email,
-        role: user.role || "staff",
+        role: userRole,
         prefix: user.prefix || "Mr",
         firstName: user.firstName || "",
         middleName: user.middleName || "",
@@ -307,15 +804,19 @@ export default function UsersAndRolesManager() {
         city: user.city || "",
         postCode: user.postCode || "",
         permissions: {
-          autoAssign: user.permissions?.autoAssign ?? (user.role === "admin" || user.role === "accountant"),
+          autoAssign: user.permissions?.autoAssign ?? (user.role === "admin" || user.role === "accountant" || user.role === "super_accountant"),
           hubAccess: user.permissions?.hubAccess ?? true,
-          bankFeedsAccess: user.permissions?.bankFeedsAccess ?? (user.role === "admin" || user.role === "accountant"),
-          amlOfficer: user.permissions?.amlOfficer ?? (user.role === "admin"),
+          bankFeedsAccess: user.permissions?.bankFeedsAccess ?? (user.role === "admin" || user.role === "accountant" || user.role === "super_accountant"),
+          amlOfficer: user.permissions?.amlOfficer ?? (user.role === "admin" || user.role === "super_accountant"),
           assignedClientIds: Array.isArray(user.permissions?.assignedClientIds) ? user.permissions.assignedClientIds : [],
           clientManagerClientIds: Array.isArray(user.permissions?.clientManagerClientIds) ? user.permissions.clientManagerClientIds : [],
           modulePermissions: {
-            ...DEFAULT_MODULE_PERMS,
+            ...getInitialModulePermsForRole(userRole),
             ...(user.permissions?.modulePermissions || {}),
+          },
+          crudPermissions: {
+            ...defaultCrud,
+            ...(user.permissions?.crudPermissions || {}),
           },
         },
       });
@@ -342,6 +843,7 @@ export default function UsersAndRolesManager() {
           assignedClientIds: [],
           clientManagerClientIds: [],
           modulePermissions: { ...DEFAULT_MODULE_PERMS },
+          crudPermissions: { ...DEFAULT_CRUD_PERMS },
         },
       });
     }
@@ -889,30 +1391,79 @@ export default function UsersAndRolesManager() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    User Type / Role <span className="text-rose-500">*</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-slate-700">
+                      User Type / Role <span className="text-rose-500">*</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomRoleModal(true)}
+                      className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1 hover:underline"
+                    >
+                      <Plus size={12} />
+                      <span>+ Custom Role</span>
+                    </button>
+                  </div>
                   <select
                     value={userForm.role}
                     onChange={(e) => {
                       const newRole = e.target.value;
-                      setUserForm((p) => ({
-                        ...p,
-                        role: newRole,
-                        permissions: {
-                          ...p.permissions,
-                          autoAssign: newRole === "admin" || newRole === "accountant",
-                          bankFeedsAccess: newRole === "admin" || newRole === "accountant",
-                          amlOfficer: newRole === "admin",
-                        },
-                      }));
+                      const preset = ROLE_PRESETS.find((p) => p.id === newRole);
+                      if (preset) {
+                        setUserForm((p) => ({
+                          ...p,
+                          role: newRole,
+                          permissions: {
+                            ...p.permissions,
+                            autoAssign: newRole === "admin" || newRole === "accountant" || newRole === "super_accountant",
+                            bankFeedsAccess: newRole === "admin" || newRole === "accountant" || newRole === "super_accountant",
+                            amlOfficer: newRole === "admin" || newRole === "super_accountant",
+                            crudPermissions: preset.getPermissions(),
+                            modulePermissions: (preset as any).getModuleAccess ? (preset as any).getModuleAccess() : p.permissions.modulePermissions,
+                          },
+                        }));
+                        return;
+                      }
+
+                      const custom = customRoles.find((c) => c.roleCode === newRole);
+                      if (custom && custom.permissionsJson) {
+                        try {
+                          const parsed = JSON.parse(custom.permissionsJson);
+                          setUserForm((p) => ({
+                            ...p,
+                            role: newRole,
+                            permissions: {
+                              ...p.permissions,
+                              crudPermissions: parsed.crudPermissions || p.permissions.crudPermissions,
+                              modulePermissions: parsed.modulePermissions || p.permissions.modulePermissions,
+                              autoAssign: parsed.autoAssign ?? p.permissions.autoAssign,
+                              bankFeedsAccess: parsed.bankFeedsAccess ?? p.permissions.bankFeedsAccess,
+                              amlOfficer: parsed.amlOfficer ?? p.permissions.amlOfficer,
+                            },
+                          }));
+                          return;
+                        } catch (e) {}
+                      }
+
+                      setUserForm((p) => ({ ...p, role: newRole }));
                     }}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500"
                   >
-                    <option value="super_accountant">Super Accountant (Full Master Firm Access)</option>
-                    <option value="accountant">Accountant (Client Manager & All Modules)</option>
-                    <option value="staff">Staff (Assigned Client Portfolios & Selected Modules)</option>
-                    <option value="client">Client (Client Portal 365 / Bookkeeping / Payroll / Charity)</option>
+                    <optgroup label="Standard Practice Roles (Default)">
+                      <option value="super_accountant">Super Accountant (Full Practice Authority)</option>
+                      <option value="accountant">Accountant (Reviewer & Sign-Off Authority)</option>
+                      <option value="staff">Staff (Preparation & Data Entry Only)</option>
+                      <option value="client">Client (Client Portal 365 / Bookkeeping / Payroll)</option>
+                    </optgroup>
+                    {customRoles.length > 0 && (
+                      <optgroup label="Custom Practice Roles (Firm Templates)">
+                        {customRoles.map((cr) => (
+                          <option key={cr.id} value={cr.roleCode}>
+                            {cr.roleName} ({cr.badge || "Custom"})
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
                 </div>
 
@@ -1124,27 +1675,742 @@ export default function UsersAndRolesManager() {
                 </div>
               </div>
 
-              {/* Sub-Tabs: Companies vs Modules */}
+              {/* Sub-Tabs: 1: Companies, 2: Module Permissions & CRUD Matrix (Unified per user request) */}
               <div className="flex border-b border-slate-200">
                 <button
+                  type="button"
                   onClick={() => setEditorPermTab("companies")}
-                  className={`pb-2.5 px-4 text-sm font-semibold border-b-2 transition ${editorPermTab === "companies"
+                  className={`pb-2.5 px-4 text-sm font-semibold border-b-2 transition flex items-center gap-2 ${
+                    editorPermTab === "companies"
                       ? "border-indigo-600 text-indigo-600"
                       : "border-transparent text-slate-500 hover:text-slate-700"
-                    }`}
+                  }`}
                 >
-                  Companies ({(userForm.permissions?.assignedClientIds || []).length} Assigned)
+                  <Building2 size={15} />
+                  <span>Companies ({(userForm.permissions?.assignedClientIds || []).length} Assigned)</span>
                 </button>
+
                 <button
-                  onClick={() => setEditorPermTab("modules")}
-                  className={`pb-2.5 px-4 text-sm font-semibold border-b-2 transition ${editorPermTab === "modules"
+                  type="button"
+                  onClick={() => setEditorPermTab("modules_permissions")}
+                  className={`pb-2.5 px-4 text-sm font-semibold border-b-2 transition flex items-center gap-2 ${
+                    editorPermTab === "modules_permissions"
                       ? "border-indigo-600 text-indigo-600"
                       : "border-transparent text-slate-500 hover:text-slate-700"
-                    }`}
+                  }`}
                 >
-                  Modules & Granular Features
+                  <Key size={15} />
+                  <span>Module Permissions & Feature Access</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-bold border border-indigo-200">
+                    CRUD + Sub-Features
+                  </span>
                 </button>
               </div>
+
+              {/* TAB 2: UNIFIED MODULE PERMISSIONS & CRUD MATRIX WITH ACCORDION SUB-FEATURES */}
+              {editorPermTab === "modules_permissions" && (
+                <div className="space-y-4">
+                  {/* Preset Selector Banner */}
+                  <div className="p-3.5 bg-gradient-to-r from-purple-50 via-indigo-50/50 to-slate-50 rounded-xl border border-indigo-100">
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-2.5">
+                      <div>
+                        <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                          <SlidersHorizontal size={14} className="text-indigo-600" />
+                          <span>Practice Role Presets & Fast Apply</span>
+                        </div>
+                        <p className="text-[11px] text-slate-600 mt-0.5">
+                          Click any role preset below to quickly apply standard permissions across all modules, or create custom role templates for your firm.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowCustomRoleModal(true)}
+                          className="px-2.5 py-1 text-xs font-semibold bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-50 rounded-lg shadow-sm transition flex items-center gap-1.5"
+                        >
+                          <Plus size={13} />
+                          <span>Create Custom Role</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                      {ROLE_PRESETS.map((preset) => {
+                        const isCurrent = userForm.role === preset.id;
+                        return (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            onClick={() => {
+                              setUserForm((p) => {
+                                const newCrud = preset.getPermissions();
+                                const newModulePerms = (preset as any).getModuleAccess ? (preset as any).getModuleAccess() : { ...p.permissions.modulePermissions };
+                                return {
+                                  ...p,
+                                  role: preset.id,
+                                  permissions: {
+                                    ...p.permissions,
+                                    autoAssign: preset.id === "super_accountant" || preset.id === "accountant",
+                                    bankFeedsAccess: preset.id === "super_accountant" || preset.id === "accountant",
+                                    amlOfficer: preset.id === "super_accountant",
+                                    crudPermissions: newCrud,
+                                    modulePermissions: newModulePerms,
+                                  },
+                                };
+                              });
+                              toast({
+                                title: `Preset Applied: ${preset.name}`,
+                                description: `Configured for ${preset.badge}. You can fine-tune specific actions below.`,
+                              });
+                            }}
+                            className={`p-2.5 rounded-lg border text-left transition flex flex-col justify-between ${
+                              isCurrent
+                                ? "bg-white border-indigo-500 shadow-sm ring-1 ring-indigo-500"
+                                : "bg-white/80 border-slate-200 hover:border-indigo-300 hover:bg-white"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-bold text-xs text-slate-800">{preset.name}</span>
+                              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${preset.badgeColor}`}>
+                                {preset.badge}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 leading-tight">
+                              {preset.description}
+                            </p>
+                          </button>
+                        );
+                      })}
+
+                      {/* Custom Practice Role Cards */}
+                      {customRoles.map((cr) => {
+                        const isCurrent = userForm.role === cr.roleCode;
+                        let parsedPerms: any = null;
+                        try {
+                          if (cr.permissionsJson) parsedPerms = JSON.parse(cr.permissionsJson);
+                        } catch (e) {}
+
+                        return (
+                          <div
+                            key={cr.id}
+                            className={`p-2.5 rounded-lg border text-left transition flex flex-col justify-between relative group ${
+                              isCurrent
+                                ? "bg-white border-teal-500 shadow-sm ring-1 ring-teal-500"
+                                : "bg-white/80 border-slate-200 hover:border-teal-300 hover:bg-white"
+                            }`}
+                          >
+                            <div
+                              className="cursor-pointer"
+                              onClick={() => {
+                                if (parsedPerms) {
+                                  setUserForm((p) => ({
+                                    ...p,
+                                    role: cr.roleCode,
+                                    permissions: {
+                                      ...p.permissions,
+                                      ...parsedPerms,
+                                    },
+                                  }));
+                                  toast({
+                                    title: `Custom Preset Applied: ${cr.roleName}`,
+                                    description: `Applied practice-specific role permissions template.`,
+                                  });
+                                }
+                              }}
+                            >
+                              <div className="flex items-center justify-between mb-1 pr-6">
+                                <span className="font-bold text-xs text-slate-800">{cr.roleName}</span>
+                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border bg-teal-50 text-teal-800 border-teal-200">
+                                  {cr.badge || "Custom"}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-500 leading-tight">
+                                {cr.description || "Practice tailored role template"}
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                const ok = await confirm({
+                                  title: "Delete Custom Role Template?",
+                                  description: `Are you sure you want to remove '${cr.roleName}'? Existing users with this role will keep their current permissions.`,
+                                  confirmText: "Delete Role",
+                                  variant: "danger",
+                                });
+                                if (ok) {
+                                  deleteCustomRoleMutation.mutate(cr.id);
+                                }
+                              }}
+                              className="absolute top-2 right-2 p-1 text-slate-400 hover:text-rose-600 rounded opacity-0 group-hover:opacity-100 transition"
+                              title="Delete custom role template"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Bulk Column Controls & Expand/Collapse Toggle */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 p-2 bg-slate-50 rounded-lg border border-slate-200/80 text-xs">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="font-semibold text-slate-700 flex items-center gap-1.5 mr-1">
+                        <Sliders size={13} className="text-slate-500" />
+                        Bulk Column:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUserForm((p) => {
+                            const cur = { ...(p.permissions.crudPermissions || DEFAULT_CRUD_PERMS) };
+                            const allOn = CRUD_MODULE_CATALOG.every((m) => cur[m.key]?.view);
+                            CRUD_MODULE_CATALOG.forEach((m) => {
+                              cur[m.key] = { ...(cur[m.key] || DEFAULT_CRUD_PERMS[m.key]), view: !allOn };
+                            });
+                            return { ...p, permissions: { ...p.permissions, crudPermissions: cur } };
+                          });
+                        }}
+                        className="px-2 py-1 text-[11px] bg-white border border-slate-200 rounded hover:bg-slate-100 text-slate-700 font-medium"
+                      >
+                        Toggle View
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUserForm((p) => {
+                            const cur = { ...(p.permissions.crudPermissions || DEFAULT_CRUD_PERMS) };
+                            const allOn = CRUD_MODULE_CATALOG.every((m) => cur[m.key]?.create);
+                            CRUD_MODULE_CATALOG.forEach((m) => {
+                              cur[m.key] = { ...(cur[m.key] || DEFAULT_CRUD_PERMS[m.key]), create: !allOn };
+                            });
+                            return { ...p, permissions: { ...p.permissions, crudPermissions: cur } };
+                          });
+                        }}
+                        className="px-2 py-1 text-[11px] bg-white border border-slate-200 rounded hover:bg-slate-100 text-slate-700 font-medium"
+                      >
+                        Toggle Create
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUserForm((p) => {
+                            const cur = { ...(p.permissions.crudPermissions || DEFAULT_CRUD_PERMS) };
+                            const allOn = CRUD_MODULE_CATALOG.every((m) => cur[m.key]?.edit);
+                            CRUD_MODULE_CATALOG.forEach((m) => {
+                              cur[m.key] = { ...(cur[m.key] || DEFAULT_CRUD_PERMS[m.key]), edit: !allOn };
+                            });
+                            return { ...p, permissions: { ...p.permissions, crudPermissions: cur } };
+                          });
+                        }}
+                        className="px-2 py-1 text-[11px] bg-white border border-slate-200 rounded hover:bg-slate-100 text-slate-700 font-medium"
+                      >
+                        Toggle Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUserForm((p) => {
+                            const cur = { ...(p.permissions.crudPermissions || DEFAULT_CRUD_PERMS) };
+                            const allOn = CRUD_MODULE_CATALOG.every((m) => cur[m.key]?.delete);
+                            CRUD_MODULE_CATALOG.forEach((m) => {
+                              cur[m.key] = { ...(cur[m.key] || DEFAULT_CRUD_PERMS[m.key]), delete: !allOn };
+                            });
+                            return { ...p, permissions: { ...p.permissions, crudPermissions: cur } };
+                          });
+                        }}
+                        className="px-2 py-1 text-[11px] bg-rose-50 border border-rose-200 rounded hover:bg-rose-100 text-rose-700 font-medium"
+                      >
+                        Toggle Delete
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUserForm((p) => {
+                            const cur = { ...(p.permissions.crudPermissions || DEFAULT_CRUD_PERMS) };
+                            const allOn = CRUD_MODULE_CATALOG.every((m) => cur[m.key]?.approve);
+                            CRUD_MODULE_CATALOG.forEach((m) => {
+                              cur[m.key] = { ...(cur[m.key] || DEFAULT_CRUD_PERMS[m.key]), approve: !allOn };
+                            });
+                            return { ...p, permissions: { ...p.permissions, crudPermissions: cur } };
+                          });
+                        }}
+                        className="px-2 py-1 text-[11px] bg-purple-50 border border-purple-200 rounded hover:bg-purple-100 text-purple-700 font-medium"
+                      >
+                        Toggle Sign-Off
+                      </button>
+                    </div>
+
+                    {/* Expand All / Collapse All Toggle */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const allExpanded = CRUD_MODULE_CATALOG.every((m) => expandedModules[m.key]);
+                        const next: Record<string, boolean> = {};
+                        CRUD_MODULE_CATALOG.forEach((m) => {
+                          next[m.key] = !allExpanded;
+                        });
+                        setExpandedModules(next);
+                      }}
+                      className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold rounded border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 transition"
+                    >
+                      {CRUD_MODULE_CATALOG.every((m) => expandedModules[m.key]) ? (
+                        <>
+                          <ChevronDown size={13} className="text-indigo-600" />
+                          <span>Collapse All Options</span>
+                        </>
+                      ) : (
+                        <>
+                          <ChevronRight size={13} className="text-indigo-600" />
+                          <span>Expand All Options</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Hierarchical Accordion CRUD & Sub-Features Table */}
+                  <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                    <table className="w-full text-left text-xs text-slate-700">
+                      <thead className="bg-slate-50 border-b border-slate-200 font-semibold text-slate-600">
+                        <tr>
+                          <th className="py-2.5 px-3">Module & Granular Options (Click to Expand)</th>
+                          <th className="py-2.5 px-2 text-center w-20">Access</th>
+                          <th className="py-2.5 px-2 text-center w-16">View</th>
+                          <th className="py-2.5 px-2 text-center w-16">Create</th>
+                          <th className="py-2.5 px-2 text-center w-16">Edit</th>
+                          <th className="py-2.5 px-2 text-center w-16 text-rose-700 bg-rose-50/50">Delete</th>
+                          <th className="py-2.5 px-2 text-center w-24 text-purple-700 bg-purple-50/50">Sign-Off</th>
+                          <th className="py-2.5 px-2 text-right pr-3 w-28">Row Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {CRUD_MODULE_CATALOG.map((mod) => {
+                          const IconComp = mod.icon;
+                          const hasModuleAccess = userForm.permissions.modulePermissions[mod.key] !== false;
+                          const isExpanded = !!expandedModules[mod.key];
+                          const currentCrud = userForm.permissions.crudPermissions?.[mod.key] || DEFAULT_CRUD_PERMS[mod.key] || {
+                            view: true,
+                            create: true,
+                            edit: true,
+                            delete: false,
+                            approve: false,
+                          };
+
+                          const updateAction = (action: keyof CrudActionPerms, val: boolean) => {
+                            setUserForm((p) => {
+                              const curMap = { ...(p.permissions.crudPermissions || DEFAULT_CRUD_PERMS) };
+                              const itemPerms = { ...(curMap[mod.key] || DEFAULT_CRUD_PERMS[mod.key]), [action]: val };
+                              const updatedModulePerms = { ...p.permissions.modulePermissions };
+
+                              if ((action === "create" || action === "edit" || action === "approve" || action === "delete") && val) {
+                                itemPerms.view = true;
+                                updatedModulePerms[mod.key] = true;
+                              }
+                              if (action === "view") {
+                                if (!val) {
+                                  itemPerms.create = false;
+                                  itemPerms.edit = false;
+                                  itemPerms.delete = false;
+                                  itemPerms.approve = false;
+                                  updatedModulePerms[mod.key] = false;
+                                  mod.subFeatures.forEach((sub) => {
+                                    updatedModulePerms[sub.id] = false;
+                                  });
+                                } else {
+                                  updatedModulePerms[mod.key] = true;
+                                }
+                              }
+
+                              curMap[mod.key] = itemPerms;
+                              return {
+                                ...p,
+                                permissions: {
+                                  ...p.permissions,
+                                  modulePermissions: updatedModulePerms,
+                                  crudPermissions: curMap,
+                                },
+                              };
+                            });
+                          };
+
+                          const toggleModuleAccess = (val: boolean) => {
+                            setUserForm((p) => {
+                              const updatedModulePerms = { ...p.permissions.modulePermissions, [mod.key]: val };
+                              mod.subFeatures.forEach((sub) => {
+                                updatedModulePerms[sub.id] = val;
+                              });
+                              const curMap = { ...(p.permissions.crudPermissions || DEFAULT_CRUD_PERMS) };
+                              if (!val) {
+                                curMap[mod.key] = { view: false, create: false, edit: false, delete: false, approve: false };
+                              } else {
+                                curMap[mod.key] = {
+                                  view: true,
+                                  create: true,
+                                  edit: true,
+                                  delete: curMap[mod.key]?.delete || false,
+                                  approve: curMap[mod.key]?.approve || false,
+                                };
+                              }
+                              return {
+                                ...p,
+                                permissions: {
+                                  ...p.permissions,
+                                  modulePermissions: updatedModulePerms,
+                                  crudPermissions: curMap,
+                                },
+                              };
+                            });
+                          };
+
+                          return (
+                            <>
+                              {/* PARENT MODULE ROW */}
+                              <tr
+                                key={mod.key}
+                                className={`transition ${
+                                  !hasModuleAccess
+                                    ? "bg-slate-50/60 opacity-60"
+                                    : isExpanded
+                                    ? "bg-indigo-50/20"
+                                    : "hover:bg-slate-50/80"
+                                }`}
+                              >
+                                <td className="py-2.5 px-3">
+                                  <div className="flex items-start gap-2">
+                                    {/* Expand/Collapse Chevron Button */}
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setExpandedModules((prev) => ({
+                                          ...prev,
+                                          [mod.key]: !prev[mod.key],
+                                        }))
+                                      }
+                                      className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition mt-0.5"
+                                      title={isExpanded ? "Collapse sub-features" : "Expand sub-features"}
+                                    >
+                                      {isExpanded ? (
+                                        <ChevronDown size={15} className="text-indigo-600" />
+                                      ) : (
+                                        <ChevronRight size={15} />
+                                      )}
+                                    </button>
+
+                                    <div
+                                      className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                                        hasModuleAccess ? "bg-indigo-50 text-indigo-700" : "bg-slate-200 text-slate-500"
+                                      }`}
+                                    >
+                                      <IconComp size={15} />
+                                    </div>
+
+                                    <div
+                                      className="cursor-pointer"
+                                      onClick={() =>
+                                        setExpandedModules((prev) => ({
+                                          ...prev,
+                                          [mod.key]: !prev[mod.key],
+                                        }))
+                                      }
+                                    >
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="font-bold text-slate-900">{mod.name}</span>
+                                        <span
+                                          className={`text-[9px] px-1.5 py-0.2 rounded font-medium ${
+                                            mod.category === "Compliance & Statutory"
+                                              ? "bg-purple-50 text-purple-700 border border-purple-200"
+                                              : mod.category === "Finance & Invoicing"
+                                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                              : "bg-slate-100 text-slate-700 border border-slate-200"
+                                          }`}
+                                        >
+                                          {mod.category}
+                                        </span>
+                                        <span className="text-[10px] text-indigo-600 font-semibold bg-indigo-50/80 px-1.5 py-0.2 rounded border border-indigo-100">
+                                          {mod.subFeatures.length} options {isExpanded ? "▲" : "▼"}
+                                        </span>
+                                      </div>
+                                      <p className="text-[11px] text-slate-500 leading-tight mt-0.5 max-w-sm">
+                                        {mod.description}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </td>
+
+                                {/* Access Toggle */}
+                                <td className="py-2.5 px-2 text-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={hasModuleAccess}
+                                    onChange={(e) => toggleModuleAccess(e.target.checked)}
+                                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                                    title={hasModuleAccess ? "Module Enabled" : "Module Deactivated"}
+                                  />
+                                </td>
+
+                                {/* View */}
+                                <td className="py-2.5 px-2 text-center">
+                                  <input
+                                    type="checkbox"
+                                    disabled={!hasModuleAccess}
+                                    checked={hasModuleAccess && currentCrud.view}
+                                    onChange={(e) => updateAction("view", e.target.checked)}
+                                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer disabled:cursor-not-allowed"
+                                  />
+                                </td>
+
+                                {/* Create */}
+                                <td className="py-2.5 px-2 text-center">
+                                  <input
+                                    type="checkbox"
+                                    disabled={!hasModuleAccess}
+                                    checked={hasModuleAccess && currentCrud.create}
+                                    onChange={(e) => updateAction("create", e.target.checked)}
+                                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer disabled:cursor-not-allowed"
+                                  />
+                                </td>
+
+                                {/* Edit */}
+                                <td className="py-2.5 px-2 text-center">
+                                  <input
+                                    type="checkbox"
+                                    disabled={!hasModuleAccess}
+                                    checked={hasModuleAccess && currentCrud.edit}
+                                    onChange={(e) => updateAction("edit", e.target.checked)}
+                                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer disabled:cursor-not-allowed"
+                                  />
+                                </td>
+
+                                {/* Delete */}
+                                <td className="py-2.5 px-2 text-center bg-rose-50/20">
+                                  <input
+                                    type="checkbox"
+                                    disabled={!hasModuleAccess}
+                                    checked={hasModuleAccess && currentCrud.delete}
+                                    onChange={(e) => updateAction("delete", e.target.checked)}
+                                    className="rounded border-rose-300 text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer disabled:cursor-not-allowed"
+                                    title="Caution: Authorizes permanent record deletion"
+                                  />
+                                </td>
+
+                                {/* Sign-Off / Approval */}
+                                <td className="py-2.5 px-2 text-center bg-purple-50/20">
+                                  <input
+                                    type="checkbox"
+                                    disabled={!hasModuleAccess}
+                                    checked={hasModuleAccess && currentCrud.approve}
+                                    onChange={(e) => updateAction("approve", e.target.checked)}
+                                    className="rounded border-purple-300 text-purple-600 focus:ring-purple-500 w-4 h-4 cursor-pointer disabled:cursor-not-allowed"
+                                    title="Legal Sign-Off / HMRC Submission / Timesheet Approval"
+                                  />
+                                </td>
+
+                                {/* Row Quick Action */}
+                                <td className="py-2.5 px-2 text-right pr-3">
+                                  <div className="flex items-center justify-end gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setUserForm((p) => {
+                                          const curMap = { ...(p.permissions.crudPermissions || DEFAULT_CRUD_PERMS) };
+                                          curMap[mod.key] = { view: true, create: true, edit: true, delete: true, approve: true };
+                                          const updatedModulePerms = { ...p.permissions.modulePermissions, [mod.key]: true };
+                                          mod.subFeatures.forEach((sub) => {
+                                            updatedModulePerms[sub.id] = true;
+                                          });
+                                          return {
+                                            ...p,
+                                            permissions: {
+                                              ...p.permissions,
+                                              crudPermissions: curMap,
+                                              modulePermissions: updatedModulePerms,
+                                            },
+                                          };
+                                        });
+                                      }}
+                                      className="text-[10px] px-1.5 py-0.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-medium"
+                                      title="Grant full CRUD and sign-off for this module"
+                                    >
+                                      All
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setUserForm((p) => {
+                                          const curMap = { ...(p.permissions.crudPermissions || DEFAULT_CRUD_PERMS) };
+                                          curMap[mod.key] = { view: false, create: false, edit: false, delete: false, approve: false };
+                                          const updatedModulePerms = { ...p.permissions.modulePermissions, [mod.key]: false };
+                                          mod.subFeatures.forEach((sub) => {
+                                            updatedModulePerms[sub.id] = false;
+                                          });
+                                          return {
+                                            ...p,
+                                            permissions: {
+                                              ...p.permissions,
+                                              crudPermissions: curMap,
+                                              modulePermissions: updatedModulePerms,
+                                            },
+                                          };
+                                        });
+                                      }}
+                                      className="text-[10px] px-1.5 py-0.5 rounded border border-slate-200 text-slate-400 hover:bg-rose-50 hover:text-rose-600 font-medium"
+                                      title="Revoke all actions for this module"
+                                    >
+                                      None
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+
+                              {/* ACCORDION COLLAPSIBLE SUB-FEATURES PANEL */}
+                              {isExpanded && (
+                                <tr key={mod.key + "_subpanel"}>
+                                  <td colSpan={8} className="p-0 border-t border-b border-indigo-100/70 bg-gradient-to-r from-slate-50 via-indigo-50/20 to-slate-50">
+                                    <div className="p-4 pl-12 pr-6 space-y-3">
+                                      <div className="flex items-center justify-between gap-3 border-b border-slate-200/80 pb-2">
+                                        <div className="flex items-center gap-2">
+                                          <Layers size={14} className="text-indigo-600" />
+                                          <span className="text-xs font-bold text-slate-800">
+                                            Granular Feature & Sub-Module Toggles for {mod.name}
+                                          </span>
+                                          <span className="text-[10px] text-slate-500">
+                                            ({mod.subFeatures.filter((s) => userForm.permissions.modulePermissions[s.id] !== false).length} of {mod.subFeatures.length} active)
+                                          </span>
+                                        </div>
+
+                                        <div className="flex items-center gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setUserForm((p) => {
+                                                const updated = { ...p.permissions.modulePermissions };
+                                                mod.subFeatures.forEach((s) => {
+                                                  updated[s.id] = true;
+                                                });
+                                                return {
+                                                  ...p,
+                                                  permissions: {
+                                                    ...p.permissions,
+                                                    modulePermissions: updated,
+                                                  },
+                                                };
+                                              });
+                                            }}
+                                            className="text-[11px] px-2 py-0.5 rounded border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 font-medium"
+                                          >
+                                            Select All Features
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setUserForm((p) => {
+                                                const updated = { ...p.permissions.modulePermissions };
+                                                mod.subFeatures.forEach((s) => {
+                                                  updated[s.id] = false;
+                                                });
+                                                return {
+                                                  ...p,
+                                                  permissions: {
+                                                    ...p.permissions,
+                                                    modulePermissions: updated,
+                                                  },
+                                                };
+                                              });
+                                            }}
+                                            className="text-[11px] px-2 py-0.5 rounded border border-slate-200 bg-white hover:bg-slate-100 text-slate-500 font-medium"
+                                          >
+                                            Clear All
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      {!hasModuleAccess ? (
+                                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-center gap-2">
+                                          <AlertCircle size={15} className="text-amber-600 shrink-0" />
+                                          <span>
+                                            Access to <strong>{mod.name}</strong> is turned off above. Enable module access to activate and assign its sub-features.
+                                          </span>
+                                        </div>
+                                      ) : (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                                          {mod.subFeatures.map((sub) => {
+                                            const isChecked = userForm.permissions.modulePermissions[sub.id] !== false;
+                                            return (
+                                              <label
+                                                key={sub.id}
+                                                className={`flex items-start gap-2.5 p-2 rounded-lg border transition cursor-pointer select-none ${
+                                                  isChecked
+                                                    ? "bg-white border-indigo-200 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+                                                    : "bg-slate-100/60 border-slate-200/80 opacity-60"
+                                                }`}
+                                              >
+                                                <input
+                                                  type="checkbox"
+                                                  checked={isChecked}
+                                                  onChange={(e) => {
+                                                    const val = e.target.checked;
+                                                    setUserForm((p) => ({
+                                                      ...p,
+                                                      permissions: {
+                                                        ...p.permissions,
+                                                        modulePermissions: {
+                                                          ...p.permissions.modulePermissions,
+                                                          [sub.id]: val,
+                                                          [mod.key]: val ? true : p.permissions.modulePermissions[mod.key],
+                                                        },
+                                                      },
+                                                    }));
+                                                  }}
+                                                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5 mt-0.5"
+                                                />
+                                                <div className="flex-1">
+                                                  <div className="font-semibold text-slate-800 text-xs">
+                                                    {sub.label}
+                                                  </div>
+                                                  {sub.desc && (
+                                                    <div className="text-[10px] text-slate-500 leading-tight mt-0.5">
+                                                      {sub.desc}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              </label>
+                                            );
+                                          })}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Summary & Legend */}
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600">
+                    <div className="flex items-center gap-4">
+                      <span className="flex items-center gap-1.5 font-semibold text-slate-700">
+                        <CheckCircle2 size={13} className="text-indigo-600" />
+                        Role Matrix Legend:
+                      </span>
+                      <span><strong>View:</strong> Inspect reports & ledger records</span>
+                      <span><strong>Create/Edit:</strong> Draft entries & workflows</span>
+                      <span className="text-rose-700"><strong>Delete:</strong> Permanent purge authority</span>
+                      <span className="text-purple-700"><strong>Sign-Off:</strong> Legal HMRC / Timesheet sign-off</span>
+                    </div>
+
+                    <span className="text-[11px] text-slate-400">
+                      Standard UK Practice Multi-Tier Authorization
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {/* SUB-TAB 1: COMPANIES CLIENT ALLOCATION (img_4 & img_5) */}
               {editorPermTab === "companies" && (
@@ -1296,310 +2562,6 @@ export default function UsersAndRolesManager() {
                         )}
                       </tbody>
                     </table>
-                  </div>
-                </div>
-              )}
-
-              {/* SUB-TAB 2: GRANULAR MODULES & FEATURE PERMISSIONS (img_6.png) */}
-              {editorPermTab === "modules" && (
-                <div className="space-y-6 max-h-[500px] overflow-y-auto pr-2">
-
-                  {/* BOOKKEEPING MODULE & SUB-FEATURES (img_6.png) */}
-                  <div className="border border-slate-200 rounded-xl p-4 space-y-3 bg-slate-50/50">
-                    <label className="flex items-center gap-2 font-bold text-slate-900 text-sm cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={!!userForm.permissions.modulePermissions.bookkeeping}
-                        onChange={(e) => {
-                          const v = e.target.checked;
-                          setUserForm((p) => ({
-                            ...p,
-                            permissions: {
-                              ...p.permissions,
-                              modulePermissions: {
-                                ...p.permissions.modulePermissions,
-                                bookkeeping: v,
-                                bk_sales: v,
-                                bk_purchase: v,
-                                bk_assets: v,
-                                bk_tasks: v,
-                                bk_bank: v,
-                                bk_contacts: v,
-                                bk_schedule: v,
-                                bk_reports: v,
-                                bk_settings: v,
-                                bk_quick_entry: v,
-                                bk_vat: v,
-                                bk_cis: v,
-                                bk_inventory: v,
-                              },
-                            },
-                          }));
-                        }}
-                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
-                      />
-                      <span>Bookkeeping</span>
-                    </label>
-
-                    {/* Sub-features grid matching img_6.png */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 pt-2 pl-6 border-t border-slate-200/80">
-                      {[
-                        { id: "bk_sales", label: "sales" },
-                        { id: "bk_purchase", label: "purchase" },
-                        { id: "bk_assets", label: "assets" },
-                        { id: "bk_tasks", label: "tasks" },
-                        { id: "bk_bank", label: "bank" },
-                        { id: "bk_contacts", label: "contacts" },
-                        { id: "bk_schedule", label: "schedule" },
-                        { id: "bk_reports", label: "reports" },
-                        { id: "bk_settings", label: "settings" },
-                        { id: "bk_quick_entry", label: "quick entry" },
-                        { id: "bk_vat", label: "VAT" },
-                        { id: "bk_cis", label: "CIS" },
-                        { id: "bk_inventory", label: "inventory" },
-                      ].map((sub) => (
-                        <label key={sub.id} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={!!userForm.permissions.modulePermissions[sub.id]}
-                            onChange={(e) => {
-                              const val = e.target.checked;
-                              setUserForm((p) => ({
-                                ...p,
-                                permissions: {
-                                  ...p.permissions,
-                                  modulePermissions: {
-                                    ...p.permissions.modulePermissions,
-                                    [sub.id]: val,
-                                    bookkeeping: val ? true : p.permissions.modulePermissions.bookkeeping,
-                                  },
-                                },
-                              }));
-                            }}
-                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
-                          />
-                          <span className="capitalize">{sub.label}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* PAYROLL RTI MODULE */}
-                  <div className="border border-slate-200 rounded-xl p-4 space-y-3 bg-slate-50/50">
-                    <label className="flex items-center gap-2 font-bold text-slate-900 text-sm cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={!!userForm.permissions.modulePermissions.payroll}
-                        onChange={(e) => {
-                          const v = e.target.checked;
-                          setUserForm((p) => ({
-                            ...p,
-                            permissions: {
-                              ...p.permissions,
-                              modulePermissions: {
-                                ...p.permissions.modulePermissions,
-                                payroll: v,
-                                pay_employees: v,
-                                pay_runs: v,
-                                pay_hmrc: v,
-                                pay_p60_p45: v,
-                              },
-                            },
-                          }));
-                        }}
-                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
-                      />
-                      <span>Payroll (RTI & Auto-Enrolment)</span>
-                    </label>
-
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 pt-2 pl-6 border-t border-slate-200/80">
-                      {[
-                        { id: "pay_employees", label: "Employees & CIS" },
-                        { id: "pay_runs", label: "Execute Pay Runs" },
-                        { id: "pay_hmrc", label: "HMRC FPS/EPS Filings" },
-                        { id: "pay_p60_p45", label: "P60 / P45 Distribution" },
-                      ].map((sub) => (
-                        <label key={sub.id} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={!!userForm.permissions.modulePermissions[sub.id]}
-                            onChange={(e) => {
-                              const val = e.target.checked;
-                              setUserForm((p) => ({
-                                ...p,
-                                permissions: {
-                                  ...p.permissions,
-                                  modulePermissions: {
-                                    ...p.permissions.modulePermissions,
-                                    [sub.id]: val,
-                                    payroll: val ? true : p.permissions.modulePermissions.payroll,
-                                  },
-                                },
-                              }));
-                            }}
-                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
-                          />
-                          <span>{sub.label}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* OTHER STATUTORY MODULES */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* MTD VAT */}
-                    <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
-                      <label className="flex items-center gap-2 font-bold text-slate-900 text-sm cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={!!userForm.permissions.modulePermissions.mtd_vat}
-                          onChange={(e) => {
-                            const val = e.target.checked;
-                            setUserForm((p) => ({
-                              ...p,
-                              permissions: {
-                                ...p.permissions,
-                                modulePermissions: { ...p.permissions.modulePermissions, mtd_vat: val },
-                              },
-                            }));
-                          }}
-                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
-                        />
-                        <span>Making Tax Digital for VAT</span>
-                      </label>
-                    </div>
-
-                    {/* Accounts Production */}
-                    <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
-                      <label className="flex items-center gap-2 font-bold text-slate-900 text-sm cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={!!userForm.permissions.modulePermissions.accounts_production}
-                          onChange={(e) => {
-                            const val = e.target.checked;
-                            setUserForm((p) => ({
-                              ...p,
-                              permissions: {
-                                ...p.permissions,
-                                modulePermissions: { ...p.permissions.modulePermissions, accounts_production: val },
-                              },
-                            }));
-                          }}
-                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
-                        />
-                        <span>Accounts Production (FRS 102/105)</span>
-                      </label>
-                    </div>
-
-                    {/* Corporation Tax */}
-                    <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
-                      <label className="flex items-center gap-2 font-bold text-slate-900 text-sm cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={!!userForm.permissions.modulePermissions.corporation_tax}
-                          onChange={(e) => {
-                            const val = e.target.checked;
-                            setUserForm((p) => ({
-                              ...p,
-                              permissions: {
-                                ...p.permissions,
-                                modulePermissions: { ...p.permissions.modulePermissions, corporation_tax: val },
-                              },
-                            }));
-                          }}
-                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
-                        />
-                        <span>Corporation Tax (CT600)</span>
-                      </label>
-                    </div>
-
-                    {/* Self Assessment */}
-                    <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
-                      <label className="flex items-center gap-2 font-bold text-slate-900 text-sm cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={!!userForm.permissions.modulePermissions.self_assessment}
-                          onChange={(e) => {
-                            const val = e.target.checked;
-                            setUserForm((p) => ({
-                              ...p,
-                              permissions: {
-                                ...p.permissions,
-                                modulePermissions: { ...p.permissions.modulePermissions, self_assessment: val },
-                              },
-                            }));
-                          }}
-                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
-                        />
-                        <span>Self Assessment (SA100 / SA800)</span>
-                      </label>
-                    </div>
-
-                    {/* Time & Fees */}
-                    <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
-                      <label className="flex items-center gap-2 font-bold text-slate-900 text-sm cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={!!userForm.permissions.modulePermissions.time_fees}
-                          onChange={(e) => {
-                            const val = e.target.checked;
-                            setUserForm((p) => ({
-                              ...p,
-                              permissions: {
-                                ...p.permissions,
-                                modulePermissions: { ...p.permissions.modulePermissions, time_fees: val },
-                              },
-                            }));
-                          }}
-                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
-                        />
-                        <span>Time & Fees (Timesheets & Invoicing)</span>
-                      </label>
-                    </div>
-
-                    {/* Company Secretarial */}
-                    <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
-                      <label className="flex items-center gap-2 font-bold text-slate-900 text-sm cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={!!userForm.permissions.modulePermissions.company_secretarial}
-                          onChange={(e) => {
-                            const val = e.target.checked;
-                            setUserForm((p) => ({
-                              ...p,
-                              permissions: {
-                                ...p.permissions,
-                                modulePermissions: { ...p.permissions.modulePermissions, company_secretarial: val },
-                              },
-                            }));
-                          }}
-                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
-                        />
-                        <span>Company Secretarial & Formations</span>
-                      </label>
-                    </div>
-
-                    {/* Charity Accounts */}
-                    <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
-                      <label className="flex items-center gap-2 font-bold text-slate-900 text-sm cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={!!userForm.permissions.modulePermissions.charity_accounts}
-                          onChange={(e) => {
-                            const val = e.target.checked;
-                            setUserForm((p) => ({
-                              ...p,
-                              permissions: {
-                                ...p.permissions,
-                                modulePermissions: { ...p.permissions.modulePermissions, charity_accounts: val },
-                              },
-                            }));
-                          }}
-                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
-                        />
-                        <span>Charity Accounts (SORP)</span>
-                      </label>
-                    </div>
                   </div>
                 </div>
               )}
@@ -1935,6 +2897,114 @@ export default function UsersAndRolesManager() {
                 className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm transition disabled:opacity-50"
               >
                 {changePasswordMutation.isPending ? "Updating..." : "Update Password"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CREATE CUSTOM ROLE TEMPLATE MODAL */}
+      {showCustomRoleModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-teal-50 text-teal-700 flex items-center justify-center">
+                  <Shield size={18} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Create Custom Practice Role</h3>
+                  <p className="text-[11px] text-slate-500">Save a reusable role template tailored to your firm</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCustomRoleModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Role Title / Name <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={customRoleForm.roleName}
+                  onChange={(e) => setCustomRoleForm((p) => ({ ...p, roleName: e.target.value }))}
+                  placeholder="e.g. VAT Compliance Officer, Trainee Bookkeeper"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Base Authority Tier</label>
+                <select
+                  value={customRoleForm.baseTier}
+                  onChange={(e) => setCustomRoleForm((p) => ({ ...p, baseTier: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-teal-500"
+                >
+                  <option value="staff">Staff (Preparation & Data Entry Only - restricted delete/sign-off)</option>
+                  <option value="accountant">Accountant (Reviewer & Sign-off authority)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Role Description</label>
+                <textarea
+                  rows={2}
+                  value={customRoleForm.description}
+                  onChange={(e) => setCustomRoleForm((p) => ({ ...p, description: e.target.value }))}
+                  placeholder="e.g. Responsible for quarterly client VAT returns and bank ledger reconciliation."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+
+              <div className="p-3 bg-teal-50/60 rounded-xl border border-teal-200/80 text-xs text-teal-900 space-y-1">
+                <div className="font-semibold flex items-center gap-1.5">
+                  <CheckCircle2 size={13} className="text-teal-700" />
+                  <span>Includes Current Permissions Matrix</span>
+                </div>
+                <p className="text-[11px] text-teal-800 leading-relaxed">
+                  The role template will snapshot all module access checkboxes and CRUD permissions currently selected on this screen.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowCustomRoleModal(false)}
+                className="px-4 py-2 border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-medium transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!customRoleForm.roleName.trim()) {
+                    toast({ title: "Name Required", description: "Please enter a role name.", type: "error" });
+                    return;
+                  }
+                  createCustomRoleMutation.mutate({
+                    roleName: customRoleForm.roleName,
+                    description: customRoleForm.description,
+                    baseTier: customRoleForm.baseTier,
+                    permissionsJson: {
+                      crudPermissions: userForm.permissions.crudPermissions,
+                      modulePermissions: userForm.permissions.modulePermissions,
+                      autoAssign: customRoleForm.baseTier === "accountant",
+                      bankFeedsAccess: true,
+                      amlOfficer: false,
+                    },
+                  });
+                }}
+                disabled={createCustomRoleMutation.isPending || !customRoleForm.roleName.trim()}
+                className="px-5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-semibold shadow-sm transition disabled:opacity-50"
+              >
+                {createCustomRoleMutation.isPending ? "Saving..." : "Save Role Template"}
               </button>
             </div>
           </div>

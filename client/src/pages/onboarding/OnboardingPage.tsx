@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AppLayout from "../../components/layout/AppLayout";
+import { onboardingSidebar } from "./onboardingCommon";
 import {
   UserPlus, Upload, FileSpreadsheet, ArrowRight, CheckCircle2,
   AlertCircle, ShieldCheck, Database, RefreshCw, Plus, Search,
@@ -9,16 +11,23 @@ import {
 import { apiRequest } from "../../lib/queryClient";
 import { useToast } from "../../hooks/useToast";
 
-const sidebar = [
-  { label: "Onboarding Hub", icon: <UserPlus size={15} />, route: "/onboarding" },
-  { label: "Data Migration", icon: <Database size={15} />, route: "/onboarding?tab=migration" },
-  { label: "Onboarding Pipeline", icon: <ArrowRight size={15} />, route: "/onboarding?tab=pipeline" },
-  { label: "Import Templates", icon: <Download size={15} />, route: "/onboarding?tab=templates" },
-];
-
 export default function OnboardingPage() {
+  const [, navigate] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Backward compatibility redirect if tab query parameter is present
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("tab");
+    if (tab === "migration") {
+      navigate("/onboarding/migration");
+    } else if (tab === "pipeline") {
+      navigate("/onboarding/pipeline");
+    } else if (tab === "templates") {
+      navigate("/onboarding/templates");
+    }
+  }, [navigate]);
 
   const [search, setSearch] = useState("");
   const [selectedSource, setSelectedSource] = useState<string>("Xero");
@@ -53,7 +62,7 @@ export default function OnboardingPage() {
   });
 
   return (
-    <AppLayout sidebar={sidebar} module="Onboarding & Migration">
+    <AppLayout sidebar={onboardingSidebar} module="Onboarding & Migration">
       <div className="bg-slate-50 dark:bg-slate-950 min-h-screen text-xs p-6 space-y-6 w-full mx-auto">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs">

@@ -520,7 +520,7 @@ router.get("/staff-users", async (req: any, res) => {
         permissionsJson: users.permissionsJson,
       })
       .from(users)
-      .where(eq(users.practiceId, practiceId))
+      .where(and(eq(users.practiceId, practiceId), sql`${users.role} != 'client'`))
       .orderBy(desc(users.id));
 
     // Find practice owner or primary admin for creator reference

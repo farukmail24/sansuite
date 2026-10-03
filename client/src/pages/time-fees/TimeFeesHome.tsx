@@ -9,8 +9,9 @@ import {
   FileText, ChevronRight, Receipt, TrendingUp, Calendar, AlertCircle, 
   CheckCircle2, ArrowUpRight, DollarSign, Plus, Filter, Send, X,
   LayoutGrid, Check, AlertTriangle, ArrowRight, UserCheck, ShieldAlert,
-  PieChart, CreditCard, Activity, CalendarOff, Percent, Target, Layers
+  PieChart, CreditCard, Activity, CalendarOff, Percent, Target, Layers, Maximize2
 } from "lucide-react";
+import { useStopwatch, formatTime } from "../../hooks/useStopwatch";
 
 import { timeFeesSidebar } from "./sidebar";
 export { timeFeesSidebar };
@@ -28,7 +29,6 @@ const DEFAULT_WIDGETS: WidgetConfig[] = [
   { id: "timeSummary", label: "Timesheet Summary", category: "time", enabled: true },
   { id: "mostVsLeast", label: "Most vs Least by Profit & Working Hours", category: "time", enabled: true },
   { id: "taskWiseHours", label: "Task Wise Hours Details", category: "time", enabled: true },
-  { id: "timer", label: "Live Work Timer", category: "time", enabled: true },
   { id: "timeOffHours", label: "Time Off Hours by Users", category: "time", enabled: true },
   { id: "staffUtilization", label: "Staff Utilization & Billable Target", category: "time", enabled: true },
   { id: "billableVsNonBillable", label: "Billable vs Non-Billable Ratio", category: "time", enabled: true },
@@ -79,39 +79,30 @@ export default function TimeFeesHome() {
   });
   const [modalWidgets, setModalWidgets] = useState<WidgetConfig[]>(widgets);
 
-  // Live Timer State
-  const [isTimerRunning, setIsTimerRunning] = useState(false);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [timerClientId, setTimerClientId] = useState("");
-  const [timerJobId, setTimerJobId] = useState("");
-  const [timerTaskName, setTimerTaskName] = useState("Statutory Accounts Review");
-  const [timerDescription, setTimerDescription] = useState("");
-  const timerIntervalRef = useRef<any>(null);
-
-  useEffect(() => {
-    if (isTimerRunning) {
-      timerIntervalRef.current = setInterval(() => {
-        setElapsedSeconds(prev => prev + 1);
-      }, 1000);
-    } else if (timerIntervalRef.current) {
-      clearInterval(timerIntervalRef.current);
+  // Junior Accountant 4-Step Guided Workflow State (persisted in localStorage)
+  const [showJuniorGuide, setShowJuniorGuide] = useState(() => {
+    try {
+      return localStorage.getItem("sansuite_tf_junior_guide") !== "false";
+    } catch {
+      return true;
     }
-    return () => {
-      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-    };
-  }, [isTimerRunning]);
+  });
 
-  const formatStopwatch = (totalSecs: number) => {
-    const hrs = Math.floor(totalSecs / 3600);
-    const mins = Math.floor((totalSecs % 3600) / 60);
-    const secs = totalSecs % 60;
-    return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  };
+  // Unified Live Stopwatch hook (shared across Floating Timer, Jobs List, and Dashboard)
+  const stopwatch = useStopwatch();
+  const { 
+    currentSeconds, 
+    state: stopwatchState, 
+    start: startStopwatch, 
+    pause: pauseStopwatch, 
+    reset: resetStopwatch, 
+    updateDetails: updateStopwatchDetails, 
+    saveToTimesheet, 
+    setOpen: setStopwatchOpen, 
+    setMinimized: setStopwatchMinimized 
+  } = stopwatch;
 
-  const handleResetTimer = () => {
-    setIsTimerRunning(false);
-    setElapsedSeconds(0);
-  };
+  const [isSavingDrawerTimer, setIsSavingDrawerTimer] = useState(false);
 
   // Queries
   const statsQueryUrl = period === "custom" && customStart && customEnd
@@ -145,38 +136,54 @@ export default function TimeFeesHome() {
     },
   });
 
-  const clientJobs = jobs.filter((j: any) => j.clientId === parseInt(timerClientId));
+  const clientJobs = jobs.filter((j: any) => j.clientId === (stopwatchState.clientId || 0));
 
-  // Mutation to log timer time
-  const saveTimerMutation = useMutation({
-    mutationFn: async () => {
-      if (!timerClientId) throw new Error("Please select a client for this time entry");
-      const hoursToSave = Math.max(0.1, parseFloat((elapsedSeconds / 3600).toFixed(2)));
-      
-      const res = await apiRequest("POST", "/api/time-fees/timesheets", {
-        clientId: parseInt(timerClientId),
-        jobId: timerJobId ? parseInt(timerJobId) : null,
-        taskName: timerTaskName,
-        hours: hoursToSave,
-        date: new Date().toISOString().split('T')[0],
-        description: timerDescription || `Recorded from live stopwatch timer (${formatStopwatch(elapsedSeconds)})`,
-        billable: true,
-        status: "Unsubmitted",
-      });
-      if (!res.ok) throw new Error("Failed to save time entry");
-      return res.json();
-    },
-    onSuccess: () => {
+  // Approve / Reject Handlers for Dashboard PFA Review
+  const [isApproving, setIsApproving] = useState(false);
+  const handleApproveTimesheet = async (id: number) => {
+    try {
+      setIsApproving(true);
+      const res = await apiRequest("POST", "/api/time-fees/timesheets/approve", { ids: [id] });
+      if (!res.ok) throw new Error("Failed to approve timesheet");
       queryClient.invalidateQueries({ queryKey: ["/api/time-fees/dashboard-stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/time-fees/timesheets"] });
-      toast({ title: "Time Entry Saved", description: "Your billable time has been logged to your timesheet." });
-      handleResetTimer();
-      setTimerDescription("");
-    },
-    onError: (err: any) => {
-      toast({ title: "Save Error", description: err.message || "Failed to save timer entry", type: "error" });
+      toast({ title: "Timesheet Approved", description: "Timesheet has been approved and moved to billable WIP." });
+    } catch (err: any) {
+      toast({ title: "Approval Failed", description: err.message || "Failed to approve timesheet", type: "error" });
+    } finally {
+      setIsApproving(false);
     }
-  });
+  };
+
+  const handleBulkApprove = async () => {
+    const list = alerts?.pendingTimesheetsList || [];
+    if (list.length === 0) return;
+    try {
+      setIsApproving(true);
+      const res = await apiRequest("POST", "/api/time-fees/timesheets/approve", { ids: list.map((t: any) => t.id) });
+      if (!res.ok) throw new Error("Failed to approve timesheets");
+      queryClient.invalidateQueries({ queryKey: ["/api/time-fees/dashboard-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/time-fees/timesheets"] });
+      toast({ title: "All Timesheets Approved", description: `${list.length} timesheets approved.` });
+    } catch (err: any) {
+      toast({ title: "Bulk Approval Failed", description: err.message || "Failed to approve", type: "error" });
+    } finally {
+      setIsApproving(false);
+    }
+  };
+
+  const handleRejectTimesheet = async (id: number) => {
+    const reason = window.prompt("Please enter rejection feedback reason for staff member:") || "Requires revision";
+    try {
+      const res = await apiRequest("POST", "/api/time-fees/timesheets/reject", { ids: [id], reason });
+      if (!res.ok) throw new Error("Failed to reject timesheet");
+      queryClient.invalidateQueries({ queryKey: ["/api/time-fees/dashboard-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/time-fees/timesheets"] });
+      toast({ title: "Timesheet Returned", description: "Timesheet returned to staff member for amendment." });
+    } catch (err: any) {
+      toast({ title: "Rejection Failed", description: err.message || "Failed to reject", type: "error" });
+    }
+  };
 
   // Widget management helpers
   const isWidgetEnabled = (id: string) => widgets.find(w => w.id === id)?.enabled ?? true;
@@ -290,6 +297,176 @@ export default function TimeFeesHome() {
         </div>
 
         <div className="p-6 w-full mx-auto space-y-6 max-w-full">
+          {/* Junior Accountant Quick Start & Operational Flow (4-Step Guided Lifecycle) */}
+          <div className="bg-white rounded-2xl border border-purple-200/90 shadow-xs overflow-hidden">
+            <div className="bg-gradient-to-r from-purple-50 via-indigo-50/50 to-purple-50 px-5 py-3.5 border-b border-purple-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-slate-900">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-purple-100 border border-purple-200 text-purple-700 flex items-center justify-center shrink-0">
+                  <Target size={18} />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-xs font-bold uppercase tracking-wider text-purple-950">
+                      Junior Accountant Workflow &amp; Standard Operating Procedure
+                    </h2>
+                    <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                      4-STEP GUIDE
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 mt-0.5">
+                    Clear step-by-step path from job allocation, live time tracking, Friday timesheet sign-off, to expense reimbursement.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  const nextState = !showJuniorGuide;
+                  setShowJuniorGuide(nextState);
+                  try {
+                    localStorage.setItem("sansuite_tf_junior_guide", String(nextState));
+                  } catch {
+                    // ignore
+                  }
+                }}
+                className="text-xs font-semibold text-purple-800 hover:text-purple-950 px-3 py-1.5 rounded-lg bg-white border border-purple-200 hover:bg-purple-100/60 transition-colors flex items-center gap-1.5 cursor-pointer self-start sm:self-center shrink-0 shadow-2xs"
+              >
+                {showJuniorGuide ? (
+                  <>Minimize Guide <ChevronRight size={14} className="rotate-90" /></>
+                ) : (
+                  <>Expand Guide <ChevronRight size={14} /></>
+                )}
+              </button>
+            </div>
+
+            {showJuniorGuide && (
+              <div className="p-5 bg-gradient-to-b from-purple-50/20 to-white border-t border-purple-100/50">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {/* Step 1: Jobs & Budgets */}
+                  <div className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between group">
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 font-mono">
+                          STEP 01
+                        </span>
+                        <span className="w-8 h-8 rounded-lg bg-purple-50 text-purple-700 flex items-center justify-center group-hover:scale-110 transition-transform">
+                          <Briefcase size={16} />
+                        </span>
+                      </div>
+                      <h4 className="text-xs font-bold text-slate-800 mb-1">
+                        Review Assigned Jobs
+                      </h4>
+                      <p className="text-[11px] text-slate-500 leading-relaxed mb-3">
+                        Check your allocated client engagements, budgeted hours, milestone checklists, and statutory filing deadlines.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => navigate("/time-fees/jobs")}
+                      className="w-full py-2 px-3 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <span>Jobs Workspace</span>
+                      <ArrowRight size={13} />
+                    </button>
+                  </div>
+
+                  {/* Step 2: Track Billable Time */}
+                  <div className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between group">
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-mono">
+                          STEP 02
+                        </span>
+                        <span className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center group-hover:scale-110 transition-transform">
+                          <Clock size={16} />
+                        </span>
+                      </div>
+                      <h4 className="text-xs font-bold text-slate-800 mb-1">
+                        Log Billable Work Time
+                      </h4>
+                      <p className="text-[11px] text-slate-500 leading-relaxed mb-3">
+                        Run the unified Live Stopwatch while performing accounts or tax work. Every second maps directly to client WIP.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setStopwatchOpen(true);
+                        setStopwatchMinimized(false);
+                      }}
+                      className="w-full py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Play size={13} />
+                      <span>Launch Live Stopwatch</span>
+                    </button>
+                  </div>
+
+                  {/* Step 3: Weekly Submission (PFA) */}
+                  <div className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between group">
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-mono">
+                          STEP 03
+                        </span>
+                        <span className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center group-hover:scale-110 transition-transform">
+                          <Send size={16} />
+                        </span>
+                      </div>
+                      <h4 className="text-xs font-bold text-slate-800 mb-1">
+                        Submit Weekly Timesheet
+                      </h4>
+                      <p className="text-[11px] text-slate-500 leading-relaxed mb-3">
+                        Every Friday, audit your Monday-to-Sunday matrix entries and click "Submit for Approval" (PFA) for partner sign-off.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => navigate("/time-fees/timesheets")}
+                      className="w-full py-2 px-3 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <span>Weekly Timesheet Matrix</span>
+                      <ArrowRight size={13} />
+                    </button>
+                  </div>
+
+                  {/* Step 4: Expense Claims */}
+                  <div className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between group">
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800 font-mono">
+                          STEP 04
+                        </span>
+                        <span className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center group-hover:scale-110 transition-transform">
+                          <Receipt size={16} />
+                        </span>
+                      </div>
+                      <h4 className="text-xs font-bold text-slate-800 mb-1">
+                        Claim Travel &amp; Expenses
+                      </h4>
+                      <p className="text-[11px] text-slate-500 leading-relaxed mb-3">
+                        Claim HMRC statutory business mileage (45p/mi) or client out-of-pocket expenses with attached receipts.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => navigate("/time-fees/expenses")}
+                      className="w-full py-2 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <span>Log Expense Claim</span>
+                      <ArrowRight size={13} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-slate-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-slate-500">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-purple-600 shrink-0" />
+                    <span><strong>Senior Tip:</strong> Keep timers running in real-time or log daily. Time unrecorded within the statutory period cannot be recovered.</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="font-semibold text-slate-700">Practice Billable Target: <span className="font-mono text-emerald-700 font-bold">75%+</span></span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Action Station Operational Alerts & Quick Links Bar */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {/* Alert 1: Pending Timesheets (PFA) */}
@@ -390,6 +567,118 @@ export default function TimeFeesHome() {
               <ChevronRight size={16} className="text-slate-400" />
             </div>
           </div>
+
+          {/* PROMINENT PFA TIMESHEET APPROVAL ACTION CARD FOR ADMIN / FIRM */}
+          {(alerts?.pendingTimesheets || 0) > 0 && (
+            <div className="bg-white rounded-2xl border-2 border-amber-300/80 shadow-md overflow-hidden animate-in fade-in duration-200">
+              <div className="bg-gradient-to-r from-amber-50 via-orange-50/40 to-amber-50 px-5 py-3.5 border-b border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-800 flex items-center justify-center shrink-0">
+                    <AlertCircle size={20} />
+                  </div>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-sm font-bold text-amber-950">
+                        Timesheets Pending Partner Sign-Off ({alerts?.pendingTimesheets || 0} Awaiting Review)
+                      </h3>
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 font-mono">
+                        ACTION REQUIRED
+                      </span>
+                    </div>
+                    <p className="text-xs text-amber-800/80 mt-0.5">
+                      Staff members have submitted their weekly hours for sign-off. Approve to unlock client billing, or return for revision.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => handleBulkApprove()}
+                    disabled={isApproving}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <Check size={14} /> Approve All PFA
+                  </button>
+                  <button
+                    onClick={() => navigate("/time-fees/timesheets?status=PFA")}
+                    className="bg-white hover:bg-amber-100/60 text-amber-900 border border-amber-300 px-3 py-1.5 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <span>Full Matrix</span> <ChevronRight size={14} />
+                  </button>
+                </div>
+              </div>
+
+              {/* List of Pending Timesheets */}
+              <div className="overflow-x-auto p-2">
+                <table className="w-full text-left text-xs text-slate-700">
+                  <thead className="bg-slate-50 border-b border-slate-100 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    <tr>
+                      <th className="py-2.5 px-3">Staff Member</th>
+                      <th className="py-2.5 px-3">Date</th>
+                      <th className="py-2.5 px-3">Client Engagement</th>
+                      <th className="py-2.5 px-3">Task &amp; Activity</th>
+                      <th className="py-2.5 px-3 text-right">Hours</th>
+                      <th className="py-2.5 px-3 text-center">Billable</th>
+                      <th className="py-2.5 px-3 text-right">Partner Decision</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {(alerts?.pendingTimesheetsList || []).map((t: any) => (
+                      <tr key={t.id} className="hover:bg-amber-50/30 transition-colors">
+                        <td className="py-2.5 px-3 font-semibold text-slate-900 flex items-center gap-1.5">
+                          <Users size={14} className="text-slate-400" />
+                          <span>{t.userName || "Staff Member"}</span>
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-slate-600">
+                          {new Date(t.date).toLocaleDateString("en-GB")}
+                        </td>
+                        <td className="py-2.5 px-3 font-medium text-slate-800">
+                          {t.clientName}
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600">
+                          {t.taskName}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
+                          {t.hours}h
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          {t.billable ? (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              Yes (£{t.ratePerHour}/h)
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                              Non-billable
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => handleApproveTimesheet(t.id)}
+                              disabled={isApproving}
+                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                              title="Approve Timesheet"
+                            >
+                              <Check size={13} /> Approve
+                            </button>
+                            <button
+                              onClick={() => handleRejectTimesheet(t.id)}
+                              disabled={isApproving}
+                              className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
+                              title="Reject Timesheet"
+                            >
+                              <X size={13} /> Reject
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* WIDGET 1: Time Summary (Capium img_1.png) */}
           {isWidgetEnabled("timeSummary") && (
@@ -565,194 +854,78 @@ export default function TimeFeesHome() {
             </div>
           )}
 
-          {/* 2-Column Section: Task Wise Hours Details (Stacked Chart) & Timer Widget (Capium img_1.png) */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* WIDGET 3: Task Wise Hours Details (Capium img_1.png Daily Stacked Chart) */}
-            {isWidgetEnabled("taskWiseHours") && (
-              <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
-                  <div>
-                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                      <BarChart3 size={15} className="text-purple-600" /> Task Wise Hours Details
-                    </h3>
-                    <p className="text-[11px] text-slate-500 mt-0.5">Daily breakdown of Billable vs Non-Billable staff hours</p>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="flex items-center gap-1 text-[11px] font-bold text-slate-700">
-                        <span className="w-2.5 h-2.5 bg-emerald-500 rounded-xs inline-block" /> Billable: <strong className="text-emerald-700">{stats?.billableHours || 0}h</strong>
-                      </span>
-                      <span className="flex items-center gap-1 text-[11px] font-bold text-slate-700">
-                        <span className="w-2.5 h-2.5 bg-blue-400 rounded-xs inline-block" /> Non-Billable: <strong className="text-blue-700">{stats?.nonBillableHours || 0}h</strong>
-                      </span>
-                    </div>
-
-                    <button
-                      onClick={() => handleHideWidget("taskWiseHours")}
-                      className="text-slate-400 hover:text-slate-600 p-1 rounded-md"
-                      title="Remove widget"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Daily Stacked Bar Chart */}
-                <div className="pt-4 pb-2">
-                  <div className="h-44 flex items-end justify-around gap-2 px-2 border-b border-slate-100 pb-2">
-                    {dailyHours.map((d: any, idx: number) => {
-                      const maxDaily = Math.max(...dailyHours.map((x: any) => x.total), 8);
-                      const billablePx = Math.round((d.billable / maxDaily) * 130);
-                      const nonBillablePx = Math.round((d.nonBillable / maxDaily) * 130);
-
-                      return (
-                        <div key={idx} className="flex flex-col items-center gap-1.5 flex-1 group">
-                          <div className="w-full flex flex-col items-center justify-end h-36">
-                            {d.total > 0 ? (
-                              <div className="w-8 rounded-t-md overflow-hidden flex flex-col justify-end transition-all shadow-2xs">
-                                {/* Top portion: Non-Billable (Blue) */}
-                                {d.nonBillable > 0 && (
-                                  <div 
-                                    title={`Non-Billable: ${d.nonBillable} hrs`}
-                                    className="bg-blue-400 hover:bg-blue-500 transition-colors" 
-                                    style={{ height: `${nonBillablePx}px` }} 
-                                  />
-                                )}
-                                {/* Bottom portion: Billable (Emerald) */}
-                                {d.billable > 0 && (
-                                  <div 
-                                    title={`Billable: ${d.billable} hrs`}
-                                    className="bg-emerald-500 hover:bg-emerald-600 transition-colors" 
-                                    style={{ height: `${billablePx}px` }} 
-                                  />
-                                )}
-                              </div>
-                            ) : (
-                              <div className="w-8 h-1 bg-slate-100 rounded-full" />
-                            )}
-                          </div>
-                          <span className="text-[11px] font-bold text-slate-700">{d.day}</span>
-                          <span className="text-[10px] font-mono text-slate-400">{d.total > 0 ? `${d.total}h` : "-"}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* WIDGET 4: Timer Widget (Capium img_1.png) */}
-            {isWidgetEnabled("timer") && (
-              <div className="lg:col-span-1 bg-white rounded-xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+          {/* WIDGET 3: Task Wise Hours Details (Daily Stacked Bar Chart) */}
+          {isWidgetEnabled("taskWiseHours") && (
+            <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                <div>
                   <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                    <Clock size={15} className="text-indigo-600" /> Work Timer
+                    <BarChart3 size={15} className="text-purple-600" /> Task Wise Hours Details
                   </h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">Daily breakdown of Billable vs Non-Billable staff hours</p>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="flex items-center gap-1 text-[11px] font-bold text-slate-700">
+                      <span className="w-2.5 h-2.5 bg-emerald-500 rounded-xs inline-block" /> Billable: <strong className="text-emerald-700">{stats?.billableHours || 0}h</strong>
+                    </span>
+                    <span className="flex items-center gap-1 text-[11px] font-bold text-slate-700">
+                      <span className="w-2.5 h-2.5 bg-blue-400 rounded-xs inline-block" /> Non-Billable: <strong className="text-blue-700">{stats?.nonBillableHours || 0}h</strong>
+                    </span>
+                  </div>
+
                   <button
-                    onClick={() => handleHideWidget("timer")}
-                    className="text-slate-400 hover:text-slate-600 p-1 rounded-md"
+                    onClick={() => handleHideWidget("taskWiseHours")}
+                    className="text-slate-400 hover:text-slate-600 p-1 rounded-md cursor-pointer"
                     title="Remove widget"
                   >
                     <X size={14} />
                   </button>
                 </div>
+              </div>
 
-                <div className="text-center py-2 space-y-2">
-                  <div className="w-20 h-20 rounded-full border-4 border-indigo-100 bg-indigo-50/50 mx-auto flex items-center justify-center relative">
-                    <Clock size={36} className={`${isTimerRunning ? 'text-indigo-600 animate-spin' : 'text-slate-400'}`} style={{ animationDuration: '6s' }} />
-                    <span className={`absolute top-1 right-1 w-3 h-3 rounded-full border-2 border-white ${isTimerRunning ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
-                  </div>
+              {/* Daily Stacked Bar Chart */}
+              <div className="pt-4 pb-2">
+                <div className="h-44 flex items-end justify-around gap-2 px-2 border-b border-slate-100 pb-2">
+                  {dailyHours.map((d: any, idx: number) => {
+                    const maxDaily = Math.max(...dailyHours.map((x: any) => x.total), 8);
+                    const billablePx = Math.round((d.billable / maxDaily) * 130);
+                    const nonBillablePx = Math.round((d.nonBillable / maxDaily) * 130);
 
-                  <div className="text-2xl font-black font-mono tracking-wider text-slate-900">
-                    {formatStopwatch(elapsedSeconds)}
-                  </div>
-                  <p className="text-[11px] text-slate-400">
-                    {isTimerRunning ? "Actively logging task time..." : "Click start to begin session"}
-                  </p>
+                    return (
+                      <div key={idx} className="flex flex-col items-center gap-1.5 flex-1 group">
+                        <div className="w-full flex flex-col items-center justify-end h-36">
+                          {d.total > 0 ? (
+                            <div className="w-10 rounded-t-md overflow-hidden flex flex-col justify-end transition-all shadow-2xs">
+                              {/* Top portion: Non-Billable (Blue) */}
+                              {d.nonBillable > 0 && (
+                                <div 
+                                  title={`Non-Billable: ${d.nonBillable} hrs`}
+                                  className="bg-blue-400 hover:bg-blue-500 transition-colors" 
+                                  style={{ height: `${nonBillablePx}px` }} 
+                                />
+                              )}
+                              {/* Bottom portion: Billable (Emerald) */}
+                              {d.billable > 0 && (
+                                <div 
+                                  title={`Billable: ${d.billable} hrs`}
+                                  className="bg-emerald-500 hover:bg-emerald-600 transition-colors" 
+                                  style={{ height: `${billablePx}px` }} 
+                                />
+                              )}
+                            </div>
+                          ) : (
+                            <div className="w-10 h-1 bg-slate-100 rounded-full" />
+                          )}
+                        </div>
+                        <span className="text-[11px] font-bold text-slate-700">{d.day}</span>
+                        <span className="text-[10px] font-mono text-slate-400">{d.total > 0 ? `${d.total}h` : "-"}</span>
+                      </div>
+                    );
+                  })}
                 </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    {!isTimerRunning ? (
-                      <button
-                        onClick={() => setIsTimerRunning(true)}
-                        className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2 rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
-                      >
-                        <Play size={14} /> Start Timer
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => setIsTimerRunning(false)}
-                        className="flex-1 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold py-2 rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
-                      >
-                        <Pause size={14} /> Pause
-                      </button>
-                    )}
-                    <button
-                      onClick={handleResetTimer}
-                      title="Reset Timer"
-                      className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-colors cursor-pointer"
-                    >
-                      <RotateCcw size={14} />
-                    </button>
-                  </div>
-                </div>
               </div>
-            )}
-          </div>
-
-          {/* Quick Timer Setup Drawer (Shown when timer has recorded time) */}
-          {elapsedSeconds > 0 && (
-            <div className="bg-white border-2 border-indigo-400/40 rounded-xl p-4 shadow-sm flex flex-wrap items-center gap-4 animate-in fade-in duration-200">
-              <div className="flex items-center gap-2 text-xs font-bold text-indigo-900">
-                <Clock size={16} className="text-indigo-600" />
-                Assign &amp; Log Timer Time ({formatStopwatch(elapsedSeconds)}):
-              </div>
-
-              <div className="flex-1 min-w-[200px]">
-                <select
-                  value={timerClientId}
-                  onChange={(e) => setTimerClientId(e.target.value)}
-                  className="w-full text-xs font-semibold p-2 border border-slate-300 rounded-lg bg-white"
-                >
-                  <option value="">-- Select Client * --</option>
-                  {clients.map((c: any) => (
-                    <option key={c.id} value={c.id}>{c.clientName}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex-1 min-w-[200px]">
-                <select
-                  value={timerJobId}
-                  onChange={(e) => setTimerJobId(e.target.value)}
-                  className="w-full text-xs font-semibold p-2 border border-slate-300 rounded-lg bg-white"
-                >
-                  <option value="">-- Select Job (Optional) --</option>
-                  {clientJobs.map((j: any) => (
-                    <option key={j.id} value={j.id}>{j.jobName}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex-1 min-w-[200px]">
-                <input
-                  type="text"
-                  placeholder="Task Name (e.g. Accounts Production)"
-                  value={timerTaskName}
-                  onChange={(e) => setTimerTaskName(e.target.value)}
-                  className="w-full text-xs font-semibold p-2 border border-slate-300 rounded-lg"
-                />
-              </div>
-
-              <button
-                onClick={() => saveTimerMutation.mutate()}
-                disabled={!timerClientId || saveTimerMutation.isPending}
-                className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-xs font-bold shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
-              >
-                {saveTimerMutation.isPending ? "Logging..." : "Confirm & Save to Timesheet"}
-              </button>
             </div>
           )}
 

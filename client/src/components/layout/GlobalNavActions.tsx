@@ -7,7 +7,8 @@ import {
   Grip, Megaphone, Search, Plus, Ticket, HelpCircle,
   BarChart3, BookOpen, HeartHandshake, Landmark, Calculator,
   FileText, ListChecks, FileSignature, Link2, Shield,
-  Timer, Smartphone, Settings, Users, ChevronRight, User as UserIcon, LogOut, Radio
+  Timer, Smartphone, Settings, Users, ChevronRight, User as UserIcon, LogOut, Radio,
+  Lock, Home, ShieldCheck, UserCheck
 } from "lucide-react";
 import { useWebSocket } from "../../hooks/useWebSocket";
 
@@ -18,23 +19,26 @@ export interface LauncherItem {
   color: string;
   bg: string;
   route: string;
+  moduleKey: string;
   disabled?: boolean;
 }
 
 export const launcherItems: LauncherItem[] = [
-  { icon: <BarChart3 size={20} />, label: "Accounts Production", desc: "Fast, integrated accounts filing.", color: "#00b894", bg: "#00b89415", route: "/accounts-production" },
-  { icon: <BookOpen size={20} />, label: "Bookkeeping", desc: "Track your purchases and sales.", color: "#0984e3", bg: "#0984e315", route: "/bookkeeping" },
-  { icon: <HeartHandshake size={20} />, label: "Charity Accounts", desc: "SORP-compliant reporting.", color: "#e17055", bg: "#e1705515", route: "/charity-accounts" },
-  { icon: <Landmark size={20} />, label: "Corporation Tax", desc: "Auto-filled CT600 & iXBRL.", color: "#f39c12", bg: "#f39c1215", route: "/corporation-tax" },
-  { icon: <Calculator size={20} />, label: "Payroll", desc: "Accurate and timely payroll management.", color: "#6c5ce7", bg: "#6c5ce715", route: "/payroll" },
-  { icon: <FileText size={20} />, label: "Self Assessment", desc: "Seamlessly submit your own tax returns.", color: "#a29bfe", bg: "#a29bfe15", route: "/self-assessment" },
-  { icon: <ListChecks size={20} />, label: "Practice Management", desc: "Manage your deadlines and tasks.", color: "#6c5ce7", bg: "#6c5ce715", route: "/practice" },
-  { icon: <FileSignature size={20} />, label: "eSign", desc: "Secure electronic signature solution.", color: "#0984e3", bg: "#0984e315", route: "/esign" },
-  { icon: <Link2 size={20} />, label: "365", desc: "Communicate and collaborate with clients.", color: "#e17055", bg: "#e1705515", route: "/365" },
-  { icon: <Shield size={20} />, label: "Company Secretarial", desc: "Formations and compliance reminders.", color: "#b2bec3", bg: "#b2bec315", route: "/company-secretarial" },
-  { icon: <Timer size={20} />, label: "Time and Fees", desc: "Streamline operations for your business.", color: "#00b894", bg: "#00b89415", route: "/time-fees" },
-  { icon: <Smartphone size={20} />, label: "MTD IT", desc: "Prepare and submit quarterly submissions.", color: "#6c5ce7", bg: "#6c5ce715", route: "/mtd-it" },
-  { icon: <Settings size={20} />, label: "My Admin", desc: "Control Panel — Users, Firm, Billing.", color: "#636e72", bg: "#636e7215", route: "/admin" },
+  { icon: <BarChart3 size={20} />, label: "Accounts Production", desc: "Fast, integrated accounts filing.", color: "#00b894", bg: "#00b89415", route: "/accounts-production", moduleKey: "accounts_production" },
+  { icon: <BookOpen size={20} />, label: "Bookkeeping", desc: "Track your purchases and sales.", color: "#0984e3", bg: "#0984e315", route: "/bookkeeping", moduleKey: "bookkeeping" },
+  { icon: <HeartHandshake size={20} />, label: "Charity Accounts", desc: "SORP-compliant reporting.", color: "#e17055", bg: "#e1705515", route: "/charity-accounts", moduleKey: "charity_accounts" },
+  { icon: <Landmark size={20} />, label: "Corporation Tax", desc: "Auto-filled CT600 & iXBRL.", color: "#f39c12", bg: "#f39c1215", route: "/corporation-tax", moduleKey: "corporation_tax" },
+  { icon: <Calculator size={20} />, label: "Payroll", desc: "Accurate and timely payroll management.", color: "#6c5ce7", bg: "#6c5ce715", route: "/payroll", moduleKey: "payroll" },
+  { icon: <FileText size={20} />, label: "Self Assessment", desc: "Seamlessly submit your own tax returns.", color: "#a29bfe", bg: "#a29bfe15", route: "/self-assessment", moduleKey: "self_assessment" },
+  { icon: <ListChecks size={20} />, label: "Practice Management", desc: "Manage your deadlines and tasks.", color: "#6c5ce7", bg: "#6c5ce715", route: "/practice", moduleKey: "practice_management" },
+  { icon: <FileSignature size={20} />, label: "eSign", desc: "Secure electronic signature solution.", color: "#0984e3", bg: "#0984e315", route: "/esign", moduleKey: "esign" },
+  { icon: <Link2 size={20} />, label: "365", desc: "Communicate and collaborate with clients.", color: "#e17055", bg: "#e1705515", route: "/365", moduleKey: "portal_365" },
+  { icon: <ShieldCheck size={20} />, label: "AML Compliance", desc: "Live PEP, Sanctions & Identity checks.", color: "#d63031", bg: "#d6303115", route: "/aml", moduleKey: "aml" },
+  { icon: <UserCheck size={20} />, label: "Client Onboarding", desc: "KYC pipeline, 64-8 agent auth & migration.", color: "#00b894", bg: "#00b89415", route: "/onboarding", moduleKey: "onboarding" },
+  { icon: <Shield size={20} />, label: "Company Secretarial", desc: "Formations and compliance reminders.", color: "#b2bec3", bg: "#b2bec315", route: "/company-secretarial", moduleKey: "company_secretarial" },
+  { icon: <Timer size={20} />, label: "Time and Fees", desc: "Streamline operations for your business.", color: "#00b894", bg: "#00b89415", route: "/time-fees", moduleKey: "time_fees" },
+  { icon: <Smartphone size={20} />, label: "MTD IT", desc: "Prepare and submit quarterly submissions.", color: "#6c5ce7", bg: "#6c5ce715", route: "/mtd-it", moduleKey: "mtd_it" },
+  { icon: <Settings size={20} />, label: "My Admin", desc: "Control Panel — Users, Firm, Billing.", color: "#636e72", bg: "#636e7215", route: "/admin", moduleKey: "admin" },
 ];
 
 export default function GlobalNavActions() {
@@ -94,14 +98,53 @@ export default function GlobalNavActions() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  // Check module access for current user
+  const checkModuleAccess = (item: LauncherItem) => {
+    if (item.disabled) return { allowed: false, reason: "Soon" };
+    // Full access for admin and super_accountant
+    if (user?.role === "admin" || user?.role === "super_accountant") {
+      return { allowed: true };
+    }
+    // Admin module only for admin / super_accountant
+    if (item.moduleKey === "admin") {
+      return { allowed: false, reason: "Admin Only" };
+    }
+
+    const perms = (user as any)?.permissions;
+    if (!perms) return { allowed: true };
+
+    // 1. Explicit module deactivation check
+    if (perms.modulePermissions && perms.modulePermissions[item.moduleKey] === false) {
+      return { allowed: false, reason: "Deactivated" };
+    }
+
+    // 2. Explicit CRUD view deactivation check
+    if (perms.crudPermissions?.[item.moduleKey] && perms.crudPermissions[item.moduleKey]?.view === false) {
+      return { allowed: false, reason: "Deactivated" };
+    }
+
+    // 3. Positive check on CRUD view
+    if (perms.crudPermissions?.[item.moduleKey]) {
+      const canView = !!perms.crudPermissions[item.moduleKey]?.view;
+      return { allowed: canView, reason: canView ? undefined : "Deactivated" };
+    }
+
+    // 4. Positive check on modulePermissions
+    if (perms.modulePermissions && item.moduleKey in perms.modulePermissions) {
+      const canAccess = !!perms.modulePermissions[item.moduleKey];
+      return { allowed: canAccess, reason: canAccess ? undefined : "Deactivated" };
+    }
+
+    return { allowed: true };
+  };
+
   return (
     <div className="flex items-center gap-4">
-      {/* All Modules Launcher Icon */}
-      <div className="flex items-center justify-center cursor-pointer relative group" ref={ref}>
-        <div onClick={() => setOpen((o) => !o)}>
+      {/* App Switcher Launcher Icon */}
+      <div className="flex items-center justify-center cursor-pointer relative" ref={ref}>
+        <div onClick={() => setOpen((o) => !o)} className="p-1 rounded hover:bg-white/10 transition-colors">
           <Grip size={16} className="text-[#a78bfa] hover:text-white transition-colors" />
         </div>
-        <div className="absolute top-8 right-0 hidden group-hover:block bg-[#1f2937] text-white text-xs py-1 px-2 rounded whitespace-nowrap z-[60] shadow-lg">All Modules</div>
 
         {open && (
           <div
@@ -111,59 +154,69 @@ export default function GlobalNavActions() {
             {/* Module Grid */}
             <div className="overflow-y-auto p-4 pt-6" style={{ maxHeight: "560px" }}>
               <div className="grid grid-cols-3 gap-3">
-                {launcherItems.map((item) => (
-                  <button
-                    key={item.label}
-                    onClick={() => {
-                      if (!item.disabled) {
-                        navigate(item.route);
-                        setOpen(false);
-                      }
-                    }}
-                    disabled={item.disabled}
-                    className={`flex items-start gap-3 p-3 rounded-xl text-left transition-all group/btn ${item.disabled
-                      ? "opacity-40 cursor-not-allowed"
-                      : "hover:bg-gray-50 hover:shadow-sm cursor-pointer"
-                      }`}
-                  >
-                    <div
-                      className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 transition-transform group-hover/btn:scale-105"
-                      style={{ background: item.bg, color: item.color }}
+                {launcherItems.map((item) => {
+                  const access = checkModuleAccess(item);
+                  const isBlocked = !access.allowed;
+
+                  return (
+                    <button
+                      key={item.label}
+                      onClick={() => {
+                        if (!isBlocked) {
+                          navigate(item.route);
+                          setOpen(false);
+                        }
+                      }}
+                      disabled={isBlocked}
+                      title={isBlocked ? `Module ${access.reason || "Deactivated"}. Contact practice administrator.` : item.label}
+                      className={`flex items-start gap-3 p-3 rounded-xl text-left transition-all group/btn ${isBlocked
+                        ? "opacity-45 grayscale-[40%] bg-slate-50/70 border border-dashed border-slate-200 cursor-not-allowed select-none"
+                        : "hover:bg-gray-50 hover:shadow-sm cursor-pointer"
+                        }`}
                     >
-                      {item.icon}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-semibold text-gray-800 text-sm leading-tight truncate">
-                        {item.label}
-                        {item.disabled && (
-                          <span className="ml-1.5 text-xs font-normal text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">Soon</span>
-                        )}
-                      </p>
-                      <p className="text-xs text-gray-400 mt-0.5 leading-snug line-clamp-2">{item.desc}</p>
-                    </div>
-                  </button>
-                ))}
+                      <div
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 transition-transform ${isBlocked ? "opacity-60" : "group-hover/btn:scale-105"}`}
+                        style={{ background: item.bg, color: item.color }}
+                      >
+                        {item.icon}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-1">
+                          <p className="font-semibold text-gray-800 text-sm leading-tight truncate">
+                            {item.label}
+                          </p>
+                          {isBlocked && (
+                            <span className="ml-1 text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded flex items-center gap-1 shrink-0">
+                              <Lock size={9} className="text-slate-400" /> {access.reason || "Locked"}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-400 mt-0.5 leading-snug line-clamp-2">{item.desc}</p>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
             {/* Footer */}
-            <div className="border-t px-5 py-3 bg-gray-50 flex items-center justify-between">
-              <span className="text-xs text-gray-400">{launcherItems.length} modules available</span>
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={(e) => { e.stopPropagation(); setOpen(false); }}
-                  className="text-xs font-medium text-gray-500 hover:text-gray-800 transition-colors"
-                >
-                  Close
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); navigate("/"); setOpen(false); }}
-                  className="text-xs font-medium flex items-center gap-1 hover:underline"
-                  style={{ color: "#6c5ce7" }}
-                >
-                  Home <ChevronRight size={11} />
-                </button>
-              </div>
+            <div className="border-t border-gray-100 px-5 py-2.5 bg-gray-50/90 flex items-center justify-between">
+              <span className="text-xs font-medium text-gray-400">
+                {launcherItems.length} modules available
+              </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate("/dashboard");
+                  setOpen(false);
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-gradient-to-r from-[#6c5ce7] to-[#4f46e5] hover:from-[#5b4cdb] hover:to-[#4338ca] shadow-xs hover:shadow transition-all active:scale-95 cursor-pointer"
+              >
+                <Home size={13} className="text-white" />
+                <span>Home</span>
+                <ChevronRight size={11} className="text-white/80" />
+              </button>
             </div>
           </div>
         )}

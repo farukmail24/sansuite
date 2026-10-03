@@ -8,7 +8,8 @@ import {
   BarChart3, Clock, Briefcase, FileText, Settings, Receipt, 
   PieChart, Building2, Save, Plus, Trash2, CheckCircle2, 
   AlertCircle, RefreshCw, Mail, Check, Sliders, DollarSign,
-  HelpCircle, ShieldCheck, Users, UserCheck, Shield
+  HelpCircle, ShieldCheck, Users, UserCheck, Shield,
+  Copy, RotateCcw, Send, Eye, Sparkles, Code
 } from "lucide-react";
 
 import { timeFeesSidebar } from "./sidebar";
@@ -43,13 +44,71 @@ const DEFAULT_ACTIVITIES: ActivityRate[] = [
   { id: 7, name: "General Administration", code: "ACT-007", defaultRate: "0.00", billable: false },
 ];
 
+const TEMPLATE_CONFIG: Record<string, { label: string; desc: string; defaultSubject?: string; defaultBody: string; hasSubject: boolean }> = {
+  invoice_dispatch: {
+    label: "Invoice Dispatch",
+    desc: "Transmitted to the client when emailing a statutory fee invoice",
+    defaultSubject: "Fee Invoice {InvoiceNo} from {PracticeName}",
+    defaultBody: "Dear {ClientName},\n\nPlease find attached fee invoice {InvoiceNo} for professional accounting services rendered.\n\nInvoice Summary:\n- Invoice Date: {InvoiceDate}\n- Due Date: {DueDate}\n- Total Payable: £{TotalAmount}\n\nBank Payment Details:\n{BankDetails}\n\nThank you for your business.\n\nKind regards,\n{PracticeName}",
+    hasSubject: true,
+  },
+  payment_receipt: {
+    label: "Payment Receipt Confirmation",
+    desc: "Dispatched upon recording a customer remittance against an invoice",
+    defaultSubject: "Payment Receipt - Invoice {InvoiceNo}",
+    defaultBody: "Dear {ClientName},\n\nThank you for your payment. We confirm receipt of £{AmountPaid} toward fee invoice {InvoiceNo}.\n\nRemaining Balance Due: £{DueAmount}\n\nKind regards,\n{PracticeName}",
+    hasSubject: true,
+  },
+  overdue_reminder_1: {
+    label: "1st Overdue Reminder (Friendly)",
+    desc: "Gentle reminder dispatched within 7 days of invoice due date",
+    defaultSubject: "Friendly Reminder: Invoice {InvoiceNo} Due",
+    defaultBody: "Dear {ClientName},\n\nThis is a friendly reminder that fee invoice {InvoiceNo} for £{DueAmount} was due on {DueDate}.\n\nIf payment is already in transit, please disregard this note. Otherwise, please remit payment via the bank details below:\n\n{BankDetails}\n\nKind regards,\n{PracticeName}",
+    hasSubject: true,
+  },
+  overdue_reminder_2: {
+    label: "2nd Overdue Demand (Formal)",
+    desc: "Formal statutory follow-up for invoices overdue 14+ days",
+    defaultSubject: "Overdue Notice: Invoice {InvoiceNo} - Immediate Settlement Requested",
+    defaultBody: "Dear {ClientName},\n\nOur records show that invoice {InvoiceNo} for £{DueAmount} is now overdue since {DueDate}.\n\nPlease arrange immediate settlement to avoid interruption to your client services.\n\nBank Details:\n{BankDetails}\n\nKind regards,\n{PracticeName}",
+    hasSubject: true,
+  },
+  estimate_dispatch: {
+    label: "Fee Proposal / Quotation",
+    desc: "Sent when presenting fee estimates to prospective or existing clients",
+    defaultSubject: "Fee Quotation {EstimateNo} from {PracticeName}",
+    defaultBody: "Dear {ClientName},\n\nPlease find attached fee quotation {EstimateNo} for the agreed scope of services.\n\nQuotation Total: £{TotalAmount}\nValid Until: {ExpiryDate}\n\nPlease let us know if you wish to proceed.\n\nKind regards,\n{PracticeName}",
+    hasSubject: true,
+  },
+  global_signature: {
+    label: "Global Practice Signature",
+    desc: "Standard statutory email signature appended to Time & Fees outbound messages",
+    defaultBody: "Best regards,\n{PracticeName} Accounts Team\nEmail: billing@sansuite.co.uk",
+    hasSubject: false,
+  },
+};
+
+const DYNAMIC_TAGS = [
+  { tag: "{ClientName}", label: "Client Name" },
+  { tag: "{InvoiceNo}", label: "Invoice Number" },
+  { tag: "{InvoiceDate}", label: "Invoice Date" },
+  { tag: "{DueDate}", label: "Due Date" },
+  { tag: "{TotalAmount}", label: "Total Amount" },
+  { tag: "{DueAmount}", label: "Due Amount" },
+  { tag: "{AmountPaid}", label: "Amount Paid" },
+  { tag: "{BankDetails}", label: "Bank Payment Details" },
+  { tag: "{PracticeName}", label: "Practice Name" },
+  { tag: "{EstimateNo}", label: "Estimate Number" },
+  { tag: "{ExpiryDate}", label: "Expiry Date" },
+];
+
 export default function TimeFeesSettingsPage() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Active section tab: "preferences" | "staff-rates" | "business" | "invoices" | "estimates" | "activities"
-  const [activeTab, setActiveTab] = useState<"preferences" | "staff-rates" | "business" | "invoices" | "estimates" | "activities">("preferences");
+  // Active section tab: "preferences" | "staff-rates" | "business" | "invoices" | "estimates" | "activities" | "templates"
+  const [activeTab, setActiveTab] = useState<"preferences" | "staff-rates" | "business" | "invoices" | "estimates" | "activities" | "templates">("preferences");
 
   // Fetch settings & practice profile from API
   const { data: settingsData, isLoading } = useQuery({
@@ -86,6 +145,19 @@ export default function TimeFeesSettingsPage() {
   const [newActivityRate, setNewActivityRate] = useState("65.00");
   const [newActivityBillable, setNewActivityBillable] = useState(true);
 
+  // Email Templates State
+  const [emailTemplates, setEmailTemplates] = useState<Record<string, { subject?: string; body: string }>>(() => {
+    const initial: Record<string, { subject?: string; body: string }> = {};
+    for (const [key, cfg] of Object.entries(TEMPLATE_CONFIG)) {
+      initial[key] = {
+        subject: cfg.defaultSubject || "",
+        body: cfg.defaultBody,
+      };
+    }
+    return initial;
+  });
+  const [selectedTemplateKey, setSelectedTemplateKey] = useState<string>("invoice_dispatch");
+
   // Sync settings when loaded from DB
   useEffect(() => {
     if (settingsData?.settings) {
@@ -120,6 +192,20 @@ export default function TimeFeesSettingsPage() {
           // Keep defaults
         }
       }
+
+      if (s.emailTemplatesJson) {
+        try {
+          const parsed = typeof s.emailTemplatesJson === "string" ? JSON.parse(s.emailTemplatesJson) : s.emailTemplatesJson;
+          if (parsed && typeof parsed === "object") {
+            setEmailTemplates((prev) => ({
+              ...prev,
+              ...parsed,
+            }));
+          }
+        } catch {
+          // Keep defaults
+        }
+      }
     }
   }, [settingsData]);
 
@@ -129,6 +215,7 @@ export default function TimeFeesSettingsPage() {
       const payload = {
         ...formData,
         activitiesJson: activities,
+        emailTemplatesJson: emailTemplates,
       };
       const res = await apiRequest("POST", "/api/time-fees/settings", payload);
       return res.json();
@@ -243,6 +330,23 @@ export default function TimeFeesSettingsPage() {
 
   const practice = settingsData?.practice;
 
+  // Resolve template preview with live sample values
+  const resolvePreview = (templateText: string) => {
+    let res = templateText || "";
+    res = res.replace(/{ClientName}/g, "Acme Holdings Ltd");
+    res = res.replace(/{InvoiceNo}/g, "INV-10024");
+    res = res.replace(/{InvoiceDate}/g, new Date().toLocaleDateString("en-GB"));
+    res = res.replace(/{DueDate}/g, new Date(Date.now() + 30 * 86400000).toLocaleDateString("en-GB"));
+    res = res.replace(/{TotalAmount}/g, "1,450.00");
+    res = res.replace(/{DueAmount}/g, "1,450.00");
+    res = res.replace(/{AmountPaid}/g, "500.00");
+    res = res.replace(/{BankDetails}/g, formData.bankDetails || "Barclays Bank UK\nSort Code: 20-00-00\nAccount: 12345678");
+    res = res.replace(/{PracticeName}/g, practice?.name || "Apex Chartered Accountants");
+    res = res.replace(/{EstimateNo}/g, "EST-204");
+    res = res.replace(/{ExpiryDate}/g, new Date(Date.now() + 30 * 86400000).toLocaleDateString("en-GB"));
+    return res;
+  };
+
   return (
     <AppLayout sidebar={timeFeesSidebar} module="Time & Fees">
       <div className="p-6 space-y-6 max-w-6xl">
@@ -343,6 +447,16 @@ export default function TimeFeesSettingsPage() {
             }`}
           >
             <DollarSign size={14} /> Estimates & Quotations
+          </button>
+          <button
+            onClick={() => setActiveTab("templates")}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors ${
+              activeTab === "templates"
+                ? "bg-purple-100 text-purple-800 shadow-xs"
+                : "text-gray-600 hover:bg-gray-100"
+            }`}
+          >
+            <Mail size={14} /> Email & Reminder Templates
           </button>
           <button
             onClick={() => setActiveTab("business")}
@@ -938,7 +1052,225 @@ export default function TimeFeesSettingsPage() {
           </div>
         )}
 
-        {/* TAB 5: My Business Profile */}
+        {/* TAB 5: Email & Reminder Templates Visual Editor */}
+        {activeTab === "templates" && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Template Selector Sidebar (4 Cols) */}
+            <div className="lg:col-span-4 space-y-4">
+              <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs space-y-2">
+                <h3 className="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <Mail size={14} className="text-purple-600" /> Statutory Templates
+                </h3>
+                <p className="text-[11px] text-gray-500 mb-3">
+                  Select a workflow email template to customize its dispatch subject, wording, and dynamic tag tokens.
+                </p>
+
+                <div className="space-y-1.5">
+                  {Object.entries(TEMPLATE_CONFIG).map(([key, cfg]) => {
+                    const isSelected = selectedTemplateKey === key;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setSelectedTemplateKey(key)}
+                        className={`w-full text-left p-3 rounded-xl border transition-all cursor-pointer ${
+                          isSelected
+                            ? "bg-purple-50/80 border-purple-300 shadow-2xs dark:bg-purple-950/40"
+                            : "border-gray-100 hover:border-purple-200 hover:bg-gray-50/60"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className={`text-xs font-bold ${isSelected ? "text-purple-900" : "text-gray-800"}`}>
+                            {cfg.label}
+                          </span>
+                          {isSelected && <Check size={13} className="text-purple-600 shrink-0" />}
+                        </div>
+                        <p className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">
+                          {cfg.desc}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Tag Reference Cheat Sheet */}
+              <div className="bg-purple-50/60 p-4 rounded-2xl border border-purple-100 text-xs space-y-2">
+                <span className="font-bold text-purple-950 flex items-center gap-1.5 text-xs">
+                  <Sparkles size={13} className="text-purple-700" /> Dynamic Tag Tokens
+                </span>
+                <p className="text-[11px] text-purple-800 leading-relaxed">
+                  Click any pill below to append it to your active template. They will be dynamically replaced with live data when sending emails.
+                </p>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {DYNAMIC_TAGS.map((t) => (
+                    <button
+                      key={t.tag}
+                      type="button"
+                      onClick={() => {
+                        const current = emailTemplates[selectedTemplateKey] || { body: "" };
+                        setEmailTemplates((prev) => ({
+                          ...prev,
+                          [selectedTemplateKey]: {
+                            ...current,
+                            body: current.body + ` ${t.tag} `,
+                          },
+                        }));
+                        toast({
+                          title: "Token Inserted",
+                          description: `Appended ${t.tag} to email body.`,
+                        });
+                      }}
+                      className="px-2 py-0.5 rounded-md bg-white border border-purple-200 text-purple-900 font-mono text-[10px] font-semibold hover:bg-purple-100 cursor-pointer shadow-2xs transition-colors"
+                      title={`Insert ${t.label}`}
+                    >
+                      + {t.tag}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Template Editor & Live Preview (8 Cols) */}
+            <div className="lg:col-span-8 space-y-5">
+              <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xs space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-gray-100 gap-2">
+                  <div>
+                    <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                      <FileText size={15} className="text-purple-600" />
+                      {TEMPLATE_CONFIG[selectedTemplateKey]?.label || "Edit Template"}
+                    </h2>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {TEMPLATE_CONFIG[selectedTemplateKey]?.desc}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const cfg = TEMPLATE_CONFIG[selectedTemplateKey];
+                        if (cfg) {
+                          setEmailTemplates((prev) => ({
+                            ...prev,
+                            [selectedTemplateKey]: {
+                              subject: cfg.defaultSubject || "",
+                              body: cfg.defaultBody,
+                            },
+                          }));
+                          toast({
+                            title: "Reset to Default",
+                            description: "Restored statutory UK accounting template wording.",
+                          });
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <RotateCcw size={12} /> Reset Default
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-3.5 text-xs">
+                  {/* Subject Input */}
+                  {TEMPLATE_CONFIG[selectedTemplateKey]?.hasSubject && (
+                    <div>
+                      <label className="block text-gray-700 font-semibold mb-1">
+                        Email Subject Line <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={emailTemplates[selectedTemplateKey]?.subject || ""}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setEmailTemplates((prev) => ({
+                            ...prev,
+                            [selectedTemplateKey]: {
+                              ...(prev[selectedTemplateKey] || {}),
+                              subject: val,
+                            },
+                          }));
+                        }}
+                        placeholder="e.g. Fee Invoice {InvoiceNo} from {PracticeName}"
+                        className="SanSuite-input w-full font-medium"
+                      />
+                    </div>
+                  )}
+
+                  {/* Body Textarea */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-gray-700 font-semibold">
+                        Email Body (Plain Text / Markdown) <span className="text-rose-500">*</span>
+                      </label>
+                      <span className="text-[10px] text-gray-400">
+                        {emailTemplates[selectedTemplateKey]?.body?.length || 0} characters
+                      </span>
+                    </div>
+                    <textarea
+                      rows={9}
+                      value={emailTemplates[selectedTemplateKey]?.body || ""}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setEmailTemplates((prev) => ({
+                          ...prev,
+                          [selectedTemplateKey]: {
+                            ...(prev[selectedTemplateKey] || {}),
+                            body: val,
+                          },
+                        }));
+                      }}
+                      className="SanSuite-input w-full font-mono text-xs leading-relaxed"
+                      placeholder="Write your email body here..."
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Live Client Preview Pane */}
+              <div className="bg-slate-900 text-slate-100 p-5 rounded-2xl border border-slate-800 shadow-md space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                  <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5 uppercase tracking-wider">
+                    <Eye size={13} className="text-emerald-400" /> Live Client Preview
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-mono">
+                    Client Inbox Simulation
+                  </span>
+                </div>
+
+                <div className="bg-slate-950 p-4 rounded-xl border border-slate-800/80 space-y-3 text-xs">
+                  <div className="space-y-1 text-slate-400 border-b border-slate-800 pb-2 text-[11px]">
+                    <div className="flex">
+                      <span className="w-16 font-semibold text-slate-500">From:</span>
+                      <span className="text-slate-300">
+                        {practice?.name || "SanSuite Practice"} &lt;billing@sansuite.co.uk&gt;
+                      </span>
+                    </div>
+                    <div className="flex">
+                      <span className="w-16 font-semibold text-slate-500">To:</span>
+                      <span className="text-slate-300">finance@acmeholding.co.uk</span>
+                    </div>
+                    {TEMPLATE_CONFIG[selectedTemplateKey]?.hasSubject && (
+                      <div className="flex">
+                        <span className="w-16 font-semibold text-slate-500">Subject:</span>
+                        <span className="font-bold text-slate-100">
+                          {resolvePreview(emailTemplates[selectedTemplateKey]?.subject || "")}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Rendered resolved text */}
+                  <div className="p-3 bg-slate-900/90 rounded-lg text-slate-200 font-sans text-xs whitespace-pre-wrap leading-relaxed border border-slate-800">
+                    {resolvePreview(emailTemplates[selectedTemplateKey]?.body || "")}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 6: My Business Profile */}
         {activeTab === "business" && (
           <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xs space-y-4 max-w-2xl">
             <h2 className="text-sm font-bold text-gray-800 border-b pb-2 flex items-center gap-2">

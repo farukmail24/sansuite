@@ -4,6 +4,7 @@ import { Link } from "wouter";
 import AppLayout from "../../components/layout/AppLayout";
 import { practiceSidebar } from "./sidebar";
 import { useToast } from "../../hooks/useToast";
+import { usePermissions } from "../../hooks/usePermissions";
 import {
   Users, UserPlus, Search, Filter, Building2,
   Phone, Mail, CheckCircle2, AlertCircle, Clock,
@@ -31,6 +32,7 @@ const MASTER_SERVICES = [
 export default function PracticeClientsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { isClientAssigned, isSuperAdmin } = usePermissions();
 
   // 4 Capium Standard Sub-Tabs (Article #9000165736)
   // "by_list" | "by_services" | "by_status" | "contacts"
@@ -302,6 +304,11 @@ export default function PracticeClientsPage() {
   // Filtered Clients (Only actual clients, not unconverted pre-sales leads)
   const filteredClients = useMemo(() => {
     return clientsList.filter((c: any) => {
+      // Enforce client assignment restriction for non-super users
+      if (!isSuperAdmin && !isClientAssigned(c.id)) {
+        return false;
+      }
+
       // Filter out unconverted sales leads/prospects from pure accounting clients view
       const stage = (c.pipelineStage || "").toLowerCase();
       if (stage === "lead" || stage === "prospect") {

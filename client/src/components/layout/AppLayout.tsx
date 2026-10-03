@@ -1,11 +1,12 @@
 import { useLocation, useSearch, Link } from "wouter";
 import { useAuth } from "../../hooks/useAuth";
+import { usePermissions } from "../../hooks/usePermissions";
 import {
   Building2, Bell, Search, LogOut, ChevronDown, Home,
   BookOpen, Users, FileText, DollarSign, BarChart3,
   ClipboardList, PenTool, Clock, Settings, Menu, X,
   Megaphone, Plus, Ticket, HelpCircle, User, Copyright,
-  Grip, Shield, HeartHandshake, Landmark, Calculator,
+  Grip, Shield, ShieldAlert, HeartHandshake, Landmark, Calculator,
   ListChecks, Link2, FileSignature, Smartphone, Timer,
   ChevronRight
 } from "lucide-react";
@@ -18,6 +19,32 @@ import GlobalFloatingTimer from "../time-fees/GlobalFloatingTimer";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "../../lib/queryClient";
 import type { HMRCFormCode } from "../common/HMRCHelpTooltip";
+
+const MODULE_NAME_TO_KEY: Record<string, string> = {
+  "Practice Management": "practice_management",
+  "Bookkeeping": "bookkeeping",
+  "Payroll": "payroll",
+  "Accounts Production": "accounts_production",
+  "Corporation Tax": "corporation_tax",
+  "Self Assessment": "self_assessment",
+  "MTD VAT": "mtd_vat",
+  "Company Secretarial": "company_secretarial",
+  "Charity Accounts": "charity_accounts",
+  "Time and Fees": "time_fees",
+  "Time & Fees": "time_fees",
+  "CapiSign": "esign",
+  "eSign": "esign",
+  "AML Compliance": "aml",
+  "AML": "aml",
+  "Onboarding Hub": "onboarding",
+  "Client Onboarding": "onboarding",
+  "Onboarding": "onboarding",
+  "365 Client Portal": "portal_365",
+  "Client Portal 365": "portal_365",
+  "Client Portal": "portal_365",
+  "MTD for Income Tax": "mtd_it",
+  "MTD Income Tax": "mtd_it",
+};
 
 export interface NavItem {
   label: string;
@@ -39,9 +66,13 @@ export default function AppLayout({ children, sidebar, module }: AppLayoutProps)
   const searchString = useSearch();
   const fullLocation = searchString ? `${location}?${searchString}` : location;
   const { user, logout } = useAuth();
+  const { canAccessModule, canPerform, isSuperAdmin } = usePermissions();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
   const [logoError, setLogoError] = useState(false);
+
+  const moduleKey = module ? (MODULE_NAME_TO_KEY[module] || module.toLowerCase().replace(/[^a-z0-9]/g, "_")) : null;
+  const isModuleRestricted = moduleKey && !isSuperAdmin ? (!canAccessModule(moduleKey) || !canPerform(moduleKey, "view")) : false;
 
   const { data: firmData } = useQuery({
     queryKey: ["/api/admin/firm-details"],
@@ -239,7 +270,29 @@ export default function AppLayout({ children, sidebar, module }: AppLayoutProps)
           }}
         >
           <SystemAnnouncementsBanner />
-          {children}
+          {isModuleRestricted ? (
+            <div className="flex-1 min-h-[75vh] flex items-center justify-center p-6">
+              <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 shadow-xl p-8 text-center animate-in fade-in zoom-in-95 duration-200">
+                <div className="w-14 h-14 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto mb-4">
+                  <ShieldAlert size={28} />
+                </div>
+                <h3 className="text-lg font-bold text-slate-900 mb-2">Module Access Restricted</h3>
+                <p className="text-sm text-slate-600 leading-relaxed mb-6">
+                  Access to <strong>{module || "this module"}</strong> is deactivated for your account. Please contact your Practice Administrator or Super Accountant to request access.
+                </p>
+                <div className="flex items-center justify-center gap-3">
+                  <button
+                    onClick={() => navigate("/")}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-sm transition cursor-pointer"
+                  >
+                    Return to Practice Dashboard
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            children
+          )}
         </main>
       </div>
 

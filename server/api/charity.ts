@@ -12,10 +12,11 @@ import {
   clients
 } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
-import { authMiddleware } from "../lib/authUtils";
+import { authMiddleware, requirePermission } from "../lib/authUtils";
 
 const router = Router();
 router.use(authMiddleware);
+router.use(requirePermission("charity_accounts", "view"));
 
 // =============================================
 // PRACTICE LEVEL ENDPOINTS

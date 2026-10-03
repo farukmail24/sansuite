@@ -189,8 +189,8 @@ export default function LoginPage() {
   function redirectPostLogin(user: any) {
     if (user?.portalType === "sme") {
       navigate("/sme/dashboard");
-    } else if (user?.portalType === "365") {
-      navigate("/portal/workspace");
+    } else if (user?.portalType === "365" || user?.role === "client") {
+      navigate("/365/workspace");
     } else {
       navigate("/dashboard");
     }

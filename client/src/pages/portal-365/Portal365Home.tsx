@@ -91,8 +91,16 @@ const DEFAULT_PERM_STATE: Record<string, PermRowState> = {
 
 export default function Portal365Home() {
   const [location, navigate] = useLocation();
+  const { user } = useAuth();
   const searchString = useSearch();
   const searchParams = useMemo(() => new URLSearchParams(searchString), [searchString]);
+
+  // Client role isolation: redirect clients directly to their dedicated 365 Client Workspace
+  useEffect(() => {
+    if (user && user.role === "client") {
+      navigate("/365/workspace", { replace: true });
+    }
+  }, [user, navigate]);
 
   // Derive active section from URL path or legacy query parameter
   const activeSection = useMemo(() => {
@@ -546,7 +554,7 @@ export default function Portal365Home() {
     <AppLayout sidebar={portal365Sidebar} module="365 PORTAL">
       <div className="bg-[#f8f9fa] min-h-screen pb-16">
         {/* Sub-Navigation & Breadcrumbs */}
-        <div className="bg-white px-6 py-2.5 border-b border-gray-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="bg-white px-6 lg:px-10 py-2.5 border-b border-gray-200 flex flex-wrap items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2 text-gray-500">
             <span className="hover:text-[#4c3f78] cursor-pointer" onClick={() => navigate("/")}>
               Home
@@ -617,7 +625,7 @@ export default function Portal365Home() {
           </div>
         </div>
 
-        <div className="p-6 max-w-7xl mx-auto space-y-5">
+        <div className="w-full px-6 lg:px-10 py-6 space-y-5">
           {/* ==================================================== */}
           {/* TAB 1: CLIENTS (Screenshot 1: /manage/clients)       */}
           {/* ==================================================== */}

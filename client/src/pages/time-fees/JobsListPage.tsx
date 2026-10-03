@@ -130,6 +130,22 @@ export default function JobsListPage() {
     enabled: !!selectedJobId && activeJobTab === "invoices",
   });
 
+  // Safely extract and parse subtasks for selected job
+  const selectedJobSubtasks = useMemo(() => {
+    const raw = selectedJobData?.job?.subtasksJson;
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === "string") {
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  }, [selectedJobData?.job?.subtasksJson]);
+
   // Filtered jobs
   const filteredJobs = jobs.filter((j: any) => {
     const matchesStatus = statusFilter === "All" || j.status?.toLowerCase() === statusFilter.toLowerCase();
@@ -515,6 +531,11 @@ export default function JobsListPage() {
                             <span className="text-[9px] opacity-75 block truncate">
                               {j.clientName || "General Client"}
                             </span>
+                            {j.actualHours && j.estimatedHours && parseFloat(j.actualHours) > parseFloat(j.estimatedHours) && (
+                              <span className="text-[8px] font-bold text-rose-700 bg-rose-100 dark:bg-rose-950/60 px-1 py-0.2 rounded block mt-0.5 truncate">
+                                Over Budget (+{(parseFloat(j.actualHours) - parseFloat(j.estimatedHours)).toFixed(1)}h)
+                              </span>
+                            )}
                           </button>
                         ))}
                         {dayJobs.length > 3 && (
@@ -604,6 +625,11 @@ export default function JobsListPage() {
                                 style={{ width: `${progressPct}%` }} 
                               />
                             </div>
+                            {actualHours > estHours && (
+                              <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 mt-1">
+                                <AlertCircle size={10} /> Over Budget: +{(actualHours - estHours).toFixed(1)}h
+                              </span>
+                            )}
                           </td>
                           <td className="py-4 px-5 text-center font-bold font-mono">
                             <span className={parseFloat(j.roi || "0") >= 0 ? "text-emerald-700" : "text-rose-700"}>
@@ -733,6 +759,27 @@ export default function JobsListPage() {
                 {/* 1. DETAILS & ROI */}
                 {activeJobTab === "details" && (
                   <div className="space-y-6">
+                    {/* Budget Sentinel Banner if Overrun */}
+                    {(() => {
+                      const totalLogged = selectedJobData.timelogs?.reduce((sum: number, t: any) => sum + parseFloat(t.hours || "0"), 0) || 0;
+                      const estH = parseFloat(selectedJobData.job.estimatedHours || "0");
+                      if (estH > 0 && totalLogged > estH) {
+                        const overH = totalLogged - estH;
+                        return (
+                          <div className="p-3.5 bg-rose-50 rounded-xl border border-rose-200 text-rose-900 flex items-start gap-2.5">
+                            <AlertCircle size={16} className="text-rose-600 shrink-0 mt-0.5" />
+                            <div>
+                              <span className="font-bold text-xs block">Budget Overrun Sentinel Alert</span>
+                              <p className="text-[11px] text-rose-700 mt-0.5">
+                                This job has exceeded its estimated budget of <span className="font-mono font-bold">{estH.toFixed(1)}h</span> by <span className="font-mono font-bold">+{overH.toFixed(1)} hours</span> ({totalLogged.toFixed(1)}h actual timelogs). Additional billable time should be invoiced out of scope or reviewed with the partner.
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+
                     {/* ROI Summary Card */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
@@ -764,25 +811,31 @@ export default function JobsListPage() {
                       </div>
 
                       <div className="space-y-2">
-                        {((selectedJobData.job.subtasksJson as any[]) || []).map((st: any, idx: number) => (
-                          <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <span className="w-5 h-5 rounded-md bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-[10px]">
-                                {idx + 1}
-                              </span>
-                              <div>
-                                <span className="font-bold text-slate-800">{st.name}</span>
-                                <span className="text-slate-400 block text-[10px]">Rate: £{st.billableRate}/h • Cost: £{st.costRate}/h</span>
+                        {selectedJobSubtasks.length === 0 ? (
+                          <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-center text-slate-400 text-xs italic">
+                            No deliverables or subtasks defined for this job.
+                          </div>
+                        ) : (
+                          selectedJobSubtasks.map((st: any, idx: number) => (
+                            <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="w-5 h-5 rounded-md bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-[10px]">
+                                  {idx + 1}
+                                </span>
+                                <div>
+                                  <span className="font-bold text-slate-800">{st.name}</span>
+                                  <span className="text-slate-400 block text-[10px]">Rate: £{st.billableRate || "85.00"}/h • Cost: £{st.costRate || "40.00"}/h</span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className="font-mono font-bold text-slate-700">{st.estimatedHours || "0"}h</span>
+                                <span className="bg-slate-200 text-slate-700 font-bold px-2 py-0.5 rounded-full text-[10px]">
+                                  {st.status || 'Pending'}
+                                </span>
                               </div>
                             </div>
-                            <div className="flex items-center gap-3">
-                              <span className="font-mono font-bold text-slate-700">{st.estimatedHours}h</span>
-                              <span className="bg-slate-200 text-slate-700 font-bold px-2 py-0.5 rounded-full text-[10px]">
-                                {st.status || 'Pending'}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
+                          ))
+                        )}
                       </div>
                     </div>
                   </div>

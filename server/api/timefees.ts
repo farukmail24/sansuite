@@ -6,7 +6,7 @@ import {
   feesCreditNotes
 } from "@shared/schema";
 import { eq, and, desc, asc, inArray, gte, lte, isNull, or } from "drizzle-orm";
-import { authMiddleware } from "../lib/authUtils";
+import { authMiddleware, requirePracticeUser } from "../lib/authUtils";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -47,7 +47,7 @@ const uploadExpenseReceipt = multer({
 });
 
 const router = Router();
-router.use(authMiddleware);
+router.use(authMiddleware, requirePracticeUser);
 
 // Helper: Calculate date boundaries from period
 function getPeriodDateRange(period?: string, customStart?: string, customEnd?: string) {
@@ -323,7 +323,22 @@ router.get("/dashboard-stats", async (req: any, res) => {
     }
 
     // 9. Action Station Operational Alerts:
-    const pendingTimesheetsCount = allTimesheets.filter(t => t.status === "PFA").length;
+    const pendingTimesheets = allTimesheets.filter(t => t.status === "PFA");
+    const pendingTimesheetsCount = pendingTimesheets.length;
+    const pendingTimesheetsList = pendingTimesheets.slice(0, 15).map(t => ({
+      id: t.id,
+      date: t.date,
+      hours: parseFloat(t.hours as string || "0"),
+      billable: t.billable,
+      ratePerHour: t.ratePerHour,
+      taskName: t.taskName || "General Accounting",
+      clientId: t.clientId,
+      clientName: t.clientName || "General Practice",
+      userId: t.userId,
+      userName: t.userName || "Staff Member",
+      status: t.status,
+    }));
+
     const practiceExpenses = await db.select().from(expenses).where(eq(expenses.practiceId, practiceId));
     const pendingExpensesCount = practiceExpenses.filter(e => e.status === "PFA").length;
     
@@ -339,6 +354,7 @@ router.get("/dashboard-stats", async (req: any, res) => {
 
     const operationalAlerts = {
       pendingTimesheets: pendingTimesheetsCount,
+      pendingTimesheetsList,
       pendingExpenses: pendingExpensesCount,
       overdueInvoicesCount: overdueInvoices.length,
       overdueInvoicesAmount: overdueInvoices.reduce((sum, inv) => sum + parseFloat(inv.dueAmount as string || inv.totalAmount as string || "0"), 0),
@@ -1256,14 +1272,36 @@ router.get("/jobs/:id", async (req: any, res) => {
     const jobTimesheets = await db.select().from(timesheets).where(and(eq(timesheets.jobId, jobId), eq(timesheets.practiceId, practiceId))).orderBy(desc(timesheets.date));
     const jobInvoices = await db.select().from(feesInvoices).where(and(eq(feesInvoices.clientId, job.clientId || 0), eq(feesInvoices.practiceId, practiceId)));
 
+    const safeParse = (val: any) => {
+      if (!val) return [];
+      if (Array.isArray(val)) return val;
+      if (typeof val === "string") {
+        try {
+          const parsed = JSON.parse(val);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      }
+      return [];
+    };
+
+    const parsedJob = {
+      ...job,
+      subtasksJson: safeParse(job.subtasksJson),
+      commentsJson: safeParse(job.commentsJson),
+      filesJson: safeParse(job.filesJson),
+      activityLogJson: safeParse(job.activityLogJson),
+    };
+
     res.json({
-      job,
+      job: parsedJob,
       client: client || null,
       timelogs: jobTimesheets,
       invoices: jobInvoices,
-      comments: job.commentsJson || [],
-      files: job.filesJson || [],
-      activity: job.activityLogJson || [],
+      comments: parsedJob.commentsJson,
+      files: parsedJob.filesJson,
+      activity: parsedJob.activityLogJson,
     });
   } catch (error: any) {
     res.status(500).json({ message: "Failed to fetch job details", error: error.message });
@@ -1776,6 +1814,9 @@ router.get("/expenses", async (req: any, res) => {
       billable: expenses.billable,
       status: expenses.status,
       receiptPath: expenses.receiptPath,
+      miles: expenses.miles,
+      mileageRate: expenses.mileageRate,
+      rejectionReason: expenses.rejectionReason,
       notes: expenses.notes,
       isReimbursed: expenses.isReimbursed,
       jobId: expenses.jobId,
@@ -1839,7 +1880,7 @@ router.post("/expenses", async (req: any, res) => {
       mileageRate: mileageRate ? parseFloat(mileageRate).toFixed(2) : "0.45",
       billable: billable !== undefined ? !!billable : true,
       receiptPath: receiptPath || undefined,
-      status: "Unsubmitted",
+      status: req.body.status || "Unsubmitted",
       notes: notes || undefined,
       isReimbursed: false,
     });
